@@ -65,15 +65,9 @@ function setError(message: string, usedToken = false) {
 
 async function ensureTurnstileToken(): Promise<string> {
   if (!TURNSTILE_SITE_KEY) return ''
-  if (!window.turnstile || turnstileWidgetId.value == null) throw new Error('Security check is not ready')
-  if (turnstileToken.value) return turnstileToken.value
-  window.turnstile.execute(turnstileWidgetId.value)
-  const start = Date.now()
-  while (Date.now() - start < 10_000) {
-    if (turnstileToken.value) return turnstileToken.value
-    await new Promise((resolve) => setTimeout(resolve, 100))
-  }
-  throw new Error('Security check timed out. Please retry.')
+  if (!window.turnstile || turnstileWidgetId.value == null) throw new Error('Security check is not ready.')
+  if (!turnstileToken.value) throw new Error('Please complete the security check before logging in.')
+  return turnstileToken.value
 }
 
 function resetTurnstileToken() {
@@ -109,7 +103,6 @@ async function mountTurnstile() {
   if (!window.turnstile || turnstileWidgetId.value != null) return
   turnstileWidgetId.value = window.turnstile.render(turnstileContainer.value, {
     sitekey: TURNSTILE_SITE_KEY,
-    size: 'invisible',
     callback: (tokenValue: string) => {
       turnstileToken.value = tokenValue
     },
@@ -118,6 +111,7 @@ async function mountTurnstile() {
     },
     'error-callback': () => {
       turnstileToken.value = ''
+      setError('Security check failed. Reload and try again.')
     },
   })
 }
@@ -127,7 +121,9 @@ function goToAccountLogin() {
 }
 
 onMounted(() => {
-  void mountTurnstile()
+  void mountTurnstile().catch((e: any) => {
+    setError(e?.message ?? 'Security check failed to load')
+  })
 })
 
 async function submit() {
@@ -230,7 +226,7 @@ async function loginWithPasskey() {
             <span>remember me</span>
           </label>
 
-          <div ref="turnstileContainer" class="turnstile-container"></div>
+          <div v-if="TURNSTILE_SITE_KEY" ref="turnstileContainer" class="turnstile-container"></div>
 
           <div v-if="error" class="error-msg">
             <span>{{ error }}</span>
@@ -315,9 +311,7 @@ async function loginWithPasskey() {
   border-radius: 1px;
 }
 .turnstile-container {
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
+  margin-bottom: 10px;
 }
 .form-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
 .error-msg {
