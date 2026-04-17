@@ -29,6 +29,10 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `JWT_SECRET` | Session signing secret for `/auth` JWT tokens. | Always set a strong random value in production. | `change-me-in-production` |
 | `TURNSTILE_SECRET_KEY` | Server-side Turnstile verification secret. | Set when Turnstile is enabled for login. | empty |
 | `PASTE_PUBLIC_API` | Absolute API URL written into generated ShareX files. | Set to your public API URL when not running on localhost. | `http://localhost:8080/api` |
+| `PASSKEYS_ENABLED` | Enables Rust WebAuthn passkey endpoints (`/auth/passkeys/*`). | Set `1` only after configuring your passkey RP origins/ID. | `0` |
+| `PASSKEY_RP_NAME` | Display name shown by authenticators during passkey enrollment. | Set to your instance/app name. | `yaemipaste` |
+| `PASSKEY_RP_ID` | Relying Party ID used for passkey verification. | Set when your RP ID must differ from origin hostname. | empty |
+| `PASSKEY_ORIGINS` | Comma-separated allowed origins for passkey ceremonies. | Set for multi-origin deployments (e.g. proxy + localhost dev). | empty |
 | `UI_PORT` | Host port mapped to UI container (`http://localhost:UI_PORT`). | Change if `8080` is busy or you prefer another port. | `8080` |
 | `AUTH_ADMIN_BASE_URL` | Base URL for installer’s privileged auth operations. | Change if your auth admin endpoint is hosted elsewhere. | `http://localhost:8080/auth/admin` |
 | `AUTH_BOOTSTRAP_PATH` | Path for bootstrap first-user API. | Change only if your auth API uses a different route. | `/bootstrap` |
@@ -49,6 +53,7 @@ Keep defaults. Only set:
 - `TURNSTILE_SECRET_KEY` (optional)
 - `JWT_SECRET` (required for production)
 - `VITE_MAX_EXPIRY_DAYS` (optional)
+- `PASSKEYS_ENABLED` / `PASSKEY_*` (optional passkey tuning)
 
 ## Custom domain behind reverse proxy
 

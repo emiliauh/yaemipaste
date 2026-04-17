@@ -304,10 +304,14 @@ configure_env() {
     log "Created ${env_path} from .env.example"
   fi
 
-  local ui_port paste_image turnstile_key admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer
+  local ui_port paste_image turnstile_key admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins
   ui_port="$(prompt "UI port to expose" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
   paste_image="$(prompt "Rustypaste image (includes /api + /auth)" "$(env_get PASTE_API_IMAGE "orhunp/rustypaste:latest")")"
   turnstile_key="$(prompt "Turnstile site key (leave empty to disable)" "$(env_get VITE_TURNSTILE_SITE_KEY "")")"
+  passkeys_enabled="$(prompt "Enable passkeys in Rust backend? (1=yes,0=no)" "$(env_get PASSKEYS_ENABLED "0")")"
+  passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
+  passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
+  passkey_origins="$(prompt "Passkey allowed origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
   admin_base="$(prompt "Auth admin base URL" "$(env_get AUTH_ADMIN_BASE_URL "http://localhost:${ui_port}/auth/admin")")"
   bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
   token_create_path="$(prompt "Token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
@@ -318,6 +322,10 @@ configure_env() {
   upsert_env UI_PORT "$ui_port"
   upsert_env PASTE_API_IMAGE "$paste_image"
   upsert_env VITE_TURNSTILE_SITE_KEY "$turnstile_key"
+  upsert_env PASSKEYS_ENABLED "$passkeys_enabled"
+  upsert_env PASSKEY_RP_NAME "$passkey_rp_name"
+  upsert_env PASSKEY_RP_ID "$passkey_rp_id"
+  upsert_env PASSKEY_ORIGINS "$passkey_origins"
   upsert_env VITE_PASTE_API "/api"
   upsert_env VITE_AUTH_API "/auth"
   upsert_env AUTH_ADMIN_BASE_URL "$admin_base"

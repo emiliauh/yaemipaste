@@ -8,6 +8,10 @@ services:
       AUTH_ADMIN_BEARER: ${AUTH_ADMIN_BEARER:-}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       PASTE_API: ${PASTE_PUBLIC_API:-http://localhost:8080/api}
+      PASSKEYS_ENABLED: ${PASSKEYS_ENABLED:-0}
+      PASSKEY_RP_NAME: ${PASSKEY_RP_NAME:-yaemipaste}
+      PASSKEY_RP_ID: ${PASSKEY_RP_ID:-}
+      PASSKEY_ORIGINS: ${PASSKEY_ORIGINS:-}
     volumes:
       - yaemipaste-auth:/var/lib/rustypaste-auth
     networks:
