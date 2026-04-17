@@ -2,12 +2,14 @@ services:
   paste-api:
     image: ${PASTE_API_IMAGE:-orhunp/rustypaste:latest}
     restart: unless-stopped
-    networks:
-      - yaemipaste
-
-  auth-api:
-    image: ${AUTH_API_IMAGE:-ghcr.io/emiliauh/yaemipaste-auth:latest}
-    restart: unless-stopped
+    environment:
+      DB_PATH: ${DB_PATH:-/var/lib/rustypaste-auth/users.db}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      AUTH_ADMIN_BEARER: ${AUTH_ADMIN_BEARER:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      PASTE_API: ${PASTE_PUBLIC_API:-http://localhost:8080/api}
+    volumes:
+      - yaemipaste-auth:/var/lib/rustypaste-auth
     networks:
       - yaemipaste
 
@@ -22,7 +24,6 @@ services:
     restart: unless-stopped
     depends_on:
       - paste-api
-      - auth-api
     ports:
       - "${UI_PORT:-8080}:80"
     networks:
@@ -31,3 +32,6 @@ services:
 networks:
   yaemipaste:
     name: yaemipaste
+
+volumes:
+  yaemipaste-auth:

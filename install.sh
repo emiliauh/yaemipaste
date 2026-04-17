@@ -304,20 +304,19 @@ configure_env() {
     log "Created ${env_path} from .env.example"
   fi
 
-  local ui_port paste_image auth_image turnstile_key admin_base bootstrap_path token_create_path token_revoke_path register_url
+  local ui_port paste_image turnstile_key admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer
   ui_port="$(prompt "UI port to expose" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
-  paste_image="$(prompt "Paste API image" "$(env_get PASTE_API_IMAGE "orhunp/rustypaste:latest")")"
-  auth_image="$(prompt "Auth API image" "$(env_get AUTH_API_IMAGE "ghcr.io/emiliauh/yaemipaste-auth:latest")")"
+  paste_image="$(prompt "Rustypaste image (includes /api + /auth)" "$(env_get PASTE_API_IMAGE "orhunp/rustypaste:latest")")"
   turnstile_key="$(prompt "Turnstile site key (leave empty to disable)" "$(env_get VITE_TURNSTILE_SITE_KEY "")")"
   admin_base="$(prompt "Auth admin base URL" "$(env_get AUTH_ADMIN_BASE_URL "http://localhost:${ui_port}/auth/admin")")"
   bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
   token_create_path="$(prompt "Token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
   token_revoke_path="$(prompt "Token revoke path (use %s placeholder for token)" "$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")")"
   register_url="$(prompt "Register endpoint URL" "$(env_get AUTH_REGISTER_URL "http://localhost:${ui_port}/auth/register")")"
+  admin_bearer="$(prompt "Admin bearer token for /auth/admin (required for bootstrap/token actions)" "$(env_get AUTH_ADMIN_BEARER "")")"
 
   upsert_env UI_PORT "$ui_port"
   upsert_env PASTE_API_IMAGE "$paste_image"
-  upsert_env AUTH_API_IMAGE "$auth_image"
   upsert_env VITE_TURNSTILE_SITE_KEY "$turnstile_key"
   upsert_env VITE_PASTE_API "/api"
   upsert_env VITE_AUTH_API "/auth"
@@ -326,7 +325,7 @@ configure_env() {
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"
   upsert_env AUTH_TOKEN_REVOKE_PATH "$token_revoke_path"
   upsert_env AUTH_REGISTER_URL "$register_url"
-  upsert_env AUTH_ADMIN_BEARER "$(env_get AUTH_ADMIN_BEARER "")"
+  upsert_env AUTH_ADMIN_BEARER "$admin_bearer"
 }
 
 clone_or_update_repo() {
@@ -396,14 +395,8 @@ read_auth_settings() {
 }
 
 read_admin_bearer() {
-  # Prefer prompting at runtime so admin credentials are not persisted by default.
   local token="${AUTH_ADMIN_BEARER_VALUE}"
-  if [[ -n "$token" ]]; then
-    printf '%s' "$token"
-    return 0
-  fi
-  token="$(prompt_secret "Enter auth admin bearer token (not stored)")"
-  [[ -n "$token" ]] || die "Admin bearer token is required for this action."
+  [[ -n "$token" ]] || die "AUTH_ADMIN_BEARER is empty in .env. Set it, restart the stack, then retry."
   printf '%s' "$token"
 }
 

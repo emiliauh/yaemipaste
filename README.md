@@ -2,7 +2,7 @@
 
 yaemipaste is a self-hostable paste and file-sharing stack built on top of **[rustypaste](https://github.com/orhun/rustypaste)**.
 
-If you want the short version: rustypaste handles the file backend, and this project wraps it with a cleaner UI, authentication, token workflows, passkeys, and optional client-side encrypted shares.
+If you want the short version: rustypaste handles both the file backend and the auth API, and this project wraps it with a cleaner UI, token workflows, and optional client-side encrypted shares.
 
 This repository is public-facing and intended for independent deployments.
 

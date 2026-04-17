@@ -24,15 +24,18 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `VITE_AUTH_API` | Frontend base path for auth API calls. | Change only if auth is exposed under a different path/domain. | `/auth` |
 | `VITE_TURNSTILE_SITE_KEY` | Enables Cloudflare Turnstile challenge in login flow. | Set when you want Turnstile protection; leave empty otherwise. | empty |
 | `VITE_MAX_EXPIRY_DAYS` | Max day-based expiry option shown in the UI ("Keep for"). | Set to the maximum retention days your deployment allows. | `14` |
-| `PASTE_API_IMAGE` | Docker image for rustypaste backend. | Pin to a specific version, custom build, or private registry image. | `orhunp/rustypaste:latest` |
-| `AUTH_API_IMAGE` | Docker image for auth backend. | Pin your auth service version/tag. | `ghcr.io/emiliauh/yaemipaste-auth:latest` |
+| `PASTE_API_IMAGE` | Docker image for rustypaste backend (includes `/api` and `/auth`). | Pin to a specific version, custom build, or private registry image. | `orhunp/rustypaste:latest` |
+| `DB_PATH` | SQLite DB path used by rustypaste integrated auth. | Change only if you want a different in-container auth DB location. | `/var/lib/rustypaste-auth/users.db` |
+| `JWT_SECRET` | Session signing secret for `/auth` JWT tokens. | Always set a strong random value in production. | `change-me-in-production` |
+| `TURNSTILE_SECRET_KEY` | Server-side Turnstile verification secret. | Set when Turnstile is enabled for login. | empty |
+| `PASTE_PUBLIC_API` | Absolute API URL written into generated ShareX files. | Set to your public API URL when not running on localhost. | `http://localhost:8080/api` |
 | `UI_PORT` | Host port mapped to UI container (`http://localhost:UI_PORT`). | Change if `8080` is busy or you prefer another port. | `8080` |
 | `AUTH_ADMIN_BASE_URL` | Base URL for installer’s privileged auth operations. | Change if your auth admin endpoint is hosted elsewhere. | `http://localhost:8080/auth/admin` |
 | `AUTH_BOOTSTRAP_PATH` | Path for bootstrap first-user API. | Change only if your auth API uses a different route. | `/bootstrap` |
 | `AUTH_TOKEN_CREATE_PATH` | Path for token creation API. | Change only if your auth API uses a different route. | `/tokens` |
 | `AUTH_TOKEN_REVOKE_PATH` | Path template for token revocation (`%s` placeholder required). | Change if revoke route differs. Keep `%s` or installer can’t inject token value. | `/tokens/%s` |
 | `AUTH_REGISTER_URL` | Public register endpoint used by installer when token-based register is selected. | Change if register endpoint is not on localhost/UI path. | `http://localhost:8080/auth/register` |
-| `AUTH_ADMIN_BEARER` | Optional admin bearer token for non-interactive runs. | Set only for automation/CI; otherwise leave empty and enter interactively. | empty |
+| `AUTH_ADMIN_BEARER` | Admin bearer token accepted by rustypaste `/auth/admin/*` endpoints. | Set this to a strong random value whenever you need bootstrap/token lifecycle operations. | empty |
 
 ---
 
@@ -43,19 +46,21 @@ This page explains every variable in `.env.example`, what it controls, and when 
 Keep defaults. Only set:
 - `UI_PORT` (optional)
 - `VITE_TURNSTILE_SITE_KEY` (optional)
+- `TURNSTILE_SECRET_KEY` (optional)
+- `JWT_SECRET` (required for production)
 - `VITE_MAX_EXPIRY_DAYS` (optional)
 
 ## Custom domain behind reverse proxy
 
 Usually still keep `VITE_PASTE_API=/api` and `VITE_AUTH_API=/auth`, then route:
-- `https://your-domain/api/*` → rustypaste
-- `https://your-domain/auth/*` → auth service
+- `https://your-domain/api/*` → rustypaste `/`
+- `https://your-domain/auth/*` → rustypaste `/auth/*`
 
 ## Non-interactive automation
 
 Set:
 - `AUTH_ADMIN_BEARER`
-- image tags (`PASTE_API_IMAGE`, `AUTH_API_IMAGE`)
+- image tag (`PASTE_API_IMAGE`)
 - optionally custom admin endpoint paths
 
 Then run installer with `--yes` + `--action ...`.
