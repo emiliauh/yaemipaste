@@ -11,6 +11,7 @@ import {
 
 const PASTE_API = (import.meta.env.VITE_PASTE_API ?? '/api').replace(/\/$/, '')
 const AUTH_API = (import.meta.env.VITE_AUTH_API ?? '/auth').replace(/\/$/, '')
+const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '1').trim() !== '0'
 const REMEMBER_ME_KEY = 'rp_remember_me'
 const AUTH_KEYS = ['rp_jwt', 'rp_token', 'rp_username'] as const
 
@@ -31,6 +32,42 @@ interface AuthSessionResponse {
   access_token: string
   paste_token: string
   username: string
+}
+
+async function responseDetail(response: Response, fallback: string): Promise<string> {
+  const jsonProbe = response.clone()
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) {
+    try {
+      const payload = await jsonProbe.json() as { detail?: unknown; message?: unknown }
+      const detail = typeof payload.detail === 'string' ? payload.detail
+        : typeof payload.message === 'string' ? payload.message
+          : ''
+      if (detail.trim()) return detail.trim()
+    } catch {
+      // fallback below
+    }
+  }
+  const text = (await response.text()).trim()
+  if (!text) return fallback
+  try {
+    const payload = JSON.parse(text) as { detail?: unknown; message?: unknown }
+    const detail = typeof payload.detail === 'string' ? payload.detail
+      : typeof payload.message === 'string' ? payload.message
+        : ''
+    if (detail.trim()) return detail.trim()
+  } catch {
+    // plain text fallback
+  }
+  return text.length > 180 ? `${text.slice(0, 177)}...` : text
+}
+
+async function readJson<T>(response: Response, fallback: string): Promise<T> {
+  try {
+    return await response.json() as T
+  } catch {
+    throw new Error(fallback)
+  }
 }
 
 function readAuthValue(key: (typeof AUTH_KEYS)[number]): string {
@@ -85,8 +122,8 @@ export async function authRegister(username: string, password: string, token: st
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, token }),
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Registration failed')
-  return r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Registration failed'))
+  return readJson(r, 'Registration failed')
 }
 
 export async function authLogin(
@@ -103,8 +140,8 @@ export async function authLogin(
       turnstile_token: options.turnstileToken ?? '',
     }),
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Login failed')
-  const data: AuthSessionResponse = await r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Login failed'))
+  const data = await readJson<AuthSessionResponse>(r, 'Login failed')
   saveAuthSession(data, options.rememberMe ?? getRememberPreference())
   return data
 }
@@ -113,8 +150,8 @@ export async function authMe() {
   const r = await fetch(`${AUTH_API}/me`, {
     headers: { Authorization: `Bearer ${getJwt()}` },
   })
-  if (!r.ok) throw new Error('Unauthorized')
-  return r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Unauthorized'))
+  return readJson(r, 'Could not load account details')
 }
 
 export function authLogout() {
@@ -131,10 +168,11 @@ export interface PasskeySummary {
 
 export async function authPasskeysList(): Promise<PasskeySummary[]> {
   const r = await fetch(`${AUTH_API}/passkeys`, {
+    cache: 'no-store',
     headers: { Authorization: `Bearer ${getJwt()}` },
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Could not load passkeys')
-  return r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not load passkeys'))
+  return readJson(r, 'Could not load passkeys')
 }
 
 export async function authPasskeyRegisterBegin() {
@@ -142,8 +180,8 @@ export async function authPasskeyRegisterBegin() {
     method: 'POST',
     headers: { Authorization: `Bearer ${getJwt()}` },
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Could not start passkey registration')
-  return r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not start passkey registration'))
+  return readJson(r, 'Could not start passkey registration')
 }
 
 export async function authPasskeyRegisterFinish(credential: unknown) {
@@ -155,8 +193,8 @@ export async function authPasskeyRegisterFinish(credential: unknown) {
     },
     body: JSON.stringify({ credential }),
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Could not register passkey')
-  return r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not register passkey'))
+  return readJson(r, 'Could not register passkey')
 }
 
 export async function authPasskeyDelete(id: number) {
@@ -164,7 +202,7 @@ export async function authPasskeyDelete(id: number) {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${getJwt()}` },
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Could not delete passkey')
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not delete passkey'))
 }
 
 export async function authPasskeyLoginBegin(username: string) {
@@ -173,8 +211,8 @@ export async function authPasskeyLoginBegin(username: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username }),
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Could not start passkey login')
-  return r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not start passkey login'))
+  return readJson(r, 'Could not start passkey login')
 }
 
 export async function authPasskeyLoginFinish(username: string, credential: unknown, rememberMe = getRememberPreference()) {
@@ -183,8 +221,8 @@ export async function authPasskeyLoginFinish(username: string, credential: unkno
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, credential }),
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Passkey login failed')
-  const data: AuthSessionResponse = await r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Passkey login failed'))
+  const data = await readJson<AuthSessionResponse>(r, 'Passkey login failed')
   saveAuthSession(data, rememberMe)
   return data
 }
@@ -205,18 +243,23 @@ export async function authTokenStatus(token: string): Promise<'available' | 'use
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
   })
-  if (!r.ok) throw new Error((await r.json()).detail ?? 'Could not verify token')
-  const data = await r.json() as { status?: 'available' | 'used' | 'invalid' }
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not verify token'))
+  const data = await readJson<{ status?: 'available' | 'used' | 'invalid' }>(r, 'Could not verify token')
   if (!data.status) throw new Error('Could not verify token')
   return data.status
 }
 
 export async function getShareXConfig(): Promise<Blob> {
+  if (!SHAREX_ENABLED) throw new Error('ShareX integration is disabled for this deployment')
   const r = await fetch(`${AUTH_API}/sharex`, {
     headers: { Authorization: `Bearer ${getJwt()}` },
   })
-  if (!r.ok) throw new Error('Failed to get ShareX config')
+  if (!r.ok) throw new Error(await responseDetail(r, 'Failed to get ShareX config'))
   return r.blob()
+}
+
+export function isShareXEnabled(): boolean {
+  return SHAREX_ENABLED
 }
 
 // ── Rustypaste API ──────────────────────────────────────────────────────────
@@ -239,8 +282,8 @@ export async function listFiles(): Promise<PasteFile[]> {
   const r = await fetch(`${PASTE_API}/list`, {
     headers: { Authorization: getToken() },
   })
-  if (!r.ok) throw new Error('Failed to list files')
-  const data: RawPasteFile[] = await r.json()
+  if (!r.ok) throw new Error(await responseDetail(r, 'Failed to list files'))
+  const data = await readJson<RawPasteFile[]>(r, 'Failed to list files')
   return data.map((f) => ({
     file_name: f.file_name,
     file_size: f.file_size,
@@ -264,6 +307,17 @@ interface UploadMeta {
   keepFileName: boolean
   originalName: string
   uploader: string
+}
+
+function extractUploadTarget(responseText: string): string {
+  const normalized = responseText.trim()
+  if (!normalized) throw new Error('Upload endpoint returned an empty response')
+  const firstLine = normalized.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? ''
+  if (!firstLine) throw new Error('Upload endpoint returned an empty response')
+  if (firstLine.startsWith('{') || firstLine.startsWith('[')) {
+    throw new Error('Upload endpoint returned unexpected JSON. Check your VITE_PASTE_API routing.')
+  }
+  return firstLine
 }
 
 export async function uploadFile(file: File, options: UploadOptions = {}): Promise<string> {
@@ -291,9 +345,12 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
   form.append('file', uploadFileValue)
   const headers: Record<string, string> = { Authorization: getToken() }
   if (expiry) headers.expire = expiry
-  const rawUrl = (await uploadForm(form, headers, onProgress)).trim()
-  const fileName = fileNameFromUrl(rawUrl)
-  const origin = originFromUrl(rawUrl)
+  const uploadTarget = extractUploadTarget(await uploadForm(form, headers, onProgress))
+  const fileName = fileNameFromUrl(uploadTarget)
+  if (!fileName || fileName.includes('{') || fileName.includes('}') || fileName.includes('"')) {
+    throw new Error('Upload endpoint returned an invalid file URL')
+  }
+  const origin = originFromUrl(uploadTarget)
   if (shouldEncrypt && encryptedKey && encryptedMetadata) {
     rememberEncryptedFile(fileName, encryptedKey, encryptedMetadata, origin)
   } else {
@@ -355,8 +412,8 @@ export interface PublicFileMeta {
 
 export async function getPublicFileMeta(fileName: string): Promise<PublicFileMeta> {
   const r = await fetch(`${PASTE_API}/meta/${encodeURIComponent(fileName)}`)
-  if (!r.ok) throw new Error(r.status === 404 ? 'File not found or expired' : 'Could not load file metadata')
-  return r.json()
+  if (!r.ok) throw new Error(r.status === 404 ? 'File not found or expired' : await responseDetail(r, 'Could not load file metadata'))
+  return readJson(r, 'Could not load file metadata')
 }
 
 export function publicApiFileUrl(fileName: string): string {

@@ -294,6 +294,7 @@ export function rawFileNameFromPublicPath(pathname: string): string {
   const id = decodeURIComponent(idSegment)
   const tail = decodeURIComponent(tailSegment)
   if (!id) return ''
+  if (!tail) return id
   if (tail === 'file') return id
   if (tail.startsWith('file.')) return `${id}.${tail.slice(5)}`
   return `${id}.${tail}`

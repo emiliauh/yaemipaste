@@ -13,14 +13,8 @@ import {
 import { credentialToJson, isPasskeySupported, toRequestOptions } from '../lib/passkeys'
 
 const router = useRouter()
-const runtimeHost = typeof window !== 'undefined' ? window.location.hostname : ''
-const TURNSTILE_FALLBACK_KEYS: Record<string, string> = {
-  'example.invalid': 'TURNSTILE_SITE_KEY',
-  'example.invalid': 'TURNSTILE_SITE_KEY',
-}
 const TURNSTILE_SITE_KEY = (
   import.meta.env.VITE_TURNSTILE_SITE_KEY
-  ?? TURNSTILE_FALLBACK_KEYS[runtimeHost]
   ?? ''
 ).trim()
 

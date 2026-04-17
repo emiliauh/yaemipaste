@@ -1,10 +1,21 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { isLoggedIn } from '../lib/api'
+import { rawFileNameFromPublicPath } from '../lib/e2ee'
+
+function initialRootRedirect() {
+  if (typeof window === 'undefined') return '/files'
+  const pathname = decodeURIComponent(window.location.pathname.replace(/^\/+/, ''))
+  if (!pathname || pathname === 'index.html') return '/files'
+  if (rawFileNameFromPublicPath(pathname)) {
+    return { path: '/preview', query: { p: pathname } }
+  }
+  return '/files'
+}
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', redirect: '/files' },
+    { path: '/', redirect: initialRootRedirect },
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/register', component: () => import('../views/RegisterView.vue') },
     { path: '/file', component: () => import('../views/EncryptedFileView.vue') },

@@ -23,6 +23,8 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `VITE_PASTE_API` | Frontend base path for rustypaste API calls. | Change only if you route paste API under a different path/domain. | `/api` |
 | `VITE_AUTH_API` | Frontend base path for auth API calls. | Change only if auth is exposed under a different path/domain. | `/auth` |
 | `VITE_TURNSTILE_SITE_KEY` | Enables Cloudflare Turnstile challenge in login flow. | Set when you want Turnstile protection; leave empty otherwise. | empty |
+| `VITE_ENABLE_SHAREX` | Toggles ShareX download UI in account settings. | Set `0` if you do not use ShareX in your deployment. | `1` |
+| `VITE_REPOSITORY_URL` | Repository URL used by the in-app GitHub footer icon. | Change when you fork/rename the project repository. | `https://github.com/emiliauh/yaemipaste` |
 | `VITE_MAX_EXPIRY_DAYS` | Max day-based expiry option shown in the UI ("Keep for"). | Set to the maximum retention days your deployment allows. | `14` |
 | `PASTE_API_IMAGE` | Docker image for rustypaste backend (includes `/api` and `/auth`). | Pin to a specific version, custom build, or private registry image. | `orhunp/rustypaste:latest` |
 | `DB_PATH` | SQLite DB path used by rustypaste integrated auth. | Change only if you want a different in-container auth DB location. | `/var/lib/rustypaste-auth/users.db` |

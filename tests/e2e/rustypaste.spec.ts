@@ -210,6 +210,29 @@ test('upload accepts server short-path responses without surfacing an error', as
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/server-id/file.txt')
 })
 
+test('upload shows a clear error when API returns JSON instead of a file URL', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'ok', message: 'rustypaste api root' }),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'bad-upload-response.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('bad response'),
+  })
+
+  await expect(page.getByTestId('notification-list')).toContainText('Upload endpoint returned unexpected JSON')
+  await expect(page.getByTestId('share-row')).toHaveCount(0)
+})
+
 test('upload success stays successful when clipboard copy is blocked', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboardWriteFailure(page)
@@ -608,6 +631,39 @@ test('direct short file URL boots into preview route', async ({ page }) => {
   await expect(page.locator('.text-preview')).toContainText('preview')
 })
 
+test('single-segment file URL boots into preview route for images', async ({ page }) => {
+  await page.route('**/api/meta/png-check.png', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'png-check.png',
+        display_name: 'png-check.png',
+        uploader: 'test-user',
+        upload_date_utc: '2026-04-17T01:00:00Z',
+        download_name: 'png-check.png',
+        file_size: 68,
+        mime_type: 'image/png',
+      }),
+    })
+  })
+  await page.route('**/png-check/file.png?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    })
+  })
+
+  await page.goto('/png-check.png')
+  await expect(page).toHaveURL(/#\/preview\?p=/)
+  await expect(page.getByText('png-check.png')).toBeVisible()
+  await expect(page.locator('.preview-frame img')).toBeVisible()
+})
+
 test('notifications are row-stacked, capped at five, and clearable', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
@@ -742,6 +798,29 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
   await page.getByTestId('open-passkey-modal').click()
   await expect(page.getByTestId('passkey-modal')).toBeVisible()
   await expect(page.getByTestId('passkey-add-btn')).toBeVisible()
+})
+
+test('passkey modal surfaces non-JSON API errors without JSON parse crashes', async ({ page }) => {
+  await signInWithAccount(page)
+  await page.route('**/auth/passkeys', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 404,
+        contentType: 'text/plain',
+        body: 'Passkeys endpoint is unavailable',
+      })
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByTestId('open-passkey-modal').click()
+  await expect(page.getByTestId('passkey-modal')).toBeVisible()
+  const error = page.locator('.passkey-error')
+  await expect(error).toContainText('Passkeys endpoint is unavailable')
+  await expect(error).not.toContainText('Unexpected token')
 })
 
 for (const viewport of [

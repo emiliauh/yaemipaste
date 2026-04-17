@@ -9,6 +9,7 @@ import {
   getAuthUsername,
   getShareXConfig,
   hasAccountAuth,
+  isShareXEnabled,
   type PasskeySummary,
 } from '../lib/api'
 import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/passkeys'
@@ -17,9 +18,10 @@ import { useNotificationStore } from '../stores/notifications'
 const emit = defineEmits<{ close: [], logout: [] }>()
 const notificationStore = useNotificationStore()
 
-const apiBase = ref(localStorage.getItem('rp_api_base') ?? 'https://api.example.invalid/')
+const apiBase = ref(localStorage.getItem('rp_api_base') ?? (import.meta.env.VITE_PASTE_API ?? '/api'))
 const username = getAuthUsername()
 const hasAccount = hasAccountAuth()
+const sharexEnabled = isShareXEnabled()
 const downloading = ref(false)
 const saved = ref(false)
 const passkeyModalOpen = ref(false)
@@ -134,7 +136,7 @@ function logout() {
       <button class="btn-primary" style="font-size:11px" @click="save">{{ saved ? 'Saved' : 'Save' }}</button>
     </div>
 
-    <div v-if="hasAccount" class="field">
+    <div v-if="hasAccount && sharexEnabled" class="field">
       <label>ShareX Config</label>
       <p style="color:var(--text3); font-size:11px; margin-bottom:6px">Download pre-configured .sxcu for your account.</p>
       <button class="btn-primary" style="font-size:11px; width:100%" :disabled="downloading" @click="downloadShareX">

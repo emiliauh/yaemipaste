@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { listFiles, deleteFile, fileUrl, formatBytes, type PasteFile } from '../lib/api'
 import { decryptEncryptedBlob, encryptedDownloadUrl, getStoredEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
@@ -184,8 +184,20 @@ function closePreview() {
   preview.value = null
 }
 
-onMounted(load)
+watch(filtered, (nextFiles) => {
+  if (!hoverPreview.value) return
+  const stillVisible = nextFiles.some((item) => item.file_name === hoverPreview.value?.file.file_name)
+  if (!stillVisible) hideHover()
+})
+
+onMounted(() => {
+  void load()
+  window.addEventListener('blur', hideHover)
+  window.addEventListener('scroll', hideHover, true)
+})
 onBeforeUnmount(() => {
+  window.removeEventListener('blur', hideHover)
+  window.removeEventListener('scroll', hideHover, true)
   clearPreviewObjectUrl(preview.value)
   clearPreviewObjectUrl(hoverPreview.value)
 })
@@ -212,7 +224,7 @@ onBeforeUnmount(() => {
     <div v-else-if="!filtered.length" class="state-msg">No files.</div>
 
     <!-- Table -->
-    <div v-else class="table-wrap">
+    <div v-else class="table-wrap" @mouseleave="hideHover">
       <table class="file-table">
         <thead>
           <tr>
