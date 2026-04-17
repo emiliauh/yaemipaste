@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decryptEncryptedBlob, encryptedDownloadUrl, type EncryptedMetadata } from '../lib/e2ee'
-import { formatBytes } from '../lib/api'
+import {
+  decryptEncryptedBlob,
+  isRustypasteEncryptedBlob,
+  rawFileNameFromPublicPath,
+  type EncryptedMetadata,
+} from '../lib/e2ee'
+import { formatBytes, publicApiFileUrl } from '../lib/api'
+import { useNotificationStore } from '../stores/notifications'
 
 const route = useRoute()
+const notificationStore = useNotificationStore()
 const loading = ref(true)
 const error = ref('')
 const objectUrl = ref('')
@@ -12,7 +19,13 @@ const textPreview = ref('')
 const metadata = ref<EncryptedMetadata | null>(null)
 const status = ref('Preparing secure download…')
 
-const fileName = computed(() => String(route.query.f ?? ''))
+const fileName = computed(() => {
+  const fromQuery = String(route.query.f ?? '')
+  if (fromQuery) return fromQuery
+  const fromPath = rawFileNameFromPublicPath(window.location.pathname)
+  if (fromPath) return fromPath
+  return ''
+})
 const key = computed(() => String(route.query.k ?? ''))
 const isImage = computed(() => metadata.value?.type.startsWith('image/') ?? false)
 const isVideo = computed(() => metadata.value?.type.startsWith('video/') ?? false)
@@ -21,6 +34,33 @@ const isText = computed(() => metadata.value?.type.startsWith('text/') ?? false)
 function clearObjectUrl() {
   if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
   objectUrl.value = ''
+}
+
+async function downloadEncryptedPayload(name: string): Promise<Blob> {
+  const apiUrl = publicApiFileUrl(name)
+  const attempts = [apiUrl, `${apiUrl}?download=true`, `${apiUrl}?raw=1`]
+  let sawHtmlPayload = false
+  let sawNotFound = false
+
+  for (const url of attempts) {
+    const response = await fetch(url, { cache: 'no-store' })
+    if (!response.ok) {
+      if (response.status === 404) sawNotFound = true
+      continue
+    }
+    const payload = await response.blob()
+    if (await isRustypasteEncryptedBlob(payload)) return payload
+    const contentType = response.headers.get('content-type') ?? payload.type
+    if (contentType.includes('text/html')) {
+      sawHtmlPayload = true
+      continue
+    }
+    throw new Error('This file is not a rustypaste encrypted file')
+  }
+
+  if (sawNotFound) throw new Error('File not found or expired')
+  if (sawHtmlPayload) throw new Error('Could not load encrypted payload on this device. Try opening the same link in your browser.')
+  throw new Error('Download failed')
 }
 
 async function load() {
@@ -38,16 +78,16 @@ async function load() {
   loading.value = true
   status.value = 'Downloading encrypted file…'
   try {
-    const response = await fetch(encryptedDownloadUrl(fileName.value))
-    if (!response.ok) throw new Error(response.status === 404 ? 'File not found or expired' : 'Download failed')
     status.value = 'Decrypting in your browser…'
-    const decrypted = await decryptEncryptedBlob(await response.blob(), key.value)
+    const payload = await downloadEncryptedPayload(fileName.value)
+    const decrypted = await decryptEncryptedBlob(payload, key.value)
     metadata.value = decrypted.metadata
     objectUrl.value = URL.createObjectURL(decrypted.blob)
     if (decrypted.metadata.type.startsWith('text/')) {
       textPreview.value = await decrypted.blob.text()
     }
     status.value = 'Decrypted locally. No plaintext was stored on the host.'
+    notificationStore.push(status.value)
   } catch (e: any) {
     error.value = e.message ?? 'Could not decrypt file'
   } finally {
@@ -62,10 +102,6 @@ onBeforeUnmount(clearObjectUrl)
 
 <template>
   <main class="decrypt-page">
-    <div v-if="loading || metadata || error" class="decrypt-toast" :class="{ error: !!error }">
-      {{ error || status }}
-    </div>
-
     <section class="decrypt-panel">
       <div class="decrypt-topline">
         <div class="seal-mark">
@@ -128,24 +164,6 @@ onBeforeUnmount(clearObjectUrl)
   align-items: center;
   justify-content: center;
   padding: 16px;
-}
-.decrypt-toast {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 1000;
-  background: var(--bg2);
-  border: 1px solid var(--border2);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius);
-  color: var(--text2);
-  padding: 10px 14px;
-  font-size: 12px;
-  max-width: min(360px, calc(100vw - 32px));
-}
-.decrypt-toast.error {
-  border-left-color: var(--red);
-  color: var(--red-h);
 }
 .decrypt-panel {
   width: min(720px, 100%);

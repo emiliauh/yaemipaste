@@ -11,9 +11,11 @@ const confirm = ref('')
 const token = ref('')
 const error = ref('')
 const loading = ref(false)
+const tokenUsed = ref(false)
 
 async function submit() {
   error.value = ''
+  tokenUsed.value = false
   if (password.value !== confirm.value) {
     error.value = 'Passwords do not match'
     return
@@ -29,7 +31,13 @@ async function submit() {
     await authLogin(username.value.trim(), password.value)
     router.push('/files')
   } catch (e: any) {
-    error.value = e.message ?? 'Registration failed'
+    const message = e.message ?? 'Registration failed'
+    if (message.toLowerCase().includes('token already')) {
+      error.value = 'Token already used.'
+      tokenUsed.value = true
+    } else {
+      error.value = message
+    }
   } finally {
     loading.value = false
   }
@@ -64,7 +72,10 @@ async function submit() {
             <input v-model="token" type="text" autocomplete="off" placeholder="your-token" required />
           </div>
 
-          <div v-if="error" class="error-msg">{{ error }}</div>
+          <div v-if="error" class="error-msg">
+            <span>{{ error }}</span>
+            <router-link v-if="tokenUsed" to="/login" class="inline-link">Do you have an account?</router-link>
+          </div>
 
           <div class="form-footer">
             <button type="submit" class="btn-primary" :disabled="loading">
@@ -86,7 +97,27 @@ async function submit() {
 .field-hint { color: var(--text3); font-size: 11px; }
 .field input { width: 100%; }
 .form-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
-.error-msg { color: var(--red-h); font-size: 12px; margin-bottom: 10px; }
+.error-msg {
+  color: var(--red-h);
+  font-size: 12px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.inline-link {
+  color: var(--text2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  font-size: 11px;
+  text-decoration: none;
+}
+.inline-link:hover {
+  border-color: var(--text3);
+  color: var(--text);
+}
 .link { color: var(--text2); font-size: 12px; text-decoration: none; }
 .link:hover { color: var(--text); }
 </style>

@@ -1,14 +1,32 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { authLogout, getShareXConfig } from '../lib/api'
+import {
+  authLogout,
+  authPasskeyDelete,
+  authPasskeyRegisterBegin,
+  authPasskeyRegisterFinish,
+  authPasskeysList,
+  getAuthUsername,
+  getShareXConfig,
+  hasAccountAuth,
+  type PasskeySummary,
+} from '../lib/api'
+import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/passkeys'
+import { useNotificationStore } from '../stores/notifications'
 
 const emit = defineEmits<{ close: [], logout: [] }>()
+const notificationStore = useNotificationStore()
 
 const apiBase = ref(localStorage.getItem('rp_api_base') ?? 'https://api.example.invalid/')
-const username = localStorage.getItem('rp_username') ?? ''
-const hasAccount = !!localStorage.getItem('rp_jwt')
+const username = getAuthUsername()
+const hasAccount = hasAccountAuth()
 const downloading = ref(false)
 const saved = ref(false)
+const passkeyModalOpen = ref(false)
+const passkeys = ref<PasskeySummary[]>([])
+const passkeyBusy = ref(false)
+const passkeyLoading = ref(false)
+const passkeyError = ref('')
 
 function save() {
   localStorage.setItem('rp_api_base', apiBase.value)
@@ -21,13 +39,77 @@ async function downloadShareX() {
   try {
     const blob = await getShareXConfig()
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = 'rustypaste.sxcu'
+    const url = URL.createObjectURL(blob)
+    a.href = url
+    a.download = 'yaemipaste.sxcu'
     a.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (e: any) {
-    alert(e.message)
+    notificationStore.push(e.message ?? 'Could not generate ShareX config', 'error')
   } finally {
     downloading.value = false
+  }
+}
+
+function formatTimestamp(timestamp: number | null): string {
+  if (!timestamp) return 'Never used'
+  return new Date(timestamp * 1000).toLocaleString()
+}
+
+async function refreshPasskeys() {
+  passkeyLoading.value = true
+  passkeyError.value = ''
+  try {
+    passkeys.value = await authPasskeysList()
+  } catch (e: any) {
+    passkeyError.value = e.message ?? 'Could not load passkeys'
+  } finally {
+    passkeyLoading.value = false
+  }
+}
+
+async function openPasskeyModal() {
+  passkeyModalOpen.value = true
+  await refreshPasskeys()
+}
+
+function closePasskeyModal() {
+  passkeyModalOpen.value = false
+  passkeyError.value = ''
+}
+
+async function registerPasskey() {
+  if (!isPasskeySupported()) {
+    passkeyError.value = 'Passkeys are not supported in this browser.'
+    return
+  }
+  passkeyBusy.value = true
+  passkeyError.value = ''
+  try {
+    const options = await authPasskeyRegisterBegin()
+    const credential = await navigator.credentials.create({ publicKey: toCreationOptions(options) })
+    if (!(credential instanceof PublicKeyCredential)) throw new Error('Could not create a passkey credential')
+    await authPasskeyRegisterFinish(credentialToJson(credential))
+    notificationStore.push('Passkey added')
+    await refreshPasskeys()
+  } catch (e: any) {
+    passkeyError.value = e.message ?? 'Could not register passkey'
+  } finally {
+    passkeyBusy.value = false
+  }
+}
+
+async function deletePasskey(id: number) {
+  passkeyBusy.value = true
+  passkeyError.value = ''
+  try {
+    await authPasskeyDelete(id)
+    notificationStore.push('Passkey removed')
+    passkeys.value = passkeys.value.filter((item) => item.id !== id)
+  } catch (e: any) {
+    passkeyError.value = e.message ?? 'Could not remove passkey'
+  } finally {
+    passkeyBusy.value = false
   }
 }
 
@@ -59,6 +141,13 @@ function logout() {
         {{ downloading ? 'Generating…' : 'Download .sxcu' }}
       </button>
     </div>
+    <div v-if="hasAccount" class="field">
+      <label>Passkeys</label>
+      <button class="btn-primary passkey-open-btn" type="button" data-testid="open-passkey-modal" @click="openPasskeyModal">
+        <span aria-hidden="true">🔒</span>
+        <span>add passkey</span>
+      </button>
+    </div>
 
     <div v-if="username" style="margin-top:4px; color:var(--text3); font-size:11px; margin-bottom:8px">
       Signed in as <span style="color:var(--text2)">{{ username }}</span>
@@ -69,7 +158,36 @@ function logout() {
     <button class="btn-red logout-btn" type="button" @click="logout">Logout</button>
 
     <div style="margin-top:8px; color:var(--text3); font-size:10px; text-align:center">
-      ♥ rustypaste (-ui) as the base
+      ♥ yaemipaste + rustypaste
+    </div>
+  </div>
+
+  <div v-if="passkeyModalOpen" class="passkey-backdrop" data-testid="passkey-backdrop" @click.self="closePasskeyModal">
+    <div class="passkey-modal" data-testid="passkey-modal">
+      <div class="passkey-header">
+        <h3>Passkeys</h3>
+        <button class="btn-ghost" type="button" @click="closePasskeyModal">Close</button>
+      </div>
+      <p class="passkey-copy">Use passkeys for passwordless login on supported devices and managers.</p>
+
+      <button class="btn-primary passkey-add-btn" type="button" data-testid="passkey-add-btn" :disabled="passkeyBusy" @click="registerPasskey">
+        {{ passkeyBusy ? 'Working…' : 'Add passkey' }}
+      </button>
+
+      <div v-if="passkeyLoading" class="passkey-state">Loading passkeys…</div>
+      <div v-else-if="!passkeys.length" class="passkey-state">No passkeys yet.</div>
+      <div v-else class="passkey-list" data-testid="passkey-list">
+        <div v-for="item in passkeys" :key="item.id" class="passkey-row" data-testid="passkey-row">
+          <div>
+            <div class="passkey-id">{{ item.credential_id.slice(0, 14) }}…</div>
+            <div class="passkey-meta">Created {{ formatTimestamp(item.created_at) }}</div>
+            <div class="passkey-meta">{{ formatTimestamp(item.last_used_at) }}</div>
+          </div>
+          <button class="btn-red" type="button" :disabled="passkeyBusy" @click="deletePasskey(item.id)">Delete</button>
+        </div>
+      </div>
+
+      <div v-if="passkeyError" class="passkey-error">{{ passkeyError }}</div>
     </div>
   </div>
 </template>
@@ -81,4 +199,80 @@ function logout() {
 .row { display: flex; gap: 8px; justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: 12px 0; }
 .logout-btn { width: 100%; font-size: 11px; }
+.passkey-open-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.passkey-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 16px;
+}
+.passkey-modal {
+  width: min(560px, 100%);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--bg1);
+  padding: 16px;
+}
+.passkey-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.passkey-header h3 {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+}
+.passkey-copy {
+  color: var(--text3);
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+.passkey-add-btn {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.passkey-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.passkey-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  background: var(--bg);
+}
+.passkey-id {
+  color: var(--text2);
+  font-size: 12px;
+}
+.passkey-meta {
+  color: var(--text3);
+  font-size: 10px;
+}
+.passkey-state {
+  color: var(--text3);
+  font-size: 11px;
+}
+.passkey-error {
+  margin-top: 10px;
+  color: var(--red-h);
+  font-size: 11px;
+}
 </style>

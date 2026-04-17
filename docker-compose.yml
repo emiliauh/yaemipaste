@@ -1,0 +1,33 @@
+services:
+  paste-api:
+    image: ${PASTE_API_IMAGE:-orhunp/rustypaste:latest}
+    restart: unless-stopped
+    networks:
+      - yaemipaste
+
+  auth-api:
+    image: ${AUTH_API_IMAGE:-ghcr.io/emiliauh/yaemipaste-auth:latest}
+    restart: unless-stopped
+    networks:
+      - yaemipaste
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_PASTE_API: /api
+        VITE_AUTH_API: /auth
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+    restart: unless-stopped
+    depends_on:
+      - paste-api
+      - auth-api
+    ports:
+      - "${UI_PORT:-8080}:80"
+    networks:
+      - yaemipaste
+
+networks:
+  yaemipaste:
+    name: yaemipaste

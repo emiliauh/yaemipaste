@@ -1,21 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { uploadFile, uploadText, type UploadProgress } from '../lib/api'
 import ExpirySelector, { type ExpiryValue } from './ExpirySelector.vue'
-import Toast from './Toast.vue'
+import { useNotificationStore } from '../stores/notifications'
 
 const EXPIRY_KEY = 'rp_expiry'
-const EXPIRY_VALUES: ExpiryValue[] = ['12h', '1d', '3d', '7d', '14d']
+const KEEP_NAME_KEY = 'rp_keep_file_name'
+const EXPIRY_VALUES: ExpiryValue[] = ['12h', '1d', '3d', '7d', '14d', 'never']
 const savedExpiry = localStorage.getItem(EXPIRY_KEY) as ExpiryValue | null
+const keepNameSaved = localStorage.getItem(KEEP_NAME_KEY)
 const expiry = ref<ExpiryValue>(savedExpiry && EXPIRY_VALUES.includes(savedExpiry) ? savedExpiry : '14d')
+const keepFileName = ref(keepNameSaved !== '0')
 const dragging = ref(false)
 const textPaste = ref('')
 const loading = ref(false)
-const toast = ref<{ msg: string; type: 'success' | 'error' } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const longPressing = ref(false)
-const lastShareUrl = ref('')
+const shareLinks = ref<Array<{ id: number; name: string; url: string }>>([])
 const uploadProgress = ref<UploadProgress | null>(null)
+const strongEncrypt = ref(false)
+let shareLinkId = 0
+const notificationStore = useNotificationStore()
+
+watch(keepFileName, (value) => {
+  localStorage.setItem(KEEP_NAME_KEY, value ? '1' : '0')
+})
 
 function setProgress(progress: UploadProgress) {
   uploadProgress.value = progress
@@ -27,8 +36,18 @@ function setExpiry(value: ExpiryValue) {
 }
 
 function showToast(msg: string, type: 'success' | 'error' = 'success') {
-  toast.value = { msg, type }
-  setTimeout(() => (toast.value = null), 3000)
+  notificationStore.push(msg, type)
+}
+
+function clearNotifications() {
+  notificationStore.clear()
+}
+
+function pushShareLink(name: string, url: string) {
+  shareLinks.value = [
+    { id: ++shareLinkId, name, url },
+    ...shareLinks.value.filter((item) => item.url !== url),
+  ].slice(0, 20)
 }
 
 async function copyShareUrl(url: string): Promise<boolean> {
@@ -41,21 +60,34 @@ async function copyShareUrl(url: string): Promise<boolean> {
 }
 
 async function handleFiles(files: FileList | File[]) {
+  if (loading.value) {
+    showToast('Upload already in progress', 'error')
+    return
+  }
   loading.value = true
+  const shouldEncrypt = strongEncrypt.value
+  const shouldKeepFileName = keepFileName.value
+  const selectedExpiry = expiry.value === 'never' ? undefined : expiry.value
   const arr = Array.from(files)
   for (const f of arr) {
     try {
-      uploadProgress.value = { phase: 'encrypting', percent: 0 }
-      const url = await uploadFile(f, expiry.value, setProgress)
-      lastShareUrl.value = url.trim()
-      if (await copyShareUrl(lastShareUrl.value)) showToast(`Encrypted & copied: ${f.name}`)
-      else showToast(`Encrypted: ${f.name}. Copy the link below.`, 'error')
+      uploadProgress.value = { phase: shouldEncrypt ? 'encrypting' : 'uploading', percent: shouldEncrypt ? 0 : 1 }
+      const url = (await uploadFile(f, {
+        expiry: selectedExpiry,
+        encrypt: shouldEncrypt,
+        keepFileName: shouldKeepFileName,
+        onProgress: setProgress,
+      })).trim()
+      pushShareLink(f.name, url)
+      if (await copyShareUrl(url)) showToast(`${shouldEncrypt ? 'Encrypted' : 'Uploaded'} & copied: ${f.name}`)
+      else showToast(`${shouldEncrypt ? 'Encrypted' : 'Uploaded'}: ${f.name}. Copy the link below.`)
     } catch (e: any) {
       showToast(e.message ?? 'Upload failed', 'error')
     }
   }
   loading.value = false
   uploadProgress.value = null
+  if (fileInput.value) fileInput.value.value = ''
 }
 
 function onDrop(e: DragEvent) {
@@ -74,13 +106,25 @@ function onFileChange(e: Event) {
 
 async function submitText() {
   if (!textPaste.value.trim()) return
+  if (loading.value) {
+    showToast('Upload already in progress', 'error')
+    return
+  }
   loading.value = true
+  const shouldEncrypt = strongEncrypt.value
+  const shouldKeepFileName = keepFileName.value
+  const selectedExpiry = expiry.value === 'never' ? undefined : expiry.value
   try {
-    uploadProgress.value = { phase: 'encrypting', percent: 0 }
-    const url = await uploadText(textPaste.value, expiry.value, setProgress)
-    lastShareUrl.value = url.trim()
-    if (await copyShareUrl(lastShareUrl.value)) showToast('Text encrypted & copied')
-    else showToast('Text encrypted. Copy the link below.', 'error')
+    uploadProgress.value = { phase: shouldEncrypt ? 'encrypting' : 'uploading', percent: shouldEncrypt ? 0 : 1 }
+    const url = (await uploadText(textPaste.value, {
+      expiry: selectedExpiry,
+      encrypt: shouldEncrypt,
+      keepFileName: shouldKeepFileName,
+      onProgress: setProgress,
+    })).trim()
+    pushShareLink('paste.txt', url)
+    if (await copyShareUrl(url)) showToast(`Text ${shouldEncrypt ? 'encrypted' : 'uploaded'} & copied`)
+    else showToast(`Text ${shouldEncrypt ? 'encrypted' : 'uploaded'}. Copy the link below.`)
     textPaste.value = ''
   } catch (e: any) {
     showToast(e.message ?? 'Upload failed', 'error')
@@ -139,9 +183,19 @@ function onPasteAreaLongPressCancel() {
         <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
       </svg>
       <div>
-        <div class="security-title">End-to-end encrypted</div>
-        <div class="security-copy">Files are sealed before upload. The key stays in the share link.</div>
+        <div class="security-title">Upload security</div>
+        <div class="security-copy">{{ strongEncrypt ? 'Strong mode: encrypted in your browser before upload.' : 'Default mode: fast upload with clean short links.' }}</div>
       </div>
+    </div>
+    <div class="upload-options">
+      <label class="encrypt-toggle" data-testid="encrypt-toggle">
+        <input v-model="strongEncrypt" type="checkbox" />
+        <span>encrypt?</span>
+      </label>
+      <label class="encrypt-toggle" data-testid="keep-name-toggle">
+        <input v-model="keepFileName" type="checkbox" />
+        <span>keep file name?</span>
+      </label>
     </div>
 
     <!-- Drop zone -->
@@ -187,7 +241,16 @@ function onPasteAreaLongPressCancel() {
       style="width:100%; resize:vertical"
     />
 
-    <div style="display:flex; justify-content:flex-end; margin-top:10px">
+    <div class="text-actions-row">
+      <button
+        class="btn-ghost"
+        type="button"
+        data-testid="clear-notifications"
+        :disabled="!notificationStore.notifications.length"
+        @click="clearNotifications"
+      >
+        Clear Notifications
+      </button>
       <button class="btn-primary" :disabled="loading || !textPaste.trim()" @click="submitText">
         {{ loading ? 'Uploading…' : 'Upload Text' }}
       </button>
@@ -203,24 +266,28 @@ function onPasteAreaLongPressCancel() {
       </div>
     </div>
 
-    <div v-if="lastShareUrl" class="share-result">
-      <div class="share-label">Latest encrypted link</div>
-      <a :href="lastShareUrl" target="_blank" rel="noopener">{{ lastShareUrl }}</a>
-      <button class="btn-ghost" type="button" @click="copyShareUrl(lastShareUrl).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
-        Copy
-      </button>
+    <div v-if="shareLinks.length" class="share-result">
+      <div class="share-label">Latest share link</div>
+      <div v-for="share in shareLinks" :key="share.id" class="share-row" data-testid="share-row">
+        <div class="share-link-block">
+          <span class="share-file">{{ share.name }}</span>
+          <a :href="share.url" target="_blank" rel="noopener">{{ share.url }}</a>
+        </div>
+        <button class="btn-ghost" type="button" @click="copyShareUrl(share.url).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
+          Copy
+        </button>
+      </div>
     </div>
 
-    <Toast v-if="toast" :message="toast.msg" :type="toast.type" />
   </div>
 </template>
 
 <style scoped>
-.files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 96px; }
+.files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 18px; }
 .security-strip {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: linear-gradient(90deg, var(--bg1), #111111);
+  background: linear-gradient(90deg, var(--bg1), var(--subtle-grad-end));
   color: var(--text2);
   display: flex;
   align-items: flex-start;
@@ -240,27 +307,89 @@ function onPasteAreaLongPressCancel() {
   color: var(--text3);
   font-size: 11px;
 }
+.upload-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.encrypt-toggle {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg1);
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  color: var(--text2);
+  font-size: 12px;
+  width: fit-content;
+}
+.encrypt-toggle input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--bg);
+  display: inline-block;
+  flex-shrink: 0;
+  position: relative;
+}
+.encrypt-toggle input:checked {
+  border-color: var(--accent);
+  background: var(--checked-bg);
+}
+.encrypt-toggle input:checked::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
 .share-result {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg1);
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px 10px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 12px;
 }
 .share-label {
-  grid-column: 1 / -1;
   color: var(--text3);
   font-size: 10px;
   text-transform: uppercase;
+}
+.share-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.share-link-block {
+  min-width: 0;
+  max-width: 100%;
+}
+.share-file {
+  display: block;
+  color: var(--text3);
+  font-size: 11px;
+  margin-bottom: 3px;
 }
 .share-result a {
   color: var(--accent-h);
   font-size: 12px;
   overflow-wrap: anywhere;
   text-decoration: none;
+}
+.text-actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  gap: 8px;
 }
 .upload-progress {
   border: 1px solid var(--border);
@@ -307,10 +436,23 @@ function onPasteAreaLongPressCancel() {
   background: var(--bg1);
 }
 .divider { text-align: center; color: var(--text3); font-size: 12px; }
-
 @media (max-width: 600px) {
+  .files-tab {
+    padding-bottom: 112px;
+  }
+  .text-actions-row {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+  .text-actions-row button,
+  .share-row .btn-ghost {
+    width: 100%;
+  }
+  .share-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .share-result {
-    grid-template-columns: 1fr;
+    padding: 12px;
   }
 }
 </style>

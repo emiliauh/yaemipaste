@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { authLogin } from '../lib/api'
+import {
+  authLogin,
+  authPasskeyLoginBegin,
+  authPasskeyLoginFinish,
+  authTokenStatus,
+  getRememberPreference,
+  loginWithToken,
+  setRememberPreference,
+} from '../lib/api'
+import { credentialToJson, isPasskeySupported, toRequestOptions } from '../lib/passkeys'
 
 const router = useRouter()
+const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim()
 
 // mode: 'account' = username+password, 'token' = raw token (legacy)
 const mode = ref<'account' | 'token'>('account')
@@ -13,24 +23,158 @@ const password = ref('')
 const token = ref('')
 const error = ref('')
 const loading = ref(false)
+const passkeyLoading = ref(false)
+const rememberMe = ref(getRememberPreference())
+const tokenUsed = ref(false)
+const turnstileContainer = ref<HTMLElement | null>(null)
+const turnstileToken = ref('')
+const turnstileWidgetId = ref<string | number | null>(null)
+
+type TurnstileWidgetId = string | number
+interface TurnstileApi {
+  render: (container: HTMLElement, options: Record<string, unknown>) => TurnstileWidgetId
+  execute: (id: TurnstileWidgetId) => void
+  reset: (id: TurnstileWidgetId) => void
+}
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi
+  }
+}
+
+watch(rememberMe, (value) => setRememberPreference(value))
+watch(mode, () => {
+  error.value = ''
+  tokenUsed.value = false
+})
+
+function setError(message: string, usedToken = false) {
+  error.value = message
+  tokenUsed.value = usedToken
+}
+
+async function ensureTurnstileToken(): Promise<string> {
+  if (!TURNSTILE_SITE_KEY) return ''
+  if (!window.turnstile || turnstileWidgetId.value == null) throw new Error('Security check is not ready')
+  if (turnstileToken.value) return turnstileToken.value
+  window.turnstile.execute(turnstileWidgetId.value)
+  const start = Date.now()
+  while (Date.now() - start < 10_000) {
+    if (turnstileToken.value) return turnstileToken.value
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error('Security check timed out. Please retry.')
+}
+
+function resetTurnstileToken() {
+  if (!TURNSTILE_SITE_KEY || !window.turnstile || turnstileWidgetId.value == null) return
+  window.turnstile.reset(turnstileWidgetId.value)
+  turnstileToken.value = ''
+}
+
+async function mountTurnstile() {
+  if (!TURNSTILE_SITE_KEY || !turnstileContainer.value) return
+  if (!document.querySelector('script[data-turnstile]')) {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+      script.async = true
+      script.defer = true
+      script.dataset.turnstile = '1'
+      script.onload = () => resolve()
+      script.onerror = () => reject(new Error('Security check failed to load'))
+      document.head.appendChild(script)
+    })
+  } else if (!window.turnstile) {
+    await new Promise<void>((resolve, reject) => {
+      const start = Date.now()
+      const check = () => {
+        if (window.turnstile) resolve()
+        else if (Date.now() - start > 5_000) reject(new Error('Security check failed to initialize'))
+        else setTimeout(check, 50)
+      }
+      check()
+    })
+  }
+  if (!window.turnstile || turnstileWidgetId.value != null) return
+  turnstileWidgetId.value = window.turnstile.render(turnstileContainer.value, {
+    sitekey: TURNSTILE_SITE_KEY,
+    size: 'invisible',
+    callback: (tokenValue: string) => {
+      turnstileToken.value = tokenValue
+    },
+    'expired-callback': () => {
+      turnstileToken.value = ''
+    },
+    'error-callback': () => {
+      turnstileToken.value = ''
+    },
+  })
+}
+
+function goToAccountLogin() {
+  mode.value = 'account'
+}
+
+onMounted(() => {
+  void mountTurnstile()
+})
 
 async function submit() {
-  error.value = ''
+  setError('')
   loading.value = true
   try {
     if (mode.value === 'account') {
-      await authLogin(username.value.trim(), password.value)
+      const captchaToken = await ensureTurnstileToken()
+      await authLogin(username.value.trim(), password.value, {
+        rememberMe: rememberMe.value,
+        turnstileToken: captchaToken,
+      })
+      resetTurnstileToken()
     } else {
-      // Legacy: store token directly, no account needed
       if (!token.value.trim()) throw new Error('Token is required')
-      localStorage.setItem('rp_token', token.value.trim())
-      localStorage.setItem('rp_username', 'token-user')
+      const status = await authTokenStatus(token.value.trim())
+      if (status === 'used') {
+        setError('Token already used.', true)
+        return
+      }
+      if (status === 'invalid') throw new Error('Invalid token')
+      loginWithToken(token.value.trim(), rememberMe.value)
     }
     router.push('/files')
   } catch (e: any) {
-    error.value = e.message ?? 'Login failed'
+    setError(e.message ?? 'Login failed')
   } finally {
     loading.value = false
+  }
+}
+
+async function loginWithPasskey() {
+  if (mode.value !== 'account') {
+    setError('Passkeys are available in Account mode only')
+    return
+  }
+  if (!username.value.trim()) {
+    setError('Username is required for passkey login')
+    return
+  }
+  if (!isPasskeySupported()) {
+    setError('Passkeys are not supported in this browser')
+    return
+  }
+  setError('')
+  passkeyLoading.value = true
+  try {
+    const options = await authPasskeyLoginBegin(username.value.trim())
+    const credential = await navigator.credentials.get({ publicKey: toRequestOptions(options) })
+    if (!(credential instanceof PublicKeyCredential)) throw new Error('Could not read passkey credential')
+    await authPasskeyLoginFinish(username.value.trim(), credentialToJson(credential), rememberMe.value)
+    router.push('/files')
+  } catch (e: any) {
+    setError(e.message ?? 'Passkey login failed')
+  } finally {
+    passkeyLoading.value = false
   }
 }
 </script>
@@ -72,11 +216,31 @@ async function submit() {
             </div>
           </template>
 
-          <div v-if="error" class="error-msg">{{ error }}</div>
+          <label class="remember-toggle">
+            <input v-model="rememberMe" type="checkbox" />
+            <span>remember me</span>
+          </label>
+
+          <div ref="turnstileContainer" class="turnstile-container"></div>
+
+          <div v-if="error" class="error-msg">
+            <span>{{ error }}</span>
+            <button v-if="tokenUsed" type="button" class="inline-link" @click="goToAccountLogin">Do you have an account?</button>
+          </div>
 
           <div class="form-footer">
             <button type="submit" class="btn-primary" :disabled="loading">
               {{ loading ? 'Logging in…' : 'Login' }}
+            </button>
+            <button
+              v-if="mode === 'account'"
+              type="button"
+              class="btn-ghost"
+              data-testid="passkey-login-btn"
+              :disabled="loading || passkeyLoading || !username.trim()"
+              @click="loginWithPasskey"
+            >
+              {{ passkeyLoading ? 'Waiting for passkey…' : 'Use passkey' }}
             </button>
             <router-link v-if="mode === 'account'" to="/register" class="link">Register</router-link>
           </div>
@@ -109,8 +273,64 @@ async function submit() {
 .field label { color: var(--text); font-size: 12px; }
 .field-hint { color: var(--text3); font-size: 11px; margin-top: -2px; }
 .field input { width: 100%; }
+.remember-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text2);
+  font-size: 12px;
+  margin: 2px 0 10px;
+  user-select: none;
+}
+.remember-toggle input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--bg);
+  display: inline-block;
+  flex-shrink: 0;
+  position: relative;
+}
+.remember-toggle input:checked {
+  border-color: var(--accent);
+  background: var(--checked-bg);
+}
+.remember-toggle input:checked::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.turnstile-container {
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
 .form-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
-.error-msg { color: var(--red-h); font-size: 12px; margin-bottom: 10px; }
+.error-msg {
+  color: var(--red-h);
+  font-size: 12px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.inline-link {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.inline-link:hover {
+  border-color: var(--text3);
+  color: var(--text);
+}
 .link { color: var(--text2); font-size: 12px; text-decoration: none; }
 .link:hover { color: var(--text); }
 

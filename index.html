@@ -4,10 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rustypaste</title>
+    <title>yaemipaste</title>
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      (() => {
+        if (window.location.hash) return
+        const cleanedPath = window.location.pathname.replace(/^\/+/, '')
+        const [id = '', tail = ''] = cleanedPath.split('/', 2)
+        if (!id || !(tail === 'file' || tail.startsWith('file.'))) return
+        const params = new URLSearchParams()
+        params.set('p', window.location.pathname)
+        window.location.replace(`${window.location.pathname}${window.location.search}#/preview?${params.toString()}`)
+      })()
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

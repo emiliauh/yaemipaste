@@ -1,58 +1,127 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-export type ExpiryValue = '12h' | '1d' | '3d' | '7d' | '14d'
+export type ExpiryValue = '12h' | '1d' | '3d' | '7d' | '14d' | 'never'
 
-const options: Array<{ value: ExpiryValue; label: string }> = [
+const options: Array<{ value: ExpiryValue; label: string; danger?: boolean }> = [
   { value: '12h', label: '12 hours' },
   { value: '1d', label: '1 day' },
   { value: '3d', label: '3 days' },
   { value: '7d', label: '7 days' },
   { value: '14d', label: '14 days' },
+  { value: 'never', label: 'Forever', danger: true },
 ]
 
 const model = defineModel<ExpiryValue>({ required: true })
 const open = ref(false)
+const revealNever = ref(false)
+const mobileCollapsed = ref(true)
+const menuRef = ref<HTMLElement | null>(null)
 const selectedValue = computed(() => model.value)
+const visibleOptions = computed(() => (revealNever.value ? options : options.filter((option) => option.value !== 'never')))
 const selected = computed(() => options.find((option) => option.value === model.value) ?? options[4])
 
 function choose(value: ExpiryValue) {
+  if (value === 'never' && !revealNever.value) return
   model.value = value
   open.value = false
+  if (window.matchMedia('(max-width: 600px)').matches) mobileCollapsed.value = true
 }
+
+function expandMobile() {
+  mobileCollapsed.value = false
+}
+
+function collapseMobile() {
+  open.value = false
+  mobileCollapsed.value = true
+}
+
+function onTriggerClick(event: MouseEvent) {
+  if (event.shiftKey) {
+    revealNever.value = true
+    open.value = true
+    return
+  }
+  open.value = !open.value
+}
+
+function onPointerDown(event: PointerEvent) {
+  if (!open.value) return
+  const target = event.target as Node | null
+  if (menuRef.value && target && !menuRef.value.contains(target)) {
+    open.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onPointerDown, true)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onPointerDown, true)
+})
 </script>
 
 <template>
-  <div class="expiry-menu" data-testid="expiry-menu">
-    <div class="expiry-label">Keep for</div>
+  <div ref="menuRef" class="expiry-menu" :class="{ 'mobile-collapsed': mobileCollapsed }" data-testid="expiry-menu">
     <button
-      class="expiry-trigger"
+      class="expiry-mobile-toggle"
       type="button"
-      aria-haspopup="listbox"
-      :aria-expanded="open"
-      data-testid="expiry-trigger"
-      @click="open = !open"
+      aria-label="Show expiry options"
+      data-testid="expiry-mobile-toggle"
+      @click="expandMobile"
     >
-      <span class="expiry-value">{{ selected.label }}</span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="6 9 12 15 18 9"/>
+      <span>{{ selected.label }}</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="18 15 12 9 6 15"/>
       </svg>
     </button>
 
-    <div v-if="open" class="expiry-options" role="listbox" data-testid="expiry-options">
+    <div class="expiry-panel" data-testid="expiry-panel">
+      <div class="expiry-panel-top">
+        <div class="expiry-label">Keep for</div>
+        <button
+          class="expiry-collapse"
+          type="button"
+          aria-label="Hide expiry options"
+          data-testid="expiry-collapse"
+          @click="collapseMobile"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+      </div>
       <button
-        v-for="option in options"
-        :key="option.value"
+        class="expiry-trigger"
         type="button"
-        role="option"
-        :aria-selected="option.value === selectedValue"
-        :class="{ active: option.value === selectedValue }"
-        :data-testid="`expiry-option-${option.value}`"
-        @click="choose(option.value)"
+        aria-haspopup="listbox"
+        :aria-expanded="open"
+        data-testid="expiry-trigger"
+        @click="onTriggerClick"
       >
-        <span class="option-dot"></span>
-        {{ option.label }}
+        <span class="expiry-value">{{ selected.label }}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
       </button>
+
+      <div v-if="open" class="expiry-options" role="listbox" data-testid="expiry-options">
+        <button
+          v-for="option in visibleOptions"
+          :key="option.value"
+          type="button"
+          role="option"
+          :aria-selected="option.value === selectedValue"
+          :class="{ active: option.value === selectedValue, danger: option.danger }"
+          :data-testid="`expiry-option-${option.value}`"
+          @click="choose(option.value)"
+        >
+          <span class="option-dot"></span>
+          {{ option.label }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -68,7 +137,14 @@ function choose(value: ExpiryValue) {
   border-radius: var(--radius);
   background: var(--bg1);
   padding: 9px;
-  box-shadow: 0 8px 24px #00000066;
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.expiry-mobile-toggle,
+.expiry-collapse {
+  display: none;
+}
+.expiry-panel-top {
+  display: block;
 }
 .expiry-label {
   color: var(--text3);
@@ -79,8 +155,7 @@ function choose(value: ExpiryValue) {
 .expiry-trigger {
   width: 100%;
   border: 1px solid var(--border2);
-  background:
-    linear-gradient(90deg, #1a1a1a, #111111);
+  background: linear-gradient(90deg, var(--bg2), var(--subtle-grad-end));
   color: var(--text);
   display: flex;
   align-items: center;
@@ -139,12 +214,70 @@ function choose(value: ExpiryValue) {
   border-color: var(--accent);
   background: var(--accent);
 }
+.expiry-options button.danger .option-dot {
+  border-color: var(--red);
+}
+.expiry-options button.danger:hover,
+.expiry-options button.danger.active {
+  background: var(--danger-bg);
+  color: var(--red-h);
+}
 
 @media (max-width: 600px) {
   .expiry-menu {
-    left: 16px;
-    right: 16px;
+    left: auto;
+    right: 10px;
+    bottom: 10px;
+    width: min(220px, calc(100vw - 20px));
+    padding: 8px;
+  }
+  .expiry-menu.mobile-collapsed {
     width: auto;
+    padding: 0;
+    border-color: var(--border);
+    background: transparent;
+    box-shadow: none;
+  }
+  .expiry-mobile-toggle {
+    border: 1px solid var(--border2);
+    background: var(--bg1);
+    color: var(--text2);
+    display: none;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 7px 9px;
+    box-shadow: 0 8px 24px var(--shadow);
+  }
+  .expiry-menu.mobile-collapsed .expiry-mobile-toggle {
+    display: inline-flex;
+  }
+  .expiry-panel {
+    display: block;
+  }
+  .expiry-menu.mobile-collapsed .expiry-panel {
+    display: none;
+  }
+  .expiry-panel-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+  .expiry-label {
+    margin-bottom: 0;
+  }
+  .expiry-collapse {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    min-width: 28px;
+    min-height: 24px;
+    padding: 3px 6px;
   }
 }
 </style>

@@ -18,8 +18,42 @@
   --red:       #c0392b;
   --red-h:     #e74c3c;
   --green:     #27ae60;
+  --on-accent: #ffffff;
+  --shadow:    #00000066;
+  --modal-bg:  #000000b5;
+  --checked-bg:#122a20;
+  --danger-bg: #2b1111;
+  --success-border: #20442f;
+  --error-border: #4a1e1e;
+  --subtle-grad-end: #111111;
   --radius:    4px;
   --font:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+}
+
+:root[data-theme="light"] {
+  --bg:        #f7f8fa;
+  --bg1:       #ffffff;
+  --bg2:       #edf0f4;
+  --bg3:       #dfe4ea;
+  --border:    #d4d9e1;
+  --border2:   #c3cad4;
+  --text:      #15191f;
+  --text2:     #596270;
+  --text3:     #7c8795;
+  --accent:    #1f6eea;
+  --accent-h:  #0d56c5;
+  --accent-d:  #174fa8;
+  --red:       #b42318;
+  --red-h:     #d92d20;
+  --green:     #16834a;
+  --on-accent: #ffffff;
+  --shadow:    #1f29371f;
+  --modal-bg:  #15191f66;
+  --checked-bg:#dff5e9;
+  --danger-bg: #fde7e3;
+  --success-border: #8fd3aa;
+  --error-border: #efafa7;
+  --subtle-grad-end: #f1f4f8;
 }
 
 html, body { height: 100%; }
@@ -78,7 +112,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-orange {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-orange:hover:not(:disabled) { background: var(--accent-h); }
 

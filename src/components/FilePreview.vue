@@ -38,7 +38,7 @@ const isVideo = computed(() => props.mimeType?.startsWith('video/') ?? /\.(mp4|w
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.85);
+  background: var(--modal-bg);
   display: flex;
   align-items: center;
   justify-content: center;

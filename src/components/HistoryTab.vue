@@ -2,8 +2,8 @@
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { listFiles, deleteFile, fileUrl, formatBytes, type PasteFile } from '../lib/api'
 import { decryptEncryptedBlob, encryptedDownloadUrl, getStoredEncryptedFile } from '../lib/e2ee'
-import Toast from './Toast.vue'
 import FilePreview from './FilePreview.vue'
+import { useNotificationStore } from '../stores/notifications'
 
 interface PreviewState {
   file: PasteFile
@@ -19,17 +19,17 @@ const files = ref<PasteFile[]>([])
 const loading = ref(true)
 const error = ref('')
 const search = ref('')
-const toast = ref<{ msg: string; type: 'success' | 'error' } | null>(null)
 const sortKey = ref<'file_name' | 'file_size' | 'expires_at'>('file_name')
 const sortDir = ref<1 | -1>(1)
 const preview = ref<PreviewState | null>(null)
 const hoverPreview = ref<PreviewState | null>(null)
 const deleting = ref<Set<string>>(new Set())
+const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
+const notificationStore = useNotificationStore()
 let hoverToken = 0
 
 function showToast(msg: string, type: 'success' | 'error' = 'success') {
-  toast.value = { msg, type }
-  setTimeout(() => (toast.value = null), 3000)
+  notificationStore.push(msg, type)
 }
 
 async function load() {
@@ -136,6 +136,7 @@ function moveHover(e: MouseEvent) {
 }
 
 async function showHover(f: PasteFile, e: MouseEvent) {
+  if (!hoverEnabled) return
   if (!isPreviewable(f)) return
   const token = ++hoverToken
   clearPreviewObjectUrl(hoverPreview.value)
@@ -158,6 +159,7 @@ async function showHover(f: PasteFile, e: MouseEvent) {
 }
 
 function hideHover() {
+  if (!hoverEnabled) return
   hoverToken += 1
   clearPreviewObjectUrl(hoverPreview.value)
   hoverPreview.value = null
@@ -239,7 +241,7 @@ onBeforeUnmount(() => {
               <span
                 class="filename"
                 :title="fileUrl(f.file_name)"
-                @click="openPreview(f)"
+                @click.stop="openPreview(f)"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
                   <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
@@ -252,12 +254,12 @@ onBeforeUnmount(() => {
             <td class="expiry">{{ f.expires_at ?? 'Never' }}</td>
             <td class="actions">
               <div class="action-row">
-                <button class="btn-orange" style="padding:3px 10px;font-size:11px" @click="copy(f)">Copy</button>
+                <button class="btn-orange" style="padding:3px 10px;font-size:11px" @click.stop="copy(f)">Copy</button>
                 <button
                   class="btn-red"
                   style="padding:3px 10px;font-size:11px"
                   :disabled="deleting.has(f.file_name)"
-                  @click="del(f)"
+                  @click.stop="del(f)"
                 >
                   Delete
                 </button>
@@ -289,7 +291,6 @@ onBeforeUnmount(() => {
       @close="closePreview"
     />
 
-    <Toast v-if="toast" :message="toast.msg" :type="toast.type" />
   </div>
 </template>
 
@@ -303,7 +304,9 @@ onBeforeUnmount(() => {
 .sort-arrow { color: var(--text3); font-size: 10px; margin-left: 2px; }
 .state-msg { color: var(--text2); font-size: 12px; padding: 20px 0; text-align: center; }
 .filename { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.filename:hover { color: var(--accent); }
+@media (hover: hover) and (pointer: fine) {
+  .filename:hover { color: var(--accent); }
+}
 .action-row { display: flex; gap: 6px; justify-content: flex-end; }
 .hover-preview {
   position: fixed;
@@ -315,7 +318,7 @@ onBeforeUnmount(() => {
   background: var(--bg1);
   padding: 6px;
   pointer-events: none;
-  box-shadow: 0 8px 24px #00000080;
+  box-shadow: 0 8px 24px var(--shadow);
 }
 .hover-preview img,
 .hover-preview video {
