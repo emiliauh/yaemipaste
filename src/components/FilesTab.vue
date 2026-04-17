@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { uploadFile, uploadText } from '../lib/api'
+import { uploadFile, uploadText, type UploadProgress } from '../lib/api'
 import ExpirySelector, { type ExpiryValue } from './ExpirySelector.vue'
 import Toast from './Toast.vue'
 
@@ -15,6 +15,11 @@ const toast = ref<{ msg: string; type: 'success' | 'error' } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const longPressing = ref(false)
 const lastShareUrl = ref('')
+const uploadProgress = ref<UploadProgress | null>(null)
+
+function setProgress(progress: UploadProgress) {
+  uploadProgress.value = progress
+}
 
 function setExpiry(value: ExpiryValue) {
   expiry.value = value
@@ -40,7 +45,8 @@ async function handleFiles(files: FileList | File[]) {
   const arr = Array.from(files)
   for (const f of arr) {
     try {
-      const url = await uploadFile(f, expiry.value)
+      uploadProgress.value = { phase: 'encrypting', percent: 0 }
+      const url = await uploadFile(f, expiry.value, setProgress)
       lastShareUrl.value = url.trim()
       if (await copyShareUrl(lastShareUrl.value)) showToast(`Encrypted & copied: ${f.name}`)
       else showToast(`Encrypted: ${f.name}. Copy the link below.`, 'error')
@@ -49,6 +55,7 @@ async function handleFiles(files: FileList | File[]) {
     }
   }
   loading.value = false
+  uploadProgress.value = null
 }
 
 function onDrop(e: DragEvent) {
@@ -69,7 +76,8 @@ async function submitText() {
   if (!textPaste.value.trim()) return
   loading.value = true
   try {
-    const url = await uploadText(textPaste.value, expiry.value)
+    uploadProgress.value = { phase: 'encrypting', percent: 0 }
+    const url = await uploadText(textPaste.value, expiry.value, setProgress)
     lastShareUrl.value = url.trim()
     if (await copyShareUrl(lastShareUrl.value)) showToast('Text encrypted & copied')
     else showToast('Text encrypted. Copy the link below.', 'error')
@@ -78,6 +86,7 @@ async function submitText() {
     showToast(e.message ?? 'Upload failed', 'error')
   } finally {
     loading.value = false
+    uploadProgress.value = null
   }
 }
 
@@ -184,6 +193,16 @@ function onPasteAreaLongPressCancel() {
       </button>
     </div>
 
+    <div v-if="uploadProgress" class="upload-progress" data-testid="upload-progress">
+      <div class="progress-row">
+        <span>{{ uploadProgress.phase === 'encrypting' ? 'Encrypting' : uploadProgress.phase === 'complete' ? 'Complete' : 'Uploading' }}</span>
+        <span>{{ uploadProgress.percent }}%</span>
+      </div>
+      <div class="progress-track" role="progressbar" :aria-valuenow="uploadProgress.percent" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-fill" :style="{ width: `${uploadProgress.percent}%` }"></div>
+      </div>
+    </div>
+
     <div v-if="lastShareUrl" class="share-result">
       <div class="share-label">Latest encrypted link</div>
       <a :href="lastShareUrl" target="_blank" rel="noopener">{{ lastShareUrl }}</a>
@@ -197,7 +216,7 @@ function onPasteAreaLongPressCancel() {
 </template>
 
 <style scoped>
-.files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 20px; }
+.files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 96px; }
 .security-strip {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -209,7 +228,7 @@ function onPasteAreaLongPressCancel() {
   padding: 10px 12px;
 }
 .security-strip svg {
-  color: var(--orange);
+  color: var(--accent);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -238,10 +257,36 @@ function onPasteAreaLongPressCancel() {
   text-transform: uppercase;
 }
 .share-result a {
-  color: var(--orange-h);
+  color: var(--accent-h);
   font-size: 12px;
   overflow-wrap: anywhere;
   text-decoration: none;
+}
+.upload-progress {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg1);
+  padding: 10px 12px;
+}
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text3);
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+.progress-track {
+  height: 7px;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-h));
+  transition: width 0.12s ease;
 }
 .paste-area {
   border: 1px dashed var(--border2);
@@ -258,7 +303,7 @@ function onPasteAreaLongPressCancel() {
 }
 .paste-area:hover { border-color: var(--text3); }
 .paste-area.pressing {
-  border-color: var(--orange);
+  border-color: var(--accent);
   background: var(--bg1);
 }
 .divider { text-align: center; color: var(--text3); font-size: 12px; }

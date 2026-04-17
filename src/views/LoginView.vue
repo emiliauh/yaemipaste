@@ -37,8 +37,6 @@ async function submit() {
 
 <template>
   <div class="page">
-    <button class="gear-btn" disabled style="opacity:0;pointer-events:none">⚙</button>
-
     <div class="center" data-testid="login-center">
       <div class="info-box login-info">
         <span class="icon">ⓘ</span>

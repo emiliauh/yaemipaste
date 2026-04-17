@@ -8,8 +8,13 @@ import {
   rememberEncryptedFile,
 } from './e2ee'
 
-const PASTE_API = import.meta.env.VITE_PASTE_API ?? 'https://api.example.invalid'
+const PASTE_API = (import.meta.env.VITE_PASTE_API ?? '/api').replace(/\/$/, '')
 const AUTH_API = import.meta.env.VITE_AUTH_API ?? 'https://example.invalid/auth'
+
+export interface UploadProgress {
+  phase: 'encrypting' | 'uploading' | 'complete'
+  percent: number
+}
 
 function getToken(): string {
   return localStorage.getItem('rp_token') ?? ''
@@ -103,24 +108,54 @@ export async function listFiles(): Promise<PasteFile[]> {
   }))
 }
 
-export async function uploadFile(file: File, expiry?: string): Promise<string> {
+function pasteUploadUrl(): string {
+  return `${PASTE_API}/`
+}
+
+export async function uploadFile(file: File, expiry?: string, onProgress?: (progress: UploadProgress) => void): Promise<string> {
+  onProgress?.({ phase: 'encrypting', percent: 0 })
   const encrypted = await encryptFile(file, uploaderIdentity())
   const encryptedFile = new File([encrypted.blob], `${file.name}.rpenc`, { type: 'application/octet-stream' })
   const form = new FormData()
   form.append('file', encryptedFile)
   const headers: Record<string, string> = { Authorization: getToken() }
   if (expiry) headers.expire = expiry
-  const r = await fetch(PASTE_API, { method: 'POST', headers, body: form })
-  if (!r.ok) throw new Error('Upload failed')
-  const rawUrl = (await r.text()).trim()
+  const rawUrl = (await uploadForm(form, headers, onProgress)).trim()
   const fileName = fileNameFromUrl(rawUrl)
   const origin = originFromUrl(rawUrl)
   rememberEncryptedFile(fileName, encrypted.key, encrypted.metadata, origin)
+  onProgress?.({ phase: 'complete', percent: 100 })
   return encryptedShareUrl(fileName, encrypted.key, origin)
 }
 
-export async function uploadText(text: string, expiry?: string): Promise<string> {
-  return uploadFile(new File([text], 'paste.txt', { type: 'text/plain' }), expiry)
+export async function uploadText(text: string, expiry?: string, onProgress?: (progress: UploadProgress) => void): Promise<string> {
+  return uploadFile(new File([text], 'paste.txt', { type: 'text/plain' }), expiry, onProgress)
+}
+
+function uploadForm(
+  form: FormData,
+  headers: Record<string, string>,
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', pasteUploadUrl())
+    for (const [key, value] of Object.entries(headers)) xhr.setRequestHeader(key, value)
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) {
+        onProgress?.({ phase: 'uploading', percent: 10 })
+        return
+      }
+      onProgress?.({ phase: 'uploading', percent: Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100))) })
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText)
+      else reject(new Error(xhr.responseText || 'Upload failed'))
+    }
+    xhr.onerror = () => reject(new Error('Upload failed'))
+    xhr.onabort = () => reject(new Error('Upload cancelled'))
+    xhr.send(form)
+  })
 }
 
 export async function deleteFile(filename: string): Promise<void> {

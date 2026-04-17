@@ -89,7 +89,7 @@ function choose(value: ExpiryValue) {
   padding: 7px 9px;
 }
 .expiry-value {
-  color: var(--orange-h);
+  color: var(--accent-h);
 }
 .expiry-options {
   position: absolute;
@@ -136,8 +136,8 @@ function choose(value: ExpiryValue) {
   background: var(--bg1);
 }
 .expiry-options button.active .option-dot {
-  border-color: var(--orange);
-  background: var(--orange);
+  border-color: var(--accent);
+  background: var(--accent);
 }
 
 @media (max-width: 600px) {

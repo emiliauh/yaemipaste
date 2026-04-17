@@ -152,7 +152,7 @@ export function encryptedShareUrl(fileName: string, key: string, origin = window
 }
 
 export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {
-  return `${origin}/${encodePath(fileName)}`
+  return `${origin}/${encodePath(fileName)}?raw=1`
 }
 
 export function originFromUrl(value: string): string {

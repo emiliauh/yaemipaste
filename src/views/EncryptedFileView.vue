@@ -136,7 +136,7 @@ onBeforeUnmount(clearObjectUrl)
   z-index: 1000;
   background: var(--bg2);
   border: 1px solid var(--border2);
-  border-left: 3px solid var(--orange);
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius);
   color: var(--text2);
   padding: 10px 14px;
@@ -166,14 +166,14 @@ onBeforeUnmount(clearObjectUrl)
   border: 1px solid var(--border2);
   border-radius: var(--radius);
   background: var(--bg2);
-  color: var(--orange);
+  color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 .eyebrow {
-  color: var(--orange);
+  color: var(--accent);
   font-size: 12px;
 }
 .subline {

@@ -303,7 +303,7 @@ onBeforeUnmount(() => {
 .sort-arrow { color: var(--text3); font-size: 10px; margin-left: 2px; }
 .state-msg { color: var(--text2); font-size: 12px; padding: 20px 0; text-align: center; }
 .filename { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.filename:hover { color: var(--orange); }
+.filename:hover { color: var(--accent); }
 .action-row { display: flex; gap: 6px; justify-content: flex-end; }
 .hover-preview {
   position: fixed;

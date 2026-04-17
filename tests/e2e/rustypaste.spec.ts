@@ -47,7 +47,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   let uploadedEncryptedBody: Buffer | null = null
   const encryptedName = 'expiry-check.txt.rpenc'
 
-  await page.route('https://api.example.invalid/', async (route) => {
+  await page.route('**/api/', async (route) => {
     uploadExpiry = route.request().headers().expire ?? ''
     const body = route.request().postDataBuffer()
     if (!body) throw new Error('Missing upload body')
@@ -59,7 +59,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
     })
   })
 
-  await page.route('https://api.example.invalid/list', async (route) => {
+  await page.route('**/api/list', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -85,7 +85,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   const shareUrl = await page.evaluate(() => (navigator.clipboard as any).__written())
   expect(shareUrl).toContain(`${encryptedName}#/file?`)
 
-  await page.route(`http://127.0.0.1:5173/${encryptedName}`, async (route) => {
+  await page.route(`**/${encryptedName}?raw=1`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/octet-stream',
@@ -93,8 +93,9 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
     })
   })
 
-  await page.goto(shareUrl)
-  await expect(page.getByText('expiry-check.txt')).toBeVisible()
+  const previewUrl = new URL(shareUrl)
+  await page.goto(`http://127.0.0.1:5173/#/file?${previewUrl.hash.split('?')[1]}`)
+  await expect(page.locator('h1')).toHaveText('expiry-check.txt')
   await expect(page.getByText('expires soon')).toBeVisible()
 
   await page.goto('/#/files')
@@ -105,6 +106,33 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   await page.reload()
   await page.getByRole('button', { name: 'History' }).click()
   await expect(page.getByText('No files.')).toBeVisible()
+})
+
+test('upload shows progress and leaves a share link', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+
+  await page.route('**/api/', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: 'http://127.0.0.1:5173/progress-check.bin.rpenc',
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'progress-check.bin',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.alloc(1024 * 1024 * 3, 7),
+  })
+
+  await expect(page.getByTestId('upload-progress')).toBeVisible()
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '100')
+  await expect(page.getByText('Latest encrypted link')).toBeVisible()
+  await expect(page.getByText(/progress-check\.bin\.rpenc#\/file/)).toBeVisible()
+  await expect(page.getByTestId('upload-progress')).toBeHidden()
 })
 
 test('long-press paste fills the text area on a mobile viewport', async ({ page }) => {
@@ -120,6 +148,77 @@ test('long-press paste fills the text area on a mobile viewport', async ({ page 
 
   await expect(page.getByTestId('text-paste')).toHaveValue('mobile clipboard text')
 })
+
+test('history actions and settings buttons work', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'history-check.txt',
+        file_size: 12,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: '2026-04-18T01:00:00Z',
+      }]),
+    })
+  })
+  await page.route('**/api/history-check.txt', async (route) => {
+    await route.fulfill({ status: 200, body: '' })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByText('history-check.txt')).toBeVisible()
+  await page.getByRole('button', { name: 'Copy' }).click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('history-check.txt')
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page.getByText('history-check.txt')).toBeHidden()
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByLabel('API Base URL').fill('/api')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.locator('.settings-panel')).toBeHidden()
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.locator('.settings-panel')).toBeHidden()
+})
+
+for (const viewport of [
+  { name: 'desktop', width: 1280, height: 720 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'mobile', width: 375, height: 812 },
+]) {
+  test(`settings and expiry controls are usable on ${viewport.name}`, async ({ page }) => {
+    await signInWithToken(page)
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.goto('/#/files')
+
+    await page.getByTestId('expiry-trigger').click()
+    await expect(page.getByTestId('expiry-options')).toBeVisible()
+    await page.getByTestId('expiry-option-7d').click()
+    await expect(page.getByTestId('expiry-trigger')).toContainText('7 days')
+
+    await page.getByRole('button', { name: 'Settings' }).click()
+    await expect(page.getByText('Settings')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
+
+    const settingsBox = await page.locator('.settings-panel').boundingBox()
+    const expiryBox = await page.getByTestId('expiry-menu').boundingBox()
+    expect(settingsBox).not.toBeNull()
+    expect(expiryBox).not.toBeNull()
+    if (settingsBox && expiryBox) {
+      expect(settingsBox.y + settingsBox.height).toBeLessThanOrEqual(viewport.height)
+      expect(expiryBox.y + expiryBox.height).toBeLessThanOrEqual(viewport.height)
+    }
+
+    await page.getByRole('button', { name: 'Logout' }).click()
+    await expect(page).toHaveURL(/#\/login$/)
+  })
+}
 
 for (const viewport of [
   { name: 'desktop', width: 1280, height: 720 },

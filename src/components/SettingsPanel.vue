@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { getShareXConfig } from '../lib/api'
+import { authLogout, getShareXConfig } from '../lib/api'
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [], logout: [] }>()
 
 const apiBase = ref(localStorage.getItem('rp_api_base') ?? 'https://api.example.invalid/')
 const username = localStorage.getItem('rp_username') ?? ''
@@ -31,6 +31,11 @@ async function downloadShareX() {
   }
 }
 
+function logout() {
+  authLogout()
+  emit('logout')
+}
+
 </script>
 
 <template>
@@ -39,7 +44,7 @@ async function downloadShareX() {
 
     <div class="field">
       <label>API Base URL</label>
-      <input v-model="apiBase" type="text" />
+      <input v-model="apiBase" aria-label="API Base URL" type="text" />
     </div>
 
     <div class="row" style="margin-bottom:12px">
@@ -59,6 +64,10 @@ async function downloadShareX() {
       Signed in as <span style="color:var(--text2)">{{ username }}</span>
     </div>
 
+    <div class="settings-divider"></div>
+
+    <button class="btn-red logout-btn" type="button" @click="logout">Logout</button>
+
     <div style="margin-top:8px; color:var(--text3); font-size:10px; text-align:center">
       ♥ rustypaste (-ui) as the base
     </div>
@@ -70,4 +79,6 @@ async function downloadShareX() {
 .field label { color: var(--text2); font-size: 11px; }
 .field input { width: 100%; font-size: 12px; }
 .row { display: flex; gap: 8px; justify-content: flex-end; }
+.settings-divider { height: 1px; background: var(--border); margin: 12px 0; }
+.logout-btn { width: 100%; font-size: 11px; }
 </style>

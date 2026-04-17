@@ -10,8 +10,11 @@
   --text:      #e8e8e8;
   --text2:     #888888;
   --text3:     #555555;
-  --orange:    #c95f2a;
-  --orange-h:  #e06830;
+  --accent:    #2f7cf6;
+  --accent-h:  #62a0ff;
+  --accent-d:  #1d5fd0;
+  --orange:    var(--accent);
+  --orange-h:  var(--accent-h);
   --red:       #c0392b;
   --red-h:     #e74c3c;
   --green:     #27ae60;
@@ -74,10 +77,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-primary:hover:not(:disabled) { background: var(--bg3); border-color: var(--text3); }
 
 .btn-orange {
-  background: var(--orange);
+  background: var(--accent);
   color: #fff;
 }
-.btn-orange:hover:not(:disabled) { background: var(--orange-h); }
+.btn-orange:hover:not(:disabled) { background: var(--accent-h); }
 
 .btn-red {
   background: transparent;
