@@ -1,3 +1,12 @@
+import {
+  encryptedShareUrl,
+  encryptedDownloadUrl,
+  encryptFile,
+  forgetEncryptedFile,
+  getStoredEncryptedFile,
+  rememberEncryptedFile,
+} from './e2ee'
+
 const PASTE_API = import.meta.env.VITE_PASTE_API ?? 'https://api.example.invalid'
 const AUTH_API = import.meta.env.VITE_AUTH_API ?? 'https://example.invalid/auth'
 
@@ -88,23 +97,22 @@ export async function listFiles(): Promise<PasteFile[]> {
 }
 
 export async function uploadFile(file: File, expiry?: string): Promise<string> {
+  const encrypted = await encryptFile(file)
+  const encryptedFile = new File([encrypted.blob], `${file.name}.rpenc`, { type: 'application/octet-stream' })
   const form = new FormData()
-  form.append('file', file)
+  form.append('file', encryptedFile)
   const headers: Record<string, string> = { Authorization: getToken() }
-  if (expiry) headers['x-expire-after'] = expiry
+  if (expiry) headers.expire = expiry
   const r = await fetch(PASTE_API, { method: 'POST', headers, body: form })
   if (!r.ok) throw new Error('Upload failed')
-  return r.text()
+  const rawUrl = (await r.text()).trim()
+  const fileName = fileNameFromUrl(rawUrl)
+  rememberEncryptedFile(fileName, encrypted.key, encrypted.metadata)
+  return encryptedShareUrl(fileName, encrypted.key)
 }
 
 export async function uploadText(text: string, expiry?: string): Promise<string> {
-  const form = new FormData()
-  form.append('file', new Blob([text], { type: 'text/plain' }), 'paste.txt')
-  const headers: Record<string, string> = { Authorization: getToken() }
-  if (expiry) headers['x-expire-after'] = expiry
-  const r = await fetch(PASTE_API, { method: 'POST', headers, body: form })
-  if (!r.ok) throw new Error('Upload failed')
-  return r.text()
+  return uploadFile(new File([text], 'paste.txt', { type: 'text/plain' }), expiry)
 }
 
 export async function deleteFile(filename: string): Promise<void> {
@@ -113,10 +121,21 @@ export async function deleteFile(filename: string): Promise<void> {
     headers: { Authorization: getToken() },
   })
   if (!r.ok) throw new Error('Delete failed')
+  forgetEncryptedFile(filename)
 }
 
 export function fileUrl(filename: string): string {
-  return `https://example.invalid/${filename}`
+  const encrypted = getStoredEncryptedFile(filename)
+  if (encrypted) return encryptedShareUrl(filename, encrypted.key)
+  return encryptedDownloadUrl(filename)
+}
+
+function fileNameFromUrl(value: string): string {
+  try {
+    return decodeURIComponent(new URL(value).pathname.replace(/^\/+/, ''))
+  } catch {
+    return value.replace(/^https?:\/\/[^/]+\//, '').replace(/^\/+/, '')
+  }
 }
 
 export function formatBytes(bytes: number): string {

@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { uploadFile, uploadText } from '../lib/api'
+import ExpirySelector, { type ExpiryValue } from './ExpirySelector.vue'
 import Toast from './Toast.vue'
 
+const EXPIRY_KEY = 'rp_expiry'
+const expiry = ref<ExpiryValue>((localStorage.getItem(EXPIRY_KEY) as ExpiryValue | null) ?? '14d')
 const dragging = ref(false)
 const textPaste = ref('')
 const loading = ref(false)
 const toast = ref<{ msg: string; type: 'success' | 'error' } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const longPressing = ref(false)
+
+function setExpiry(value: ExpiryValue) {
+  expiry.value = value
+  localStorage.setItem(EXPIRY_KEY, value)
+}
 
 function showToast(msg: string, type: 'success' | 'error' = 'success') {
   toast.value = { msg, type }
@@ -19,9 +28,9 @@ async function handleFiles(files: FileList | File[]) {
   const arr = Array.from(files)
   for (const f of arr) {
     try {
-      const url = await uploadFile(f)
+      const url = await uploadFile(f, expiry.value)
       await navigator.clipboard.writeText(url.trim())
-      showToast(`Uploaded & copied: ${f.name}`)
+      showToast(`Encrypted & copied: ${f.name}`)
     } catch (e: any) {
       showToast(e.message ?? 'Upload failed', 'error')
     }
@@ -47,9 +56,9 @@ async function submitText() {
   if (!textPaste.value.trim()) return
   loading.value = true
   try {
-    const url = await uploadText(textPaste.value)
+    const url = await uploadText(textPaste.value, expiry.value)
     await navigator.clipboard.writeText(url.trim())
-    showToast('Text uploaded & copied')
+    showToast('Text encrypted & copied')
     textPaste.value = ''
   } catch (e: any) {
     showToast(e.message ?? 'Upload failed', 'error')
@@ -60,21 +69,47 @@ async function submitText() {
 
 // Long-press paste support
 let pressTimer: ReturnType<typeof setTimeout> | null = null
-async function onPasteAreaLongPressStart() {
-  pressTimer = setTimeout(async () => {
-    try {
-      const text = await navigator.clipboard.readText()
-      if (text) textPaste.value = text
-    } catch {}
-  }, 600)
+let longPressReady = false
+
+function onPasteAreaLongPressStart(e: PointerEvent) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  longPressReady = false
+  longPressing.value = true
+  pressTimer = setTimeout(() => {
+    longPressReady = true
+  }, 550)
 }
-function onPasteAreaLongPressEnd() {
+
+async function onPasteAreaLongPressEnd() {
   if (pressTimer) clearTimeout(pressTimer)
+  pressTimer = null
+  longPressing.value = false
+
+  if (!longPressReady) return
+  longPressReady = false
+  try {
+    const text = await navigator.clipboard.readText()
+    if (text) {
+      textPaste.value = text
+      showToast('Pasted from clipboard')
+    }
+  } catch {
+    showToast('Clipboard permission blocked', 'error')
+  }
+}
+
+function onPasteAreaLongPressCancel() {
+  if (pressTimer) clearTimeout(pressTimer)
+  pressTimer = null
+  longPressReady = false
+  longPressing.value = false
 }
 </script>
 
 <template>
   <div class="files-tab">
+    <ExpirySelector :model-value="expiry" @update:model-value="setExpiry" />
+
     <!-- Drop zone -->
     <div
       class="upload-zone"
@@ -96,12 +131,15 @@ function onPasteAreaLongPressEnd() {
     <!-- Long-press to paste -->
     <div
       class="paste-area"
-      @mousedown="onPasteAreaLongPressStart"
-      @mouseup="onPasteAreaLongPressEnd"
-      @touchstart.passive="onPasteAreaLongPressStart"
-      @touchend.passive="onPasteAreaLongPressEnd"
+      :class="{ pressing: longPressing }"
+      data-testid="paste-area"
+      @pointerdown="onPasteAreaLongPressStart"
+      @pointerup="onPasteAreaLongPressEnd"
+      @pointercancel="onPasteAreaLongPressCancel"
+      @pointerleave="onPasteAreaLongPressCancel"
+      @contextmenu.prevent
     >
-      <span style="color:var(--text3); font-size:12px">Long-press here to paste</span>
+      <span style="color:var(--text3); font-size:12px">{{ longPressing ? 'Release to paste' : 'Long-press here to paste' }}</span>
     </div>
 
     <div class="divider">— or — paste text directly</div>
@@ -109,6 +147,7 @@ function onPasteAreaLongPressEnd() {
     <!-- Text area -->
     <textarea
       v-model="textPaste"
+      data-testid="text-paste"
       rows="6"
       placeholder="Paste your text here..."
       style="width:100%; resize:vertical"
@@ -135,7 +174,14 @@ function onPasteAreaLongPressEnd() {
   align-items: center;
   justify-content: center;
   min-height: 44px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .paste-area:hover { border-color: var(--text3); }
+.paste-area.pressing {
+  border-color: var(--orange);
+  background: var(--bg1);
+}
 .divider { text-align: center; color: var(--text3); font-size: 12px; }
 </style>

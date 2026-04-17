@@ -39,8 +39,8 @@ async function submit() {
   <div class="page">
     <button class="gear-btn" disabled style="opacity:0;pointer-events:none">⚙</button>
 
-    <div class="center">
-      <div class="info-box" style="margin-bottom:16px; max-width:400px">
+    <div class="center" data-testid="login-center">
+      <div class="info-box login-info">
         <span class="icon">ⓘ</span>
         <span>
           Authentication Required<br>
@@ -48,8 +48,8 @@ async function submit() {
         </span>
       </div>
 
-      <div class="card" style="width:400px; max-width:calc(100vw - 32px)">
-        <div class="tabs" style="margin-bottom:16px">
+      <div class="card login-card">
+        <div class="tabs login-tabs">
           <button :class="{ active: mode === 'account' }" @click="mode = 'account'">Account</button>
           <button :class="{ active: mode === 'token' }" @click="mode = 'token'">Token</button>
         </div>
@@ -90,13 +90,23 @@ async function submit() {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  padding: 16px;
 }
-.center { display: flex; flex-direction: column; align-items: center; }
+.center {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.login-info { width: 100%; margin-bottom: 16px; }
+.login-card { width: 100%; }
+.login-tabs { width: 100%; margin-bottom: 16px; }
+.login-tabs button { flex: 1; }
 .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .field label { color: var(--text); font-size: 12px; }
 .field-hint { color: var(--text3); font-size: 11px; margin-top: -2px; }
@@ -105,4 +115,9 @@ async function submit() {
 .error-msg { color: var(--red-h); font-size: 12px; margin-bottom: 10px; }
 .link { color: var(--text2); font-size: 12px; text-decoration: none; }
 .link:hover { color: var(--text); }
+
+@media (max-width: 420px) {
+  .page { padding: 12px; }
+  .card { padding: 16px; }
+}
 </style>

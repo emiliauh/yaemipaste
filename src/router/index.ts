@@ -7,6 +7,7 @@ const router = createRouter({
     { path: '/', redirect: '/files' },
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/register', component: () => import('../views/RegisterView.vue') },
+    { path: '/file', component: () => import('../views/EncryptedFileView.vue') },
     {
       path: '/files',
       component: () => import('../views/DashboardView.vue'),
