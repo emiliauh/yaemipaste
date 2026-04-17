@@ -66,25 +66,25 @@ export interface PasteFile {
   created_at: string | null
 }
 
+interface RawPasteFile {
+  file_name: string
+  file_size: number
+  expires_at_utc?: string | null
+  creation_date_utc?: string | null
+}
+
 export async function listFiles(): Promise<PasteFile[]> {
   const r = await fetch(`${PASTE_API}/list`, {
     headers: { Authorization: getToken() },
   })
   if (!r.ok) throw new Error('Failed to list files')
-  const text = await r.text()
-  return text
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split(' ')
-      return {
-        file_name: parts[0] ?? '',
-        file_size: parseInt(parts[1] ?? '0', 10),
-        expires_at: parts[2] ?? null,
-        created_at: parts[3] ?? null,
-      }
-    })
+  const data: RawPasteFile[] = await r.json()
+  return data.map((f) => ({
+    file_name: f.file_name,
+    file_size: f.file_size,
+    expires_at: f.expires_at_utc ?? null,
+    created_at: f.creation_date_utc ?? null,
+  }))
 }
 
 export async function uploadFile(file: File, expiry?: string): Promise<string> {
