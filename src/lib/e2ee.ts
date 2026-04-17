@@ -1,8 +1,6 @@
 const MAGIC = 'RPENC1\n'
 const MAGIC_BYTES = new TextEncoder().encode(MAGIC)
 const KEY_STORAGE = 'rp_e2ee_keys'
-const PUBLIC_BASE = 'https://example.invalid'
-
 export interface EncryptedMetadata {
   name: string
   type: string
@@ -18,6 +16,7 @@ interface EncryptedHeader extends EncryptedMetadata {
 
 interface StoredKey extends EncryptedMetadata {
   key: string
+  origin: string
 }
 
 export interface EncryptionResult {
@@ -128,9 +127,9 @@ export async function decryptEncryptedBlob(blob: Blob, rawKey: string): Promise<
   }
 }
 
-export function rememberEncryptedFile(fileName: string, key: string, metadata: EncryptedMetadata) {
+export function rememberEncryptedFile(fileName: string, key: string, metadata: EncryptedMetadata, origin: string) {
   const keys = readStoredKeys()
-  keys[fileName] = { key, ...metadata }
+  keys[fileName] = { key, origin, ...metadata }
   writeStoredKeys(keys)
 }
 
@@ -144,11 +143,23 @@ export function getStoredEncryptedFile(fileName: string): StoredKey | null {
   return readStoredKeys()[fileName] ?? null
 }
 
-export function encryptedShareUrl(fileName: string, key: string): string {
+export function encryptedShareUrl(fileName: string, key: string, origin = window.location.origin): string {
   const params = new URLSearchParams({ f: fileName, k: key })
-  return `${PUBLIC_BASE}/#/file?${params.toString()}`
+  return `${origin}/#/file?${params.toString()}`
 }
 
-export function encryptedDownloadUrl(fileName: string): string {
-  return `${PUBLIC_BASE}/${fileName}`
+export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {
+  return `${origin}/${encodePath(fileName)}`
+}
+
+export function originFromUrl(value: string): string {
+  try {
+    return new URL(value).origin
+  } catch {
+    return window.location.origin
+  }
+}
+
+function encodePath(fileName: string): string {
+  return fileName.split('/').map(encodeURIComponent).join('/')
 }

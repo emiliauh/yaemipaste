@@ -13,6 +13,7 @@ const options: Array<{ value: ExpiryValue; label: string }> = [
 
 const model = defineModel<ExpiryValue>({ required: true })
 const open = ref(false)
+const selectedValue = computed(() => model.value)
 const selected = computed(() => options.find((option) => option.value === model.value) ?? options[4])
 
 function choose(value: ExpiryValue) {
@@ -23,7 +24,7 @@ function choose(value: ExpiryValue) {
 
 <template>
   <div class="expiry-menu" data-testid="expiry-menu">
-    <div class="expiry-label">Expires</div>
+    <div class="expiry-label">Keep for</div>
     <button
       class="expiry-trigger"
       type="button"
@@ -32,7 +33,7 @@ function choose(value: ExpiryValue) {
       data-testid="expiry-trigger"
       @click="open = !open"
     >
-      <span>{{ selected.label }}</span>
+      <span class="expiry-value">{{ selected.label }}</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="6 9 12 15 18 9"/>
       </svg>
@@ -44,11 +45,12 @@ function choose(value: ExpiryValue) {
         :key="option.value"
         type="button"
         role="option"
-        :aria-selected="option.value === model"
-        :class="{ active: option.value === model }"
+        :aria-selected="option.value === selectedValue"
+        :class="{ active: option.value === selectedValue }"
         :data-testid="`expiry-option-${option.value}`"
         @click="choose(option.value)"
       >
+        <span class="option-dot"></span>
         {{ option.label }}
       </button>
     </div>
@@ -61,11 +63,11 @@ function choose(value: ExpiryValue) {
   right: 16px;
   bottom: 16px;
   z-index: 60;
-  width: 170px;
+  width: 178px;
   border: 1px solid var(--border2);
   border-radius: var(--radius);
   background: var(--bg1);
-  padding: 10px;
+  padding: 9px;
   box-shadow: 0 8px 24px #00000066;
 }
 .expiry-label {
@@ -77,12 +79,17 @@ function choose(value: ExpiryValue) {
 .expiry-trigger {
   width: 100%;
   border: 1px solid var(--border2);
-  background: var(--bg2);
+  background:
+    linear-gradient(90deg, #1a1a1a, #111111);
   color: var(--text);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 7px 9px;
+}
+.expiry-value {
+  color: var(--orange-h);
 }
 .expiry-options {
   position: absolute;
@@ -94,17 +101,43 @@ function choose(value: ExpiryValue) {
   background: var(--bg1);
   padding: 5px;
 }
+.expiry-options::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--border);
+}
 .expiry-options button {
+  position: relative;
   width: 100%;
   background: transparent;
   color: var(--text2);
   text-align: left;
-  padding: 6px 8px;
+  padding: 6px 8px 6px 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .expiry-options button:hover,
 .expiry-options button.active {
   background: var(--bg2);
   color: var(--text);
+}
+.option-dot {
+  position: absolute;
+  left: 8px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--text3);
+  border-radius: 50%;
+  background: var(--bg1);
+}
+.expiry-options button.active .option-dot {
+  border-color: var(--orange);
+  background: var(--orange);
 }
 
 @media (max-width: 600px) {

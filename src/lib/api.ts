@@ -4,6 +4,7 @@ import {
   encryptFile,
   forgetEncryptedFile,
   getStoredEncryptedFile,
+  originFromUrl,
   rememberEncryptedFile,
 } from './e2ee'
 
@@ -107,8 +108,9 @@ export async function uploadFile(file: File, expiry?: string): Promise<string> {
   if (!r.ok) throw new Error('Upload failed')
   const rawUrl = (await r.text()).trim()
   const fileName = fileNameFromUrl(rawUrl)
-  rememberEncryptedFile(fileName, encrypted.key, encrypted.metadata)
-  return encryptedShareUrl(fileName, encrypted.key)
+  const origin = originFromUrl(rawUrl)
+  rememberEncryptedFile(fileName, encrypted.key, encrypted.metadata, origin)
+  return encryptedShareUrl(fileName, encrypted.key, origin)
 }
 
 export async function uploadText(text: string, expiry?: string): Promise<string> {
@@ -126,7 +128,7 @@ export async function deleteFile(filename: string): Promise<void> {
 
 export function fileUrl(filename: string): string {
   const encrypted = getStoredEncryptedFile(filename)
-  if (encrypted) return encryptedShareUrl(filename, encrypted.key)
+  if (encrypted) return encryptedShareUrl(filename, encrypted.key, encrypted.origin)
   return encryptedDownloadUrl(filename)
 }
 

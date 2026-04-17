@@ -23,16 +23,35 @@ async function mockClipboard(page: Page, readValue = '') {
   }, readValue)
 }
 
+function extractMultipartFile(body: Buffer, contentType: string): Buffer {
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)
+  const boundary = boundaryMatch?.[1] ?? boundaryMatch?.[2]
+  if (!boundary) throw new Error('Missing multipart boundary')
+
+  const headerEnd = body.indexOf(Buffer.from('\r\n\r\n'))
+  if (headerEnd === -1) throw new Error('Missing multipart file headers')
+
+  const fileStart = headerEnd + 4
+  const fileEnd = body.indexOf(Buffer.from(`\r\n--${boundary}`), fileStart)
+  if (fileEnd === -1) throw new Error('Missing multipart file boundary')
+
+  return body.subarray(fileStart, fileEnd)
+}
+
 test('uses selected expiry and reflects server-side deletion after simulated time passage', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
 
   let uploadExpiry = ''
   let expired = false
+  let uploadedEncryptedBody: Buffer | null = null
   const encryptedName = 'expiry-check.txt.rpenc'
 
   await page.route('https://api.example.invalid/', async (route) => {
     uploadExpiry = route.request().headers().expire ?? ''
+    const body = route.request().postDataBuffer()
+    if (!body) throw new Error('Missing upload body')
+    uploadedEncryptedBody = extractMultipartFile(body, route.request().headers()['content-type'] ?? '')
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -63,7 +82,22 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   })
 
   await expect.poll(() => uploadExpiry).toBe('12h')
+  const shareUrl = await page.evaluate(() => (navigator.clipboard as any).__written())
+  expect(shareUrl).toContain('/#/file?')
 
+  await page.route(`https://example.invalid/${encryptedName}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/octet-stream',
+      body: uploadedEncryptedBody ?? Buffer.from(''),
+    })
+  })
+
+  await page.goto(shareUrl)
+  await expect(page.getByText('expiry-check.txt')).toBeVisible()
+  await expect(page.getByText('expires soon')).toBeVisible()
+
+  await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
   await expect(page.getByText(encryptedName)).toBeVisible()
 

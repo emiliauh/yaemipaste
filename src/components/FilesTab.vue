@@ -5,13 +5,16 @@ import ExpirySelector, { type ExpiryValue } from './ExpirySelector.vue'
 import Toast from './Toast.vue'
 
 const EXPIRY_KEY = 'rp_expiry'
-const expiry = ref<ExpiryValue>((localStorage.getItem(EXPIRY_KEY) as ExpiryValue | null) ?? '14d')
+const EXPIRY_VALUES: ExpiryValue[] = ['12h', '1d', '3d', '7d', '14d']
+const savedExpiry = localStorage.getItem(EXPIRY_KEY) as ExpiryValue | null
+const expiry = ref<ExpiryValue>(savedExpiry && EXPIRY_VALUES.includes(savedExpiry) ? savedExpiry : '14d')
 const dragging = ref(false)
 const textPaste = ref('')
 const loading = ref(false)
 const toast = ref<{ msg: string; type: 'success' | 'error' } | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const longPressing = ref(false)
+const lastShareUrl = ref('')
 
 function setExpiry(value: ExpiryValue) {
   expiry.value = value
@@ -23,14 +26,24 @@ function showToast(msg: string, type: 'success' | 'error' = 'success') {
   setTimeout(() => (toast.value = null), 3000)
 }
 
+async function copyShareUrl(url: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(url.trim())
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function handleFiles(files: FileList | File[]) {
   loading.value = true
   const arr = Array.from(files)
   for (const f of arr) {
     try {
       const url = await uploadFile(f, expiry.value)
-      await navigator.clipboard.writeText(url.trim())
-      showToast(`Encrypted & copied: ${f.name}`)
+      lastShareUrl.value = url.trim()
+      if (await copyShareUrl(lastShareUrl.value)) showToast(`Encrypted & copied: ${f.name}`)
+      else showToast(`Encrypted: ${f.name}. Copy the link below.`, 'error')
     } catch (e: any) {
       showToast(e.message ?? 'Upload failed', 'error')
     }
@@ -57,8 +70,9 @@ async function submitText() {
   loading.value = true
   try {
     const url = await uploadText(textPaste.value, expiry.value)
-    await navigator.clipboard.writeText(url.trim())
-    showToast('Text encrypted & copied')
+    lastShareUrl.value = url.trim()
+    if (await copyShareUrl(lastShareUrl.value)) showToast('Text encrypted & copied')
+    else showToast('Text encrypted. Copy the link below.', 'error')
     textPaste.value = ''
   } catch (e: any) {
     showToast(e.message ?? 'Upload failed', 'error')
@@ -110,6 +124,17 @@ function onPasteAreaLongPressCancel() {
   <div class="files-tab">
     <ExpirySelector :model-value="expiry" @update:model-value="setExpiry" />
 
+    <div class="security-strip">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="4" y="10" width="16" height="10" rx="2"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+      <div>
+        <div class="security-title">End-to-end encrypted</div>
+        <div class="security-copy">Files are sealed before upload. The key stays in the share link.</div>
+      </div>
+    </div>
+
     <!-- Drop zone -->
     <div
       class="upload-zone"
@@ -159,12 +184,65 @@ function onPasteAreaLongPressCancel() {
       </button>
     </div>
 
+    <div v-if="lastShareUrl" class="share-result">
+      <div class="share-label">Latest encrypted link</div>
+      <a :href="lastShareUrl" target="_blank" rel="noopener">{{ lastShareUrl }}</a>
+      <button class="btn-ghost" type="button" @click="copyShareUrl(lastShareUrl).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
+        Copy
+      </button>
+    </div>
+
     <Toast v-if="toast" :message="toast.msg" :type="toast.type" />
   </div>
 </template>
 
 <style scoped>
 .files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 20px; }
+.security-strip {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--bg1), #111111);
+  color: var(--text2);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.security-strip svg {
+  color: var(--orange);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.security-title {
+  color: var(--text);
+  font-size: 12px;
+}
+.security-copy {
+  color: var(--text3);
+  font-size: 11px;
+}
+.share-result {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg1);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.share-label {
+  grid-column: 1 / -1;
+  color: var(--text3);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.share-result a {
+  color: var(--orange-h);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
 .paste-area {
   border: 1px dashed var(--border2);
   border-radius: var(--radius);
@@ -184,4 +262,10 @@ function onPasteAreaLongPressCancel() {
   background: var(--bg1);
 }
 .divider { text-align: center; color: var(--text3); font-size: 12px; }
+
+@media (max-width: 600px) {
+  .share-result {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
