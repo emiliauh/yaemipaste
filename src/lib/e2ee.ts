@@ -6,6 +6,7 @@ export interface EncryptedMetadata {
   type: string
   size: number
   createdAt: string
+  uploader: string
 }
 
 interface EncryptedHeader extends EncryptedMetadata {
@@ -68,7 +69,7 @@ function writeStoredKeys(keys: Record<string, StoredKey>) {
   localStorage.setItem(KEY_STORAGE, JSON.stringify(keys))
 }
 
-export async function encryptFile(file: File): Promise<EncryptionResult> {
+export async function encryptFile(file: File, uploader: string): Promise<EncryptionResult> {
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
   const rawKey = bytesToBase64Url(new Uint8Array(await crypto.subtle.exportKey('raw', key)))
   const iv = crypto.getRandomValues(new Uint8Array(12))
@@ -77,6 +78,7 @@ export async function encryptFile(file: File): Promise<EncryptionResult> {
     type: file.type || 'application/octet-stream',
     size: file.size,
     createdAt: new Date().toISOString(),
+    uploader,
   }
   const header: EncryptedHeader = {
     v: 1,
@@ -119,6 +121,7 @@ export async function decryptEncryptedBlob(blob: Blob, rawKey: string): Promise<
     type: header.type,
     size: header.size,
     createdAt: header.createdAt,
+    uploader: header.uploader ?? 'Unknown (token user)',
   }
 
   return {
@@ -145,7 +148,7 @@ export function getStoredEncryptedFile(fileName: string): StoredKey | null {
 
 export function encryptedShareUrl(fileName: string, key: string, origin = window.location.origin): string {
   const params = new URLSearchParams({ f: fileName, k: key })
-  return `${origin}/#/file?${params.toString()}`
+  return `${origin}/${encodePath(fileName)}#/file?${params.toString()}`
 }
 
 export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {

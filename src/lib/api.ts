@@ -59,6 +59,12 @@ export function authLogout() {
   localStorage.removeItem('rp_username')
 }
 
+function uploaderIdentity(): string {
+  const username = localStorage.getItem('rp_username')
+  if (localStorage.getItem('rp_jwt') && username) return username
+  return 'Unknown (token user)'
+}
+
 export async function getShareXConfig(): Promise<Blob> {
   const r = await fetch(`${AUTH_API}/sharex`, {
     headers: { Authorization: `Bearer ${getJwt()}` },
@@ -98,7 +104,7 @@ export async function listFiles(): Promise<PasteFile[]> {
 }
 
 export async function uploadFile(file: File, expiry?: string): Promise<string> {
-  const encrypted = await encryptFile(file)
+  const encrypted = await encryptFile(file, uploaderIdentity())
   const encryptedFile = new File([encrypted.blob], `${file.name}.rpenc`, { type: 'application/octet-stream' })
   const form = new FormData()
   form.append('file', encryptedFile)

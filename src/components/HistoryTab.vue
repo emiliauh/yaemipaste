@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { listFiles, deleteFile, fileUrl, formatBytes, type PasteFile } from '../lib/api'
+import { decryptEncryptedBlob, encryptedDownloadUrl, getStoredEncryptedFile } from '../lib/e2ee'
 import Toast from './Toast.vue'
 import FilePreview from './FilePreview.vue'
+
+interface PreviewState {
+  file: PasteFile
+  url: string
+  name: string
+  type: string
+  x: number
+  y: number
+  loading: boolean
+}
 
 const files = ref<PasteFile[]>([])
 const loading = ref(true)
@@ -11,8 +22,10 @@ const search = ref('')
 const toast = ref<{ msg: string; type: 'success' | 'error' } | null>(null)
 const sortKey = ref<'file_name' | 'file_size' | 'expires_at'>('file_name')
 const sortDir = ref<1 | -1>(1)
-const preview = ref<PasteFile | null>(null)
+const preview = ref<PreviewState | null>(null)
+const hoverPreview = ref<PreviewState | null>(null)
 const deleting = ref<Set<string>>(new Set())
+let hoverToken = 0
 
 function showToast(msg: string, type: 'success' | 'error' = 'success') {
   toast.value = { msg, type }
@@ -76,11 +89,104 @@ async function deleteAll() {
   for (const f of [...files.value]) await del(f)
 }
 
-function isImage(name: string) { return /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(name) }
-function isVideo(name: string) { return /\.(mp4|webm|mkv|mov|avi)$/i.test(name) }
-function isPreviewable(name: string) { return isImage(name) || isVideo(name) }
+function previewName(f: PasteFile) {
+  return getStoredEncryptedFile(f.file_name)?.name ?? f.file_name
+}
+
+function isImage(name: string) { return /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)$/i.test(name) }
+function isVideo(name: string) { return /\.(mp4|webm|mov|avi|mkv|ogv|m4v|3gp)$/i.test(name) }
+function isPreviewable(f: PasteFile) { return isImage(previewName(f)) || isVideo(previewName(f)) }
+
+function clearPreviewObjectUrl(state: PreviewState | null) {
+  if (state?.url.startsWith('blob:')) URL.revokeObjectURL(state.url)
+}
+
+async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
+  const stored = getStoredEncryptedFile(f.file_name)
+  if (!stored) {
+    return {
+      file: f,
+      url: fileUrl(f.file_name),
+      name: f.file_name,
+      type: isImage(f.file_name) ? 'image/*' : 'video/*',
+      x,
+      y,
+      loading: false,
+    }
+  }
+
+  const response = await fetch(encryptedDownloadUrl(f.file_name, stored.origin))
+  if (!response.ok) throw new Error('Preview download failed')
+  const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
+  return {
+    file: f,
+    url: URL.createObjectURL(decrypted.blob),
+    name: decrypted.metadata.name,
+    type: decrypted.metadata.type,
+    x,
+    y,
+    loading: false,
+  }
+}
+
+function moveHover(e: MouseEvent) {
+  if (!hoverPreview.value) return
+  hoverPreview.value.x = e.clientX + 18
+  hoverPreview.value.y = e.clientY + 18
+}
+
+async function showHover(f: PasteFile, e: MouseEvent) {
+  if (!isPreviewable(f)) return
+  const token = ++hoverToken
+  clearPreviewObjectUrl(hoverPreview.value)
+  hoverPreview.value = {
+    file: f,
+    url: '',
+    name: previewName(f),
+    type: isImage(previewName(f)) ? 'image/*' : 'video/*',
+    x: e.clientX + 18,
+    y: e.clientY + 18,
+    loading: true,
+  }
+  try {
+    const next = await buildPreview(f, e.clientX + 18, e.clientY + 18)
+    if (token === hoverToken) hoverPreview.value = next
+    else clearPreviewObjectUrl(next)
+  } catch {
+    if (token === hoverToken) hoverPreview.value = null
+  }
+}
+
+function hideHover() {
+  hoverToken += 1
+  clearPreviewObjectUrl(hoverPreview.value)
+  hoverPreview.value = null
+}
+
+async function openPreview(f: PasteFile) {
+  if (!isPreviewable(f)) {
+    await copy(f)
+    return
+  }
+  try {
+    const next = await buildPreview(f)
+    clearPreviewObjectUrl(preview.value)
+    preview.value = next
+  } catch (e: any) {
+    showToast(e.message ?? 'Preview failed', 'error')
+  }
+}
+
+function closePreview() {
+  clearPreviewObjectUrl(preview.value)
+  preview.value = null
+}
 
 onMounted(load)
+onBeforeUnmount(() => {
+  clearPreviewObjectUrl(preview.value)
+  clearPreviewObjectUrl(hoverPreview.value)
+})
 </script>
 
 <template>
@@ -125,12 +231,15 @@ onMounted(load)
             v-for="f in filtered"
             :key="f.file_name"
             class="file-row"
+            @mouseenter="showHover(f, $event)"
+            @mousemove="moveHover"
+            @mouseleave="hideHover"
           >
             <td class="name">
               <span
                 class="filename"
                 :title="fileUrl(f.file_name)"
-                @click="isPreviewable(f.file_name) ? (preview = f) : copy(f)"
+                @click="openPreview(f)"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
                   <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
@@ -160,7 +269,25 @@ onMounted(load)
     </div>
 
     <!-- File preview modal -->
-    <FilePreview v-if="preview" :file="preview" @close="preview = null" />
+    <div
+      v-if="hoverPreview"
+      class="hover-preview"
+      :style="{ left: `${hoverPreview.x}px`, top: `${hoverPreview.y}px` }"
+    >
+      <div v-if="hoverPreview.loading" class="hover-loading">Decrypting…</div>
+      <img v-else-if="hoverPreview.type.startsWith('image/')" :src="hoverPreview.url" :alt="hoverPreview.name" />
+      <video v-else :src="hoverPreview.url" muted playsinline />
+      <div class="hover-name">{{ hoverPreview.name }}</div>
+    </div>
+
+    <FilePreview
+      v-if="preview"
+      :file="preview.file"
+      :source-url="preview.url"
+      :display-name="preview.name"
+      :mime-type="preview.type"
+      @close="closePreview"
+    />
 
     <Toast v-if="toast" :message="toast.msg" :type="toast.type" />
   </div>
@@ -178,4 +305,38 @@ onMounted(load)
 .filename { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .filename:hover { color: var(--orange); }
 .action-row { display: flex; gap: 6px; justify-content: flex-end; }
+.hover-preview {
+  position: fixed;
+  z-index: 300;
+  width: 220px;
+  max-width: calc(100vw - 32px);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--bg1);
+  padding: 6px;
+  pointer-events: none;
+  box-shadow: 0 8px 24px #00000080;
+}
+.hover-preview img,
+.hover-preview video {
+  display: block;
+  width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  background: var(--bg);
+}
+.hover-loading {
+  color: var(--text3);
+  font-size: 11px;
+  padding: 36px 8px;
+  text-align: center;
+}
+.hover-name {
+  color: var(--text3);
+  font-size: 10px;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>

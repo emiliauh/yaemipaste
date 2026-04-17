@@ -55,7 +55,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `https://example.invalid/${encryptedName}`,
+      body: `http://127.0.0.1:5173/${encryptedName}`,
     })
   })
 
@@ -83,9 +83,9 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
 
   await expect.poll(() => uploadExpiry).toBe('12h')
   const shareUrl = await page.evaluate(() => (navigator.clipboard as any).__written())
-  expect(shareUrl).toContain('/#/file?')
+  expect(shareUrl).toContain(`${encryptedName}#/file?`)
 
-  await page.route(`https://example.invalid/${encryptedName}`, async (route) => {
+  await page.route(`http://127.0.0.1:5173/${encryptedName}`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/octet-stream',

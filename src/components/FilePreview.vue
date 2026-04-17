@@ -2,19 +2,25 @@
 import { computed } from 'vue'
 import { type PasteFile, fileUrl } from '../lib/api'
 
-const props = defineProps<{ file: PasteFile }>()
+const props = defineProps<{
+  file: PasteFile
+  sourceUrl?: string
+  displayName?: string
+  mimeType?: string
+}>()
 const emit = defineEmits<{ close: [] }>()
 
-const url = computed(() => fileUrl(props.file.file_name))
-const isImage = computed(() => /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(props.file.file_name))
-const isVideo = computed(() => /\.(mp4|webm|mov)$/i.test(props.file.file_name))
+const url = computed(() => props.sourceUrl ?? fileUrl(props.file.file_name))
+const name = computed(() => props.displayName ?? props.file.file_name)
+const isImage = computed(() => props.mimeType?.startsWith('image/') ?? /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)$/i.test(name.value))
+const isVideo = computed(() => props.mimeType?.startsWith('video/') ?? /\.(mp4|webm|mov|avi|mkv|ogv|m4v|3gp)$/i.test(name.value))
 </script>
 
 <template>
   <div class="modal-backdrop" @click.self="emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <span class="modal-title">{{ file.file_name }}</span>
+        <span class="modal-title">{{ name }}</span>
         <button class="btn-ghost" style="padding:2px 8px" @click="emit('close')">✕</button>
       </div>
       <div class="modal-body">

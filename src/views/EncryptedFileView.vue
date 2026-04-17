@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { decryptEncryptedBlob, encryptedDownloadUrl, type EncryptedMetadata } from '../lib/e2ee'
+import { formatBytes } from '../lib/api'
 
 const route = useRoute()
 const loading = ref(true)
@@ -9,6 +10,7 @@ const error = ref('')
 const objectUrl = ref('')
 const textPreview = ref('')
 const metadata = ref<EncryptedMetadata | null>(null)
+const status = ref('Preparing secure download…')
 
 const fileName = computed(() => String(route.query.f ?? ''))
 const key = computed(() => String(route.query.k ?? ''))
@@ -34,15 +36,18 @@ async function load() {
   }
 
   loading.value = true
+  status.value = 'Downloading encrypted file…'
   try {
     const response = await fetch(encryptedDownloadUrl(fileName.value))
     if (!response.ok) throw new Error(response.status === 404 ? 'File not found or expired' : 'Download failed')
+    status.value = 'Decrypting in your browser…'
     const decrypted = await decryptEncryptedBlob(await response.blob(), key.value)
     metadata.value = decrypted.metadata
     objectUrl.value = URL.createObjectURL(decrypted.blob)
     if (decrypted.metadata.type.startsWith('text/')) {
       textPreview.value = await decrypted.blob.text()
     }
+    status.value = 'Decrypted locally. No plaintext was stored on the host.'
   } catch (e: any) {
     error.value = e.message ?? 'Could not decrypt file'
   } finally {
@@ -57,6 +62,10 @@ onBeforeUnmount(clearObjectUrl)
 
 <template>
   <main class="decrypt-page">
+    <div v-if="loading || metadata || error" class="decrypt-toast" :class="{ error: !!error }">
+      {{ error || status }}
+    </div>
+
     <section class="decrypt-panel">
       <div class="decrypt-topline">
         <div class="seal-mark">
@@ -78,9 +87,20 @@ onBeforeUnmount(clearObjectUrl)
         <div class="file-heading">
           <div>
             <h1>{{ metadata.name }}</h1>
-            <p class="meta">{{ metadata.type }} · {{ metadata.size }} bytes</p>
+            <p class="meta">{{ metadata.type }} · {{ formatBytes(metadata.size) }}</p>
           </div>
           <span class="key-pill">key local</span>
+        </div>
+
+        <div class="details-grid">
+          <div>
+            <span>File size</span>
+            <strong>{{ formatBytes(metadata.size) }}</strong>
+          </div>
+          <div>
+            <span>Uploader</span>
+            <strong>{{ metadata.uploader || 'Unknown (token user)' }}</strong>
+          </div>
         </div>
 
         <div v-if="isImage" class="preview-frame">
@@ -93,7 +113,7 @@ onBeforeUnmount(clearObjectUrl)
         <p v-else class="state">Ready to download.</p>
 
         <div class="actions">
-          <a class="btn-link btn-primary" :href="objectUrl" :download="metadata.name">Download</a>
+          <a class="btn-link btn-primary" :href="objectUrl" :download="metadata.name">Download decrypted file</a>
           <a class="btn-link btn-ghost" :href="objectUrl" target="_blank" rel="noopener">Open</a>
         </div>
       </template>
@@ -108,6 +128,24 @@ onBeforeUnmount(clearObjectUrl)
   align-items: center;
   justify-content: center;
   padding: 16px;
+}
+.decrypt-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1000;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--orange);
+  border-radius: var(--radius);
+  color: var(--text2);
+  padding: 10px 14px;
+  font-size: 12px;
+  max-width: min(360px, calc(100vw - 32px));
+}
+.decrypt-toast.error {
+  border-left-color: var(--red);
+  color: var(--red-h);
 }
 .decrypt-panel {
   width: min(720px, 100%);
@@ -161,6 +199,31 @@ h1 {
   padding: 3px 7px;
   white-space: nowrap;
 }
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.details-grid div {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 9px 10px;
+}
+.details-grid span {
+  display: block;
+  color: var(--text3);
+  font-size: 10px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.details-grid strong {
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
 .meta {
   color: var(--text3);
   font-size: 12px;
@@ -213,5 +276,15 @@ h1 {
   border-radius: var(--radius);
   font-size: 12px;
   text-decoration: none;
+}
+
+@media (max-width: 560px) {
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+  .actions {
+    justify-content: stretch;
+    flex-direction: column;
+  }
 }
 </style>
