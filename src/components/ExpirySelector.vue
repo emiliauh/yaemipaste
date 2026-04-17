@@ -1,16 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-
-export type ExpiryValue = '12h' | '1d' | '3d' | '7d' | '14d' | 'never'
-
-const options: Array<{ value: ExpiryValue; label: string; danger?: boolean }> = [
-  { value: '12h', label: '12 hours' },
-  { value: '1d', label: '1 day' },
-  { value: '3d', label: '3 days' },
-  { value: '7d', label: '7 days' },
-  { value: '14d', label: '14 days' },
-  { value: 'never', label: 'Forever', danger: true },
-]
+import { defaultExpiryValue, expiryOptions, maxExpiryDays, type ExpiryValue } from '../lib/expiry'
 
 const model = defineModel<ExpiryValue>({ required: true })
 const open = ref(false)
@@ -18,8 +8,10 @@ const revealNever = ref(false)
 const mobileCollapsed = ref(true)
 const menuRef = ref<HTMLElement | null>(null)
 const selectedValue = computed(() => model.value)
-const visibleOptions = computed(() => (revealNever.value ? options : options.filter((option) => option.value !== 'never')))
-const selected = computed(() => options.find((option) => option.value === model.value) ?? options[4])
+const visibleOptions = computed(() => (revealNever.value ? expiryOptions : expiryOptions.filter((option) => option.value !== 'never')))
+const selected = computed(() => expiryOptions.find((option) => option.value === model.value)
+  ?? expiryOptions.find((option) => option.value === defaultExpiryValue)
+  ?? expiryOptions[0])
 
 function choose(value: ExpiryValue) {
   if (value === 'never' && !revealNever.value) return
@@ -80,7 +72,10 @@ onUnmounted(() => {
 
     <div class="expiry-panel" data-testid="expiry-panel">
       <div class="expiry-panel-top">
-        <div class="expiry-label">Keep for</div>
+        <div class="expiry-headings">
+          <div class="expiry-label">Keep for · max {{ maxExpiryDays }} days</div>
+          <div class="expiry-tip">To use Forever, hold <kbd>Shift</kbd> and click.</div>
+        </div>
         <button
           class="expiry-collapse"
           type="button"
@@ -146,11 +141,28 @@ onUnmounted(() => {
 .expiry-panel-top {
   display: block;
 }
+.expiry-headings {
+  display: grid;
+  gap: 3px;
+}
 .expiry-label {
   color: var(--text3);
   font-size: 10px;
   margin-bottom: 5px;
   text-transform: uppercase;
+}
+.expiry-tip {
+  color: var(--text3);
+  font-size: 10px;
+  margin-bottom: 5px;
+}
+.expiry-tip kbd {
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: 10px;
+  padding: 0 4px;
 }
 .expiry-trigger {
   width: 100%;
@@ -260,13 +272,17 @@ onUnmounted(() => {
   }
   .expiry-panel-top {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 5px;
   }
   .expiry-label {
     margin-bottom: 0;
+  }
+  .expiry-tip {
+    margin-bottom: 0;
+    max-width: 140px;
   }
   .expiry-collapse {
     display: inline-flex;

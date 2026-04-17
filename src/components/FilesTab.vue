@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { uploadFile, uploadText, type UploadProgress } from '../lib/api'
-import ExpirySelector, { type ExpiryValue } from './ExpirySelector.vue'
+import ExpirySelector from './ExpirySelector.vue'
+import { defaultExpiryValue, isValidExpiryValue, type ExpiryValue } from '../lib/expiry'
 import { useNotificationStore } from '../stores/notifications'
 
 const EXPIRY_KEY = 'rp_expiry'
 const KEEP_NAME_KEY = 'rp_keep_file_name'
-const EXPIRY_VALUES: ExpiryValue[] = ['12h', '1d', '3d', '7d', '14d', 'never']
-const savedExpiry = localStorage.getItem(EXPIRY_KEY) as ExpiryValue | null
+const savedExpiry = localStorage.getItem(EXPIRY_KEY)
 const keepNameSaved = localStorage.getItem(KEEP_NAME_KEY)
-const expiry = ref<ExpiryValue>(savedExpiry && EXPIRY_VALUES.includes(savedExpiry) ? savedExpiry : '14d')
+const expiry = ref<ExpiryValue>(isValidExpiryValue(savedExpiry) ? savedExpiry : defaultExpiryValue)
 const keepFileName = ref(keepNameSaved !== '0')
 const dragging = ref(false)
 const textPaste = ref('')

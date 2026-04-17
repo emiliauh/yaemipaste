@@ -23,6 +23,7 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `VITE_PASTE_API` | Frontend base path for rustypaste API calls. | Change only if you route paste API under a different path/domain. | `/api` |
 | `VITE_AUTH_API` | Frontend base path for auth API calls. | Change only if auth is exposed under a different path/domain. | `/auth` |
 | `VITE_TURNSTILE_SITE_KEY` | Enables Cloudflare Turnstile challenge in login flow. | Set when you want Turnstile protection; leave empty otherwise. | empty |
+| `VITE_MAX_EXPIRY_DAYS` | Max day-based expiry option shown in the UI ("Keep for"). | Set to the maximum retention days your deployment allows. | `14` |
 | `PASTE_API_IMAGE` | Docker image for rustypaste backend. | Pin to a specific version, custom build, or private registry image. | `orhunp/rustypaste:latest` |
 | `AUTH_API_IMAGE` | Docker image for auth backend. | Pin your auth service version/tag. | `ghcr.io/emiliauh/yaemipaste-auth:latest` |
 | `UI_PORT` | Host port mapped to UI container (`http://localhost:UI_PORT`). | Change if `8080` is busy or you prefer another port. | `8080` |
@@ -42,6 +43,7 @@ This page explains every variable in `.env.example`, what it controls, and when 
 Keep defaults. Only set:
 - `UI_PORT` (optional)
 - `VITE_TURNSTILE_SITE_KEY` (optional)
+- `VITE_MAX_EXPIRY_DAYS` (optional)
 
 ## Custom domain behind reverse proxy
 
@@ -65,3 +67,4 @@ Then run installer with `--yes` + `--action ...`.
 - If login fails immediately, verify `VITE_AUTH_API` path/reverse proxy.
 - If uploads fail, verify `VITE_PASTE_API` path/reverse proxy.
 - If installer token actions fail, verify `AUTH_ADMIN_BASE_URL` and `AUTH_*_PATH` routes.
+- If you need "Forever" retention in the selector, hold **Shift** and click **Keep for** to reveal it.

@@ -64,6 +64,10 @@ For a complete variable-by-variable explanation, use [`docs/ENVIRONMENT.md`](doc
 
 No personal credentials or private keys are required in repository files.
 
+Expiry notes:
+- set `VITE_MAX_EXPIRY_DAYS` to control the max day-based retention shown in the UI (default 14)
+- to reveal **Forever** retention in the selector, hold **Shift** and click the **Keep for** control
+
 ## Expose to the web
 
 Typical pattern:
