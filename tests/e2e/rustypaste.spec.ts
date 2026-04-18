@@ -45,6 +45,64 @@ async function mockClipboardWriteFailure(page: Page) {
   })
 }
 
+function base64Url(bytes: number[]): string {
+  return Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+async function mockWebAuthn(page: Page) {
+  await page.addInitScript(() => {
+    class MockAuthenticatorAttestationResponse {
+      clientDataJSON = new Uint8Array([11, 12]).buffer
+      attestationObject = new Uint8Array([13, 14]).buffer
+      getTransports() {
+        return ['internal']
+      }
+    }
+    class MockAuthenticatorAssertionResponse {
+      clientDataJSON = new Uint8Array([21, 22]).buffer
+      authenticatorData = new Uint8Array([23, 24]).buffer
+      signature = new Uint8Array([25, 26]).buffer
+      userHandle = new Uint8Array([27, 28]).buffer
+    }
+    class MockPublicKeyCredential {
+      id = 'mock-passkey'
+      rawId = new Uint8Array([1, 2, 3]).buffer
+      type = 'public-key'
+      authenticatorAttachment = 'platform'
+      response: MockAuthenticatorAttestationResponse | MockAuthenticatorAssertionResponse
+      constructor(response: MockAuthenticatorAttestationResponse | MockAuthenticatorAssertionResponse) {
+        this.response = response
+      }
+      getClientExtensionResults() {
+        return {}
+      }
+    }
+    Object.defineProperty(window, 'AuthenticatorAttestationResponse', { configurable: true, value: MockAuthenticatorAttestationResponse })
+    Object.defineProperty(window, 'AuthenticatorAssertionResponse', { configurable: true, value: MockAuthenticatorAssertionResponse })
+    Object.defineProperty(window, 'PublicKeyCredential', { configurable: true, value: MockPublicKeyCredential })
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: {
+        create: async ({ publicKey }: any) => {
+          ;(window as any).__lastCreateOptions = {
+            challenge: Array.from(new Uint8Array(publicKey.challenge)),
+            userId: Array.from(new Uint8Array(publicKey.user.id)),
+            excludeId: Array.from(new Uint8Array(publicKey.excludeCredentials[0].id)),
+          }
+          return new MockPublicKeyCredential(new MockAuthenticatorAttestationResponse())
+        },
+        get: async ({ publicKey }: any) => {
+          ;(window as any).__lastGetOptions = {
+            challenge: Array.from(new Uint8Array(publicKey.challenge)),
+            allowId: Array.from(new Uint8Array(publicKey.allowCredentials[0].id)),
+          }
+          return new MockPublicKeyCredential(new MockAuthenticatorAssertionResponse())
+        },
+      },
+    })
+  })
+}
+
 async function expandExpiryIfCollapsed(page: Page) {
   await page.getByTestId('expiry-menu').waitFor({ state: 'attached' })
   const toggle = page.getByTestId('expiry-mobile-toggle')
@@ -141,12 +199,13 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   })
 
   await page.goto(shareUrl)
-  await expect(page.locator('h1')).toHaveText('expiry-check.txt')
+  await expect(page.locator('h1')).toHaveText('Encrypted paste')
+  await expect(page.getByText(/expiry-check\.txt/)).toBeVisible()
   await expect(page.getByText('expires soon')).toBeVisible()
   await expect(page.getByText('This file is not a rustypaste encrypted file')).toHaveCount(0)
   await expect(page.locator('.decrypt-toast')).toHaveCount(0)
   await expect(page.getByTestId('notification-list')).toContainText('Success')
-  await expect(page.getByTestId('notification-list')).toContainText('Decrypted locally. No plaintext was stored on the host.')
+  await expect(page.getByTestId('notification-list')).toContainText(/Decrypted in \d+\.\d seconds/)
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
@@ -470,7 +529,8 @@ test('keep file name toggle randomizes encrypted URL while keeping original decr
   })
 
   await page.goto(shareUrl)
-  await expect(page.locator('h1')).toHaveText('original-name.txt')
+  await expect(page.locator('h1')).toHaveText('Encrypted paste')
+  await expect(page.getByText(/original-name\.txt/)).toBeVisible()
 })
 
 test('encrypted decrypt success uses auto-clearing notification on mobile', async ({ page }) => {
@@ -513,7 +573,7 @@ test('encrypted decrypt success uses auto-clearing notification on mobile', asyn
   await page.goto(shareUrl)
   await expect(page.getByText('mobile decrypt content')).toBeVisible()
   await expect(page.locator('.decrypt-toast')).toHaveCount(0)
-  await expect(page.getByTestId('notification-list')).toContainText('Decrypted locally. No plaintext was stored on the host.')
+  await expect(page.getByTestId('notification-list')).toContainText(/Decrypted in \d+\.\d seconds/)
 
   const notification = page.getByTestId('notification-row').last()
   const toggle = notification.getByTestId('notification-toggle')
@@ -573,8 +633,106 @@ test('public preview page shows metadata and download action', async ({ page }) 
   await expect(page.getByText('preview content')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Download file' })).toHaveAttribute(
     'href',
-    /download=true$/,
+    /\/preview-check\/file\.txt\?download=true$/,
   )
+})
+
+test('upload preview download and delete work as one public-file flow', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+
+  const fileName = 'flow-e2e.txt'
+  const body = 'full flow content'
+  let deleted = false
+  let deleteAuth = ''
+
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ url: 'http://127.0.0.1:5173/flow-e2e/file.txt' }),
+    })
+  })
+  await page.route(`**/api/meta/${fileName}`, async (route) => {
+    if (deleted) {
+      await route.fulfill({ status: 404, contentType: 'text/plain', body: 'not found' })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: fileName,
+        display_name: fileName,
+        uploader: 'test-user',
+        upload_date_utc: '2026-04-17T01:00:00Z',
+        download_name: fileName,
+        file_size: body.length,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+  await page.route('**/flow-e2e/file.txt?raw=1', async (route) => {
+    await route.fulfill({ status: deleted ? 404 : 200, contentType: 'text/plain', body: deleted ? 'not found' : body })
+  })
+  await page.route('**/flow-e2e/file.txt?download=true', async (route) => {
+    await route.fulfill({
+      status: deleted ? 404 : 200,
+      contentType: 'text/plain',
+      headers: { 'content-disposition': `attachment; filename="${fileName}"` },
+      body: deleted ? 'not found' : body,
+    })
+  })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(deleted ? [] : [{
+        file_name: fileName,
+        file_size: body.length,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route(`**/api/${fileName}`, async (route) => {
+    deleteAuth = route.request().headers().authorization ?? ''
+    deleted = true
+    await route.fulfill({ status: 204, body: '' })
+  })
+
+  await page.goto('/#/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: fileName,
+    mimeType: 'text/plain',
+    buffer: Buffer.from(body),
+  })
+
+  const shareLink = page.getByTestId('share-row').locator('a').first()
+  await expect(shareLink).toHaveText(/\/flow-e2e\/file\.txt$/)
+  const href = await shareLink.getAttribute('href')
+  expect(href).toBe('http://127.0.0.1:5173/flow-e2e/file.txt')
+
+  await page.goto(href ?? '/')
+  await expect(page).toHaveURL(/#\/preview\?p=/)
+  await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
+  await expect(page.locator('.text-preview')).toContainText(body)
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Download file' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe(fileName)
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByText(fileName)).toBeVisible()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect.poll(() => deleteAuth).toBe('test-token')
+  await expect(page.getByText(fileName)).toBeHidden()
+
+  await page.reload()
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByText('No files.')).toBeVisible()
 })
 
 test('preview open action prefers app-open download for sxcu files', async ({ page }) => {
@@ -593,9 +751,16 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
       }),
     })
   })
+  await page.route('**/sharex-config/file.sxcu?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{}',
+    })
+  })
 
   await page.goto('/#/preview?p=/sharex-config/file.sxcu')
-  await expect(page.getByText('Preview is unavailable for this file type.')).toBeVisible()
+  await expect(page.locator('iframe[title="File preview"]')).toBeVisible()
   const openButton = page.getByRole('link', { name: 'Open in app' })
   await expect(openButton).toHaveAttribute('href', /download=true$/)
   await expect(openButton).toHaveAttribute('download', 'yaemipaste.sxcu')
@@ -724,6 +889,46 @@ test('history delete-all notifications stay capped at five', async ({ page }) =>
   await expect(page.getByTestId('notification-list')).not.toContainText('history-file-0.txt')
 })
 
+test('history hover preview clears immediately when deleting the hovered file', async ({ page }) => {
+  const supportsHover = await page.evaluate(() => window.matchMedia('(hover: hover) and (pointer: fine)').matches)
+  test.skip(!supportsHover, 'Hover previews are only available on pointer/hover devices')
+  await signInWithToken(page)
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'hover-delete.png',
+        file_size: 12005,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/hover-delete.png', async (route) => {
+    await route.fulfill({ status: 200, body: '' })
+  })
+  await page.route('**/api/hover-delete.png?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  const row = page.locator('tr.file-row').first()
+  await row.hover()
+  await expect(page.locator('.hover-preview')).toBeVisible()
+  await row.getByRole('button', { name: 'Delete' }).click()
+  await expect(page.locator('.hover-preview')).toHaveCount(0)
+})
+
 test('long-press paste fills the text area on a mobile viewport', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page, 'mobile clipboard text')
@@ -768,8 +973,10 @@ test('history actions and settings buttons work', async ({ page }) => {
   await expect(page.getByText('history-check.txt')).toBeHidden()
 
   await page.getByRole('button', { name: 'Settings' }).click()
-  await page.getByLabel('API Base URL').fill('/api')
+  await expect(page.getByLabel('API Base URL')).toBeVisible()
+  await page.getByLabel('API Base URL').fill('https://papi.example.test/')
   await page.getByRole('button', { name: 'Save' }).click()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_api_base'))).toBe('https://papi.example.test')
   await expect(page.locator('.settings-panel')).toBeHidden()
 
   await page.getByRole('button', { name: 'Settings' }).click()
@@ -821,6 +1028,82 @@ test('passkey modal surfaces non-JSON API errors without JSON parse crashes', as
   const error = page.locator('.passkey-error')
   await expect(error).toContainText('Passkeys endpoint is unavailable')
   await expect(error).not.toContainText('Unexpected token')
+})
+
+test('passkey registration accepts wrapped browser options', async ({ page }) => {
+  await signInWithAccount(page)
+  await mockWebAuthn(page)
+
+  let finishBody: any = null
+  await page.route('**/auth/passkeys', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/auth/passkeys/register/begin', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        publicKey: {
+          challenge: base64Url([1, 2, 3, 4]),
+          rp: { name: 'yaemipaste' },
+          user: { id: base64Url([5, 6, 7]), name: 'test-user', displayName: 'test-user' },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+          exclude_credentials: [{ type: 'public-key', id: base64Url([8, 9]), transports: ['internal'] }],
+        },
+      }),
+    })
+  })
+  await page.route('**/auth/passkeys/register/finish', async (route) => {
+    finishBody = route.request().postDataJSON()
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByTestId('open-passkey-modal').click()
+  await page.getByTestId('passkey-add-btn').click()
+
+  await expect.poll(() => page.evaluate(() => (window as any).__lastCreateOptions)).toEqual({
+    challenge: [1, 2, 3, 4],
+    userId: [5, 6, 7],
+    excludeId: [8, 9],
+  })
+  await expect.poll(() => finishBody?.credential?.id).toBe('mock-passkey')
+})
+
+test('passkey registration reports malformed options clearly', async ({ page }) => {
+  await signInWithAccount(page)
+  await mockWebAuthn(page)
+
+  await page.route('**/auth/passkeys', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/auth/passkeys/register/begin', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ publicKey: { user: { id: base64Url([1]) } } }),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByTestId('open-passkey-modal').click()
+  await page.getByTestId('passkey-add-btn').click()
+
+  await expect(page.locator('.passkey-error')).toContainText('Passkey response is missing challenge')
 })
 
 for (const viewport of [

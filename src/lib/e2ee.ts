@@ -268,7 +268,7 @@ export function encryptedShareUrl(fileName: string, key: string, origin = window
 }
 
 export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {
-  return `${origin}/${publicPathFromFileName(fileName)}`
+  return `${origin}/${publicPathFromFileName(fileName)}?raw=1`
 }
 
 export function originFromUrl(value: string): string {

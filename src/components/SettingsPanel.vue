@@ -7,9 +7,12 @@ import {
   authPasskeyRegisterFinish,
   authPasskeysList,
   getAuthUsername,
+  getDefaultPasteApiBase,
+  getPasteApiBase,
   getShareXConfig,
   hasAccountAuth,
   isShareXEnabled,
+  setPasteApiBase,
   type PasskeySummary,
 } from '../lib/api'
 import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/passkeys'
@@ -18,10 +21,11 @@ import { useNotificationStore } from '../stores/notifications'
 const emit = defineEmits<{ close: [], logout: [] }>()
 const notificationStore = useNotificationStore()
 
-const apiBase = ref(localStorage.getItem('rp_api_base') ?? (import.meta.env.VITE_PASTE_API ?? '/api'))
 const username = getAuthUsername()
 const hasAccount = hasAccountAuth()
 const sharexEnabled = isShareXEnabled()
+const apiBase = ref(getPasteApiBase())
+const defaultApiBase = getDefaultPasteApiBase()
 const downloading = ref(false)
 const saved = ref(false)
 const passkeyModalOpen = ref(false)
@@ -31,7 +35,8 @@ const passkeyLoading = ref(false)
 const passkeyError = ref('')
 
 function save() {
-  localStorage.setItem('rp_api_base', apiBase.value)
+  setPasteApiBase(apiBase.value)
+  apiBase.value = getPasteApiBase()
   saved.value = true
   setTimeout(() => { saved.value = false; emit('close') }, 800)
 }
@@ -124,22 +129,26 @@ function logout() {
 
 <template>
   <div class="settings-panel">
-    <div style="margin-bottom:12px; font-size:13px; color:var(--text)">Settings</div>
+    <div class="settings-header">
+      <div style="font-size:13px; color:var(--text)">Settings</div>
+      <div class="row">
+        <button class="btn-ghost" style="font-size:11px" @click="emit('close')">Cancel</button>
+        <button class="btn-primary" style="font-size:11px" @click="save">{{ saved ? 'Saved' : 'Save' }}</button>
+      </div>
+    </div>
 
     <div class="field">
-      <label>API Base URL</label>
-      <input v-model="apiBase" aria-label="API Base URL" type="text" />
+      <label for="api-base-url">API Base URL</label>
+      <input id="api-base-url" v-model="apiBase" type="text" autocomplete="off" :placeholder="defaultApiBase" aria-label="API Base URL" />
+      <p class="field-hint">Leave blank to use this deployment's default.</p>
     </div>
 
-    <div class="row" style="margin-bottom:12px">
-      <button class="btn-ghost" style="font-size:11px" @click="emit('close')">Cancel</button>
-      <button class="btn-primary" style="font-size:11px" @click="save">{{ saved ? 'Saved' : 'Save' }}</button>
-    </div>
-
-    <div v-if="hasAccount && sharexEnabled" class="field">
+    <div v-if="hasAccount" class="field">
       <label>ShareX Config</label>
-      <p style="color:var(--text3); font-size:11px; margin-bottom:6px">Download pre-configured .sxcu for your account.</p>
-      <button class="btn-primary" style="font-size:11px; width:100%" :disabled="downloading" @click="downloadShareX">
+      <p class="field-hint">
+        {{ sharexEnabled ? 'Download pre-configured .sxcu for your account.' : 'Enable VITE_ENABLE_SHAREX=1 at build time to offer account configs.' }}
+      </p>
+      <button class="btn-primary" style="font-size:11px; width:100%" :disabled="downloading || !sharexEnabled" @click="downloadShareX">
         {{ downloading ? 'Generating…' : 'Download .sxcu' }}
       </button>
     </div>
@@ -195,9 +204,11 @@ function logout() {
 </template>
 
 <style scoped>
+.settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
 .field label { color: var(--text2); font-size: 11px; }
 .field input { width: 100%; font-size: 12px; }
+.field-hint { color: var(--text3); font-size: 11px; margin-bottom: 6px; }
 .row { display: flex; gap: 8px; justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: 12px 0; }
 .logout-btn { width: 100%; font-size: 11px; }

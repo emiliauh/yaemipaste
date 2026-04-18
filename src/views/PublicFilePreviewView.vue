@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { formatBytes, getPublicFileMeta, type PublicFileMeta } from '../lib/api'
-import { publicPathFromFileName, rawFileNameFromPublicPath } from '../lib/e2ee'
+import { formatBytes, getPublicFileMeta, publicFileUrl, type PublicFileMeta } from '../lib/api'
+import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
 const loading = ref(true)
@@ -18,12 +18,9 @@ const fileName = computed(() => {
   return String(route.query.f ?? '').replace(/^\/+/, '')
 })
 
-const publicFileUrl = computed(() => {
-  if (!fileName.value) return ''
-  return `${window.location.origin}/${publicPathFromFileName(fileName.value)}`
-})
-const previewUrl = computed(() => (publicFileUrl.value ? `${publicFileUrl.value}?raw=1` : ''))
-const downloadUrl = computed(() => (publicFileUrl.value ? `${publicFileUrl.value}?download=true` : ''))
+const publicUrl = computed(() => (fileName.value ? publicFileUrl(fileName.value) : ''))
+const previewUrl = computed(() => (publicUrl.value ? `${publicUrl.value}?raw=1` : ''))
+const downloadUrl = computed(() => (publicUrl.value ? `${publicUrl.value}?download=true` : ''))
 const isImage = computed(() => meta.value?.mime_type.startsWith('image/') ?? false)
 const isVideo = computed(() => meta.value?.mime_type.startsWith('video/') ?? false)
 const isText = computed(() => meta.value?.mime_type.startsWith('text/') ?? false)
@@ -129,7 +126,12 @@ watch(fileName, () => void load(), { immediate: true })
           :src="previewUrl"
           title="PDF preview"
         />
-        <p v-else class="state">Preview is unavailable for this file type.</p>
+        <iframe
+          v-else
+          class="preview-pdf"
+          :src="previewUrl"
+          title="File preview"
+        />
 
         <div class="actions">
           <a class="btn-link btn-primary" :href="downloadUrl" :download="meta.download_name">Download file</a>

@@ -9,9 +9,10 @@ import {
   rememberEncryptedFile,
 } from './e2ee'
 
-const PASTE_API = (import.meta.env.VITE_PASTE_API ?? '/api').replace(/\/$/, '')
+const DEFAULT_PASTE_API = normalizeApiBase(import.meta.env.VITE_PASTE_API ?? '/api')
 const AUTH_API = (import.meta.env.VITE_AUTH_API ?? '/auth').replace(/\/$/, '')
-const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '1').trim() !== '0'
+const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '0').trim() === '1'
+const API_BASE_KEY = 'rp_api_base'
 const REMEMBER_ME_KEY = 'rp_remember_me'
 const AUTH_KEYS = ['rp_jwt', 'rp_token', 'rp_username'] as const
 
@@ -26,6 +27,34 @@ function getToken(): string {
 
 function getJwt(): string {
   return readAuthValue('rp_jwt')
+}
+
+function normalizeApiBase(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === '/') return '/api'
+  return trimmed.replace(/\/$/, '')
+}
+
+export function getDefaultPasteApiBase(): string {
+  return DEFAULT_PASTE_API
+}
+
+export function getPasteApiBase(): string {
+  if (typeof localStorage === 'undefined') return DEFAULT_PASTE_API
+  const configured = localStorage.getItem(API_BASE_KEY)
+  return configured ? normalizeApiBase(configured) : DEFAULT_PASTE_API
+}
+
+export function setPasteApiBase(value: string) {
+  if (typeof localStorage === 'undefined') return
+  const normalized = normalizeApiBase(value)
+  if (!value.trim() || normalized === DEFAULT_PASTE_API) localStorage.removeItem(API_BASE_KEY)
+  else localStorage.setItem(API_BASE_KEY, normalized)
+}
+
+export function resetPasteApiBase() {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(API_BASE_KEY)
 }
 
 interface AuthSessionResponse {
@@ -279,7 +308,7 @@ interface RawPasteFile {
 }
 
 export async function listFiles(): Promise<PasteFile[]> {
-  const r = await fetch(`${PASTE_API}/list`, {
+  const r = await fetch(`${getPasteApiBase()}/list`, {
     headers: { Authorization: getToken() },
   })
   if (!r.ok) throw new Error(await responseDetail(r, 'Failed to list files'))
@@ -293,7 +322,7 @@ export async function listFiles(): Promise<PasteFile[]> {
 }
 
 function pasteUploadUrl(): string {
-  return `${PASTE_API}/`
+  return `${getPasteApiBase()}/`
 }
 
 export interface UploadOptions {
@@ -309,9 +338,64 @@ interface UploadMeta {
   uploader: string
 }
 
+function extractUploadTargetFromJson(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized || null
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = extractUploadTargetFromJson(item)
+      if (nested) return nested
+    }
+    return null
+  }
+  if (!value || typeof value !== 'object') return null
+
+  const payload = value as Record<string, unknown>
+  const status = typeof payload.status === 'string' ? payload.status.toLowerCase() : ''
+  const message = typeof payload.message === 'string' ? payload.message.toLowerCase() : ''
+  if (status === 'ok' && message.includes('api root')) {
+    throw new Error('Upload endpoint returned unexpected JSON. Check your VITE_PASTE_API routing.')
+  }
+
+  const preferredKeys = [
+    'url',
+    'file_url',
+    'link',
+    'href',
+    'location',
+    'path',
+    'target',
+    'file',
+    'file_name',
+    'filename',
+    'name',
+  ] as const
+  for (const key of preferredKeys) {
+    const nested = extractUploadTargetFromJson(payload[key])
+    if (nested) return nested
+  }
+  for (const containerKey of ['data', 'result', 'payload']) {
+    const nested = extractUploadTargetFromJson(payload[containerKey])
+    if (nested) return nested
+  }
+  return null
+}
+
 function extractUploadTarget(responseText: string): string {
   const normalized = responseText.trim()
   if (!normalized) throw new Error('Upload endpoint returned an empty response')
+  try {
+    const payload = JSON.parse(normalized) as unknown
+    const target = extractUploadTargetFromJson(payload)
+    if (!target) {
+      throw new Error('Upload endpoint returned unexpected JSON. Check your VITE_PASTE_API routing.')
+    }
+    return target
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('unexpected JSON')) throw error
+  }
   const firstLine = normalized.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? ''
   if (!firstLine) throw new Error('Upload endpoint returned an empty response')
   if (firstLine.startsWith('{') || firstLine.startsWith('[')) {
@@ -358,7 +442,7 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
   }
   onProgress?.({ phase: 'complete', percent: 100 })
   if (shouldEncrypt && encryptedKey) return encryptedShareUrl(fileName, encryptedKey, origin)
-  return `${origin}/${publicPathFromFileName(fileName)}`
+  return publicPreviewUrl(fileName, origin)
 }
 
 export async function uploadText(text: string, options: UploadOptions = {}): Promise<string> {
@@ -392,7 +476,7 @@ function uploadForm(
 }
 
 export async function deleteFile(filename: string): Promise<void> {
-  const r = await fetch(`${PASTE_API}/${filename}`, {
+  const r = await fetch(`${getPasteApiBase()}/${filename}`, {
     method: 'DELETE',
     headers: { Authorization: getToken() },
   })
@@ -411,19 +495,31 @@ export interface PublicFileMeta {
 }
 
 export async function getPublicFileMeta(fileName: string): Promise<PublicFileMeta> {
-  const r = await fetch(`${PASTE_API}/meta/${encodeURIComponent(fileName)}`)
+  const r = await fetch(`${getPasteApiBase()}/meta/${encodeURIComponent(fileName)}`)
   if (!r.ok) throw new Error(r.status === 404 ? 'File not found or expired' : await responseDetail(r, 'Could not load file metadata'))
   return readJson(r, 'Could not load file metadata')
 }
 
+function publicPreviewUrl(fileName: string, origin = window.location.origin): string {
+  return `${origin}/${publicPathFromFileName(fileName)}`
+}
+
+export function publicFileUrl(fileName: string, origin = window.location.origin): string {
+  return publicPreviewUrl(fileName, origin)
+}
+
 export function publicApiFileUrl(fileName: string): string {
-  return `${PASTE_API}/${encodeURIComponent(fileName)}`
+  return `${getPasteApiBase()}/${encodeURIComponent(fileName)}`
 }
 
 export function fileUrl(filename: string): string {
+  return `${publicApiFileUrl(filename)}?raw=1`
+}
+
+export function shareUrl(filename: string): string {
   const encrypted = getStoredEncryptedFile(filename)
   if (encrypted) return encryptedShareUrl(filename, encrypted.key, encrypted.origin)
-  return `${window.location.origin}/${publicPathFromFileName(filename)}`
+  return publicPreviewUrl(filename, window.location.origin)
 }
 
 function fileNameFromUrl(value: string): string {

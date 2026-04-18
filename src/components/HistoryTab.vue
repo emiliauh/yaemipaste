@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
-import { listFiles, deleteFile, fileUrl, formatBytes, type PasteFile } from '../lib/api'
-import { decryptEncryptedBlob, encryptedDownloadUrl, getStoredEncryptedFile } from '../lib/e2ee'
+import { listFiles, deleteFile, formatBytes, publicApiFileUrl, publicFileUrl, shareUrl, type PasteFile } from '../lib/api'
+import { decryptEncryptedBlob, getStoredEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import { useNotificationStore } from '../stores/notifications'
 
@@ -63,7 +63,7 @@ const filtered = computed(() => {
 
 async function copy(f: PasteFile) {
   try {
-    await navigator.clipboard.writeText(fileUrl(f.file_name))
+    await navigator.clipboard.writeText(shareUrl(f.file_name))
     showToast('Copied to clipboard')
   } catch {
     showToast('Copy failed', 'error')
@@ -72,6 +72,8 @@ async function copy(f: PasteFile) {
 
 async function del(f: PasteFile) {
   if (deleting.value.has(f.file_name)) return
+  if (hoverPreview.value?.file.file_name === f.file_name) hideHover()
+  if (preview.value?.file.file_name === f.file_name) closePreview()
   deleting.value.add(f.file_name)
   try {
     await deleteFile(f.file_name)
@@ -106,7 +108,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
   if (!stored) {
     return {
       file: f,
-      url: fileUrl(f.file_name),
+      url: `${publicFileUrl(f.file_name)}?raw=1`,
       name: f.file_name,
       type: isImage(f.file_name) ? 'image/*' : 'video/*',
       x,
@@ -115,7 +117,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
     }
   }
 
-  const response = await fetch(encryptedDownloadUrl(f.file_name, stored.origin))
+  const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`)
   if (!response.ok) throw new Error('Preview download failed')
   const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
   return {
@@ -252,7 +254,7 @@ onBeforeUnmount(() => {
             <td class="name">
               <span
                 class="filename"
-                :title="fileUrl(f.file_name)"
+                :title="shareUrl(f.file_name)"
                 @click.stop="openPreview(f)"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">

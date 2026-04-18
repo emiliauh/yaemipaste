@@ -1,4 +1,5 @@
-function base64UrlToBytes(value: string): Uint8Array {
+function base64UrlToBytes(value: unknown, field = 'value'): Uint8Array {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`Passkey response is missing ${field}`)
   const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=')
   const binary = atob(padded)
   const bytes = new Uint8Array(binary.length)
@@ -6,8 +7,8 @@ function base64UrlToBytes(value: string): Uint8Array {
   return bytes
 }
 
-function toArrayBufferBytes(value: string): Uint8Array<ArrayBuffer> {
-  const source = base64UrlToBytes(value)
+function toArrayBufferBytes(value: unknown, field?: string): Uint8Array<ArrayBuffer> {
+  const source = base64UrlToBytes(value, field)
   const normalized = new Uint8Array(new ArrayBuffer(source.byteLength))
   normalized.set(source)
   return normalized
@@ -25,33 +26,62 @@ function arrayBufferToBase64Url(value: ArrayBuffer): string {
   return bytesToBase64Url(new Uint8Array(value))
 }
 
-function mapDescriptorJson(
-  descriptors: Array<{ type: PublicKeyCredentialType; id: string; transports?: AuthenticatorTransport[] }>,
-): PublicKeyCredentialDescriptor[] {
-  return descriptors.map((descriptor) => ({
-    type: descriptor.type,
-    id: toArrayBufferBytes(descriptor.id),
+function passkeyOptionsFromPayload(payload: any): any {
+  const options = payload?.publicKey
+    ?? payload?.public_key
+    ?? payload?.options?.publicKey
+    ?? payload?.options?.public_key
+    ?? payload?.options
+    ?? payload?.data?.publicKey
+    ?? payload?.data?.public_key
+    ?? payload?.data?.options
+    ?? payload?.creationOptions
+    ?? payload?.creation_options
+    ?? payload?.requestOptions
+    ?? payload?.request_options
+    ?? payload
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw new Error('Passkey response did not include browser options')
+  }
+  return options
+}
+
+function descriptorId(descriptor: any): unknown {
+  return descriptor?.id ?? descriptor?.credential_id ?? descriptor?.credentialId
+}
+
+function mapDescriptorJson(descriptors: any[] | undefined, field: string): PublicKeyCredentialDescriptor[] | undefined {
+  if (!descriptors) return undefined
+  if (!Array.isArray(descriptors)) throw new Error(`Passkey response has invalid ${field}`)
+  return descriptors.map((descriptor, index) => ({
+    type: descriptor.type ?? 'public-key',
+    id: toArrayBufferBytes(descriptorId(descriptor), `${field}[${index}].id`),
     transports: descriptor.transports,
   }))
 }
 
-export function toCreationOptions(options: any): PublicKeyCredentialCreationOptions {
+export function toCreationOptions(payload: any): PublicKeyCredentialCreationOptions {
+  const options = passkeyOptionsFromPayload(payload)
+  const user = options.user
+  if (!user || typeof user !== 'object') throw new Error('Passkey response is missing user details')
+  const userId = user.id ?? user.user_id ?? user.userId
   return {
     ...options,
-    challenge: toArrayBufferBytes(options.challenge),
+    challenge: toArrayBufferBytes(options.challenge, 'challenge'),
     user: {
-      ...options.user,
-      id: toArrayBufferBytes(options.user.id),
+      ...user,
+      id: toArrayBufferBytes(userId, 'user.id'),
     },
-    excludeCredentials: options.excludeCredentials ? mapDescriptorJson(options.excludeCredentials) : undefined,
+    excludeCredentials: mapDescriptorJson(options.excludeCredentials ?? options.exclude_credentials, 'excludeCredentials'),
   }
 }
 
-export function toRequestOptions(options: any): PublicKeyCredentialRequestOptions {
+export function toRequestOptions(payload: any): PublicKeyCredentialRequestOptions {
+  const options = passkeyOptionsFromPayload(payload)
   return {
     ...options,
-    challenge: toArrayBufferBytes(options.challenge),
-    allowCredentials: options.allowCredentials ? mapDescriptorJson(options.allowCredentials) : undefined,
+    challenge: toArrayBufferBytes(options.challenge, 'challenge'),
+    allowCredentials: mapDescriptorJson(options.allowCredentials ?? options.allow_credentials, 'allowCredentials'),
   }
 }
 

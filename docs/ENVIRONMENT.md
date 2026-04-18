@@ -23,7 +23,7 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `VITE_PASTE_API` | Frontend base path for rustypaste API calls. | Change only if you route paste API under a different path/domain. | `/api` |
 | `VITE_AUTH_API` | Frontend base path for auth API calls. | Change only if auth is exposed under a different path/domain. | `/auth` |
 | `VITE_TURNSTILE_SITE_KEY` | Enables Cloudflare Turnstile challenge in login flow. | Set when you want Turnstile protection; leave empty otherwise. | empty |
-| `VITE_ENABLE_SHAREX` | Toggles ShareX download UI in account settings. | Set `0` if you do not use ShareX in your deployment. | `1` |
+| `VITE_ENABLE_SHAREX` | Toggles ShareX download UI in account settings. | Set `1` after configuring generated ShareX output for your deployment. | `0` |
 | `VITE_REPOSITORY_URL` | Repository URL used by the in-app GitHub footer icon. | Change when you fork/rename the project repository. | `https://github.com/emiliauh/yaemipaste` |
 | `VITE_MAX_EXPIRY_DAYS` | Max day-based expiry option shown in the UI ("Keep for"). | Set to the maximum retention days your deployment allows. | `14` |
 | `PASTE_API_IMAGE` | Docker image for rustypaste backend (includes `/api` and `/auth`). | Pin to a specific version, custom build, or private registry image. | `orhunp/rustypaste:latest` |
@@ -62,6 +62,70 @@ Keep defaults. Only set:
 Usually still keep `VITE_PASTE_API=/api` and `VITE_AUTH_API=/auth`, then route:
 - `https://your-domain/api/*` → rustypaste `/`
 - `https://your-domain/auth/*` → rustypaste `/auth/*`
+
+Public share links use paths such as `https://your-domain/abc123/file.png`.
+The plain path should return the SPA preview page. Requests with `?raw=1` or
+`?download=true` should proxy to rustypaste as raw file requests.
+
+Example Caddy shape:
+
+```caddyfile
+your-domain.example {
+  @api path /api/*
+  handle @api {
+    uri strip_prefix /api
+    reverse_proxy 127.0.0.1:9000
+  }
+
+  @auth path /auth/*
+  handle @auth {
+    reverse_proxy 127.0.0.1:9000
+  }
+
+  @rawExt {
+    path_regexp rawExt ^/([^/]+)/file\.(.+)$
+    query raw=*
+  }
+  handle @rawExt {
+    rewrite * /{re.rawExt.1}.{re.rawExt.2}
+    reverse_proxy 127.0.0.1:9000
+  }
+
+  @rawNoExt {
+    path_regexp rawNoExt ^/([^/]+)/file$
+    query raw=*
+  }
+  handle @rawNoExt {
+    rewrite * /{re.rawNoExt.1}
+    reverse_proxy 127.0.0.1:9000
+  }
+
+  @downloadExt {
+    path_regexp downloadExt ^/([^/]+)/file\.(.+)$
+    query download=*
+  }
+  handle @downloadExt {
+    rewrite * /{re.downloadExt.1}.{re.downloadExt.2}
+    reverse_proxy 127.0.0.1:9000
+  }
+
+  @downloadNoExt {
+    path_regexp downloadNoExt ^/([^/]+)/file$
+    query download=*
+  }
+  handle @downloadNoExt {
+    rewrite * /{re.downloadNoExt.1}
+    reverse_proxy 127.0.0.1:9000
+  }
+
+  try_files {path} /index.html
+  file_server
+}
+```
+
+Adapt the raw/download matchers to your exact Caddy version and short-link
+rewrite pattern. The invariant is that only explicit raw/download requests go
+to rustypaste; normal share URLs stay on the frontend preview route.
 
 ## Non-interactive automation
 

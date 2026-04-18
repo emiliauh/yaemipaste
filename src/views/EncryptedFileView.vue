@@ -17,7 +17,7 @@ const error = ref('')
 const objectUrl = ref('')
 const textPreview = ref('')
 const metadata = ref<EncryptedMetadata | null>(null)
-const status = ref('Preparing secure download…')
+const status = ref('Preparing encrypted paste…')
 
 const fileName = computed(() => {
   const fromQuery = String(route.query.f ?? '')
@@ -78,7 +78,7 @@ async function load() {
   loading.value = true
   status.value = 'Downloading encrypted file…'
   try {
-    status.value = 'Decrypting in your browser…'
+    const startedAt = performance.now()
     const payload = await downloadEncryptedPayload(fileName.value)
     const decrypted = await decryptEncryptedBlob(payload, key.value)
     metadata.value = decrypted.metadata
@@ -86,7 +86,8 @@ async function load() {
     if (decrypted.metadata.type.startsWith('text/')) {
       textPreview.value = await decrypted.blob.text()
     }
-    status.value = 'Decrypted locally. No plaintext was stored on the host.'
+    const seconds = Math.max(0.1, (performance.now() - startedAt) / 1000)
+    status.value = `Decrypted in ${seconds.toFixed(1)} seconds`
     notificationStore.push(status.value)
   } catch (e: any) {
     error.value = e.message ?? 'Could not decrypt file'
@@ -112,7 +113,7 @@ onBeforeUnmount(clearObjectUrl)
         </div>
         <div>
           <div class="eyebrow">Encrypted paste</div>
-          <div class="subline">Decrypting in your browser</div>
+          <div class="subline">{{ status }}</div>
         </div>
       </div>
 
@@ -122,10 +123,9 @@ onBeforeUnmount(clearObjectUrl)
       <template v-else-if="metadata && objectUrl">
         <div class="file-heading">
           <div>
-            <h1>{{ metadata.name }}</h1>
-            <p class="meta">{{ metadata.type }} · {{ formatBytes(metadata.size) }}</p>
+            <h1>Encrypted paste</h1>
+            <p class="meta">{{ metadata.name }} · {{ metadata.type }} · {{ formatBytes(metadata.size) }}</p>
           </div>
-          <span class="key-pill">key local</span>
         </div>
 
         <div class="details-grid">
