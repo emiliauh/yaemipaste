@@ -7,7 +7,7 @@ import {
   rawFileNameFromPublicPath,
   type EncryptedMetadata,
 } from '../lib/e2ee'
-import { formatBytes, publicApiFileUrl } from '../lib/api'
+import { decodeFileToken, formatBytes, publicApiFileUrl } from '../lib/api'
 import { useNotificationStore } from '../stores/notifications'
 
 const route = useRoute()
@@ -20,13 +20,18 @@ const metadata = ref<EncryptedMetadata | null>(null)
 const status = ref('Preparing encrypted paste…')
 
 const fileName = computed(() => {
+  const pk = String(route.params.filekey ?? '')
+  if (pk) return decodeFileToken(pk.split('+')[0])
+  // backward compat: old query params
   const fromQuery = String(route.query.f ?? '')
   if (fromQuery) return fromQuery
-  const fromPath = rawFileNameFromPublicPath(window.location.pathname)
-  if (fromPath) return fromPath
-  return ''
+  return rawFileNameFromPublicPath(window.location.pathname) || ''
 })
-const key = computed(() => String(route.query.k ?? ''))
+const key = computed(() => {
+  const pk = String(route.params.filekey ?? '')
+  if (pk.includes('+')) return pk.split('+')[1]
+  return String(route.query.k ?? '')
+})
 const isImage = computed(() => metadata.value?.type.startsWith('image/') ?? false)
 const isVideo = computed(() => metadata.value?.type.startsWith('video/') ?? false)
 const isText = computed(() => metadata.value?.type.startsWith('text/') ?? false)

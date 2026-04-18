@@ -4,16 +4,16 @@ const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
 const liveBaseUrl = process.env.PLAYWRIGHT_LIVE_BASE_URL?.replace(/\/$/, '') ?? ''
 const liveApiBaseUrl = process.env.PLAYWRIGHT_LIVE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 
-function rawFileNameFromPublicPath(pathname: string): string {
-  const cleaned = pathname.replace(/^\/+/, '').trim()
-  const [idSegment = '', tailSegment = ''] = cleaned.split('/', 2)
-  const id = decodeURIComponent(idSegment)
-  const tail = decodeURIComponent(tailSegment)
-  if (!id) return ''
-  if (!tail) return id
-  if (tail === 'file') return id
-  if (tail.startsWith('file.')) return `${id}.${tail.slice(5)}`
-  return `${id}.${tail}`
+function decodeFileToken(token: string): string {
+  try {
+    const b64 = token.replace(/-/g, '+').replace(/_/g, '/')
+    return atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
+  } catch { return token }
+}
+
+function filenameFromPreviewHref(href: string): string {
+  const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview$/)
+  return match ? decodeFileToken(match[1]) : ''
 }
 
 test.describe('live backend integration', () => {
@@ -31,7 +31,8 @@ test.describe('live backend integration', () => {
       localStorage.setItem('rp_username', 'live-e2e')
     }, liveToken)
 
-    await page.goto(`${liveBaseUrl}/#/files`)
+    await page.goto(`${liveBaseUrl}/`)
+    await page.waitForURL('**/files')
     const fileName = `live-e2e-${Date.now()}.txt`
     const body = `live check ${fileName}`
     await page.locator('input[type="file"]').setInputFiles({
@@ -43,9 +44,9 @@ test.describe('live backend integration', () => {
     const shareLink = page.locator('[data-testid="share-row"] a').first()
     await expect(shareLink).toBeVisible()
     const href = await shareLink.getAttribute('href')
-    expect(href ?? '').toMatch(/\/[^/]+\/file\.txt$/)
+    expect(href ?? '').toMatch(/\/file\/[A-Za-z0-9_-]+\/preview$/)
 
-    await page.goto(href ?? `${liveBaseUrl}/#/files`)
+    await page.goto(href ?? `${liveBaseUrl}/`)
     await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
     await expect(page.locator('.text-preview')).toContainText(body)
     const downloadHref = await page.getByRole('link', { name: 'Download file' }).getAttribute('href')
@@ -54,7 +55,7 @@ test.describe('live backend integration', () => {
     expect(downloadResponse.ok()).toBeTruthy()
     expect(await downloadResponse.text()).toBe(body)
 
-    const uploadedName = rawFileNameFromPublicPath(new URL(href ?? '').pathname)
+    const uploadedName = filenameFromPreviewHref(href ?? '')
     expect(uploadedName).toBeTruthy()
     const deleteBase = liveApiBaseUrl || `${liveBaseUrl}/api`
     const deleteResponse = await request.delete(`${deleteBase}/${encodeURIComponent(uploadedName)}`, {
@@ -62,7 +63,8 @@ test.describe('live backend integration', () => {
     })
     expect(deleteResponse.ok()).toBeTruthy()
 
-    await page.goto(`${liveBaseUrl}/#/files`)
+    await page.goto(`${liveBaseUrl}/`)
+    await page.waitForURL('**/files')
     await page.getByRole('button', { name: 'History' }).click()
     await expect(page.getByText(uploadedName)).toHaveCount(0)
     expect(consoleErrors.some((line) => line.includes('Upload endpoint returned unexpected JSON'))).toBeFalsy()

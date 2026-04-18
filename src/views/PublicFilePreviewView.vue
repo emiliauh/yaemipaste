@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { formatBytes, getPublicFileMeta, publicFileUrl, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, formatBytes, getPublicFileMeta, publicFileUrl, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
@@ -11,6 +11,9 @@ const textPreview = ref('')
 const meta = ref<PublicFileMeta | null>(null)
 
 const fileName = computed(() => {
+  const pk = String(route.params.filekey ?? '')
+  if (pk) return decodeFileToken(pk.split('+')[0])
+  // backward compat: old query params
   const fromPath = rawFileNameFromPublicPath(window.location.pathname)
   if (fromPath) return fromPath
   const publicPath = String(route.query.p ?? '')

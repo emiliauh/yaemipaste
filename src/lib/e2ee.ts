@@ -263,8 +263,9 @@ export function getStoredEncryptedFile(fileName: string): StoredKey | null {
 }
 
 export function encryptedShareUrl(fileName: string, key: string, origin = window.location.origin): string {
-  const params = new URLSearchParams({ f: fileName, k: key })
-  return `${origin}/index.html#/file?${params.toString()}`
+  // imported lazily to avoid circular dep — inline the same base64url encoding
+  const token = btoa(fileName).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  return `${origin}/file/${token}+${key}/preview`
 }
 
 export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {

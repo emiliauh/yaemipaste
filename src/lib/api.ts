@@ -500,12 +500,25 @@ export async function getPublicFileMeta(fileName: string): Promise<PublicFileMet
   return readJson(r, 'Could not load file metadata')
 }
 
-function publicPreviewUrl(fileName: string, origin = window.location.origin): string {
+export function publicFileUrl(fileName: string, origin = window.location.origin): string {
   return `${origin}/${publicPathFromFileName(fileName)}`
 }
 
-export function publicFileUrl(fileName: string, origin = window.location.origin): string {
-  return publicPreviewUrl(fileName, origin)
+export function encodeFileToken(filename: string): string {
+  return btoa(filename).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+export function decodeFileToken(token: string): string {
+  try {
+    const b64 = token.replace(/-/g, '+').replace(/_/g, '/')
+    return atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
+  } catch {
+    return token
+  }
+}
+
+function publicPreviewUrl(fileName: string, origin = window.location.origin): string {
+  return `${origin}/file/${encodeFileToken(fileName)}/preview`
 }
 
 export function publicApiFileUrl(fileName: string): string {
