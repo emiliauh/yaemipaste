@@ -28,6 +28,7 @@ const error = ref('')
 const loading = ref(false)
 const passkeyLoading = ref(false)
 const rememberMe = ref(getRememberPreference())
+const showPassword = ref(false)
 const tokenUsed = ref(false)
 const turnstileContainer = ref<HTMLElement | null>(null)
 const turnstileToken = ref('')
@@ -204,7 +205,33 @@ async function loginWithPasskey() {
             </div>
             <div class="field">
               <label>Password</label>
-              <input v-model="password" type="password" autocomplete="current-password" placeholder="••••••••" required />
+              <div class="password-wrap">
+                <input
+                  v-model="password"
+                  :type="showPassword ? 'text' : 'password'"
+                  autocomplete="current-password"
+                  placeholder="••••••••"
+                  required
+                />
+                <button
+                  type="button"
+                  class="password-toggle"
+                  :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                  :title="showPassword ? 'Hide password' : 'Show password'"
+                  @click="showPassword = !showPassword"
+                >
+                  <svg v-if="showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M3 3l18 18"/>
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                    <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
+                    <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
+                  </svg>
+                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </template>
 
@@ -273,6 +300,30 @@ async function loginWithPasskey() {
 .field label { color: var(--text); font-size: 12px; }
 .field-hint { color: var(--text3); font-size: 11px; margin-top: -2px; }
 .field input { width: 100%; }
+.password-wrap {
+  position: relative;
+}
+.password-wrap input {
+  padding-right: 36px;
+}
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--text3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.password-toggle:hover {
+  color: var(--text);
+}
 .remember-toggle {
   display: inline-flex;
   align-items: center;

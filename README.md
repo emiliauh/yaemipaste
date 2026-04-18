@@ -21,6 +21,15 @@ This repository is public-facing and intended for independent deployments.
 
 ---
 
+## Recent operational notes
+
+- Public preview now avoids auto-preview/autodownload for non-previewable types (e.g. `.exe`), and shows a clear no-preview state.
+- History now shows a **Download** action for all files (encrypted files still decrypt client-side when applicable).
+- Login includes a password visibility toggle.
+- Playwright can run against production/staging using `PLAYWRIGHT_BASE_URL` and `PLAYWRIGHT_DISABLE_WEBSERVER=1`.
+
+---
+
 ## Documentation
 
 For the full reference — environment variables, feature behavior, and troubleshooting — start here:

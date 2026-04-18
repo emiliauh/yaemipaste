@@ -112,19 +112,33 @@ function canDownloadEncrypted(f: PasteFile): boolean {
   return !!stored && !stored.key.startsWith('pw:')
 }
 
-async function downloadEncrypted(f: PasteFile) {
+function triggerDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function getAuthToken(): string {
+  return localStorage.getItem('rp_token') ?? sessionStorage.getItem('rp_token') ?? ''
+}
+
+async function downloadFile(f: PasteFile) {
   const stored = getStoredEncryptedFile(f.file_name)
-  if (!stored || stored.key.startsWith('pw:')) return
   try {
-    const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`)
+    const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`, {
+      headers: { Authorization: getAuthToken() },
+    })
     if (!response.ok) throw new Error('Download failed')
-    const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
-    const url = URL.createObjectURL(decrypted.blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = decrypted.metadata.name
-    a.click()
-    URL.revokeObjectURL(url)
+    const payload = await response.blob()
+    if (canDownloadEncrypted(f) && stored) {
+      const decrypted = await decryptEncryptedBlob(payload, stored.key)
+      triggerDownload(decrypted.blob, decrypted.metadata.name)
+      return
+    }
+    triggerDownload(payload, f.file_name)
   } catch (e: any) {
     showToast(e.message ?? 'Download failed', 'error')
   }
@@ -300,11 +314,11 @@ onBeforeUnmount(() => {
             <td class="actions">
               <div class="action-row">
                 <button
-                  v-if="canDownloadEncrypted(f)"
                   class="btn-ghost"
                   style="padding:3px 8px;font-size:11px"
-                  title="Download decrypted file"
-                  @click.stop="downloadEncrypted(f)"
+                  :title="canDownloadEncrypted(f) ? 'Download decrypted file' : 'Download file'"
+                  aria-label="Download"
+                  @click.stop="downloadFile(f)"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>

@@ -635,6 +635,35 @@ test('public preview page shows metadata and download action', async ({ page }) 
   )
 })
 
+test('public preview falls back owner to logged-in username when uploader is unknown token user', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/meta/owner-fallback.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'owner-fallback.txt',
+        display_name: 'owner-fallback.txt',
+        uploader: 'Unknown (token user)',
+        upload_date_utc: '2026-04-17T01:00:00Z',
+        download_name: 'owner-fallback.txt',
+        file_size: 7,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+  await page.route('**/owner-fallback/file.txt?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: 'preview',
+    })
+  })
+
+  await page.goto('/#/preview?p=/owner-fallback/file.txt')
+  await expect(page.getByText('test-user')).toBeVisible()
+})
+
 test('upload preview download and delete work as one public-file flow', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
@@ -758,10 +787,40 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
   })
 
   await page.goto('/#/preview?p=/sharex-config/file.sxcu')
-  await expect(page.locator('iframe[title="File preview"]')).toBeVisible()
+  await expect(page.getByText('No preview available for this file type.')).toBeVisible()
   const openButton = page.getByRole('link', { name: 'Open in app' })
   await expect(openButton).toHaveAttribute('href', /download=true$/)
   await expect(openButton).toHaveAttribute('download', 'yaemipaste.sxcu')
+})
+
+test('executable preview does not auto-fetch raw content and shows no-preview state', async ({ page }) => {
+  let rawRequested = false
+  await page.route('**/api/meta/setup.exe', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'setup.exe',
+        display_name: 'setup.exe',
+        uploader: 'test-user',
+        upload_date_utc: '2026-04-17T01:00:00Z',
+        download_name: 'setup.exe',
+        file_size: 698_500,
+        mime_type: 'application/octet-stream',
+      }),
+    })
+  })
+  await page.route('**/setup/file.exe?raw=1', async (route) => {
+    rawRequested = true
+    await route.fulfill({ status: 200, contentType: 'application/octet-stream', body: 'MZ' })
+  })
+
+  await page.goto('/#/preview?p=/setup/file.exe')
+  await expect(page.getByText('No preview available for this file type.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Download file' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open in app' })).toHaveAttribute('href', /download=true$/)
+  await page.waitForTimeout(100)
+  expect(rawRequested).toBeFalsy()
 })
 
 test('direct short file URL boots into preview route', async ({ page }) => {
@@ -944,6 +1003,7 @@ test('long-press paste fills the text area on a mobile viewport', async ({ page 
 test('history actions and settings buttons work', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
+  let downloadRequested = false
 
   await page.route('**/api/list', async (route) => {
     await route.fulfill({
@@ -960,10 +1020,21 @@ test('history actions and settings buttons work', async ({ page }) => {
   await page.route('**/api/history-check.txt', async (route) => {
     await route.fulfill({ status: 200, body: '' })
   })
+  await page.route('**/api/history-check.txt?raw=1', async (route) => {
+    downloadRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: 'history payload',
+      headers: { 'content-disposition': 'attachment; filename=\"history-check.txt\"' },
+    })
+  })
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
   await expect(page.getByText('history-check.txt')).toBeVisible()
+  await page.getByRole('button', { name: 'Download' }).click()
+  await expect.poll(() => downloadRequested).toBeTruthy()
   await page.getByRole('button', { name: 'Copy' }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview/)
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
@@ -1199,6 +1270,16 @@ test('login page offers a passkey sign-in action', async ({ page }) => {
   await expect(page.getByTestId('passkey-login-btn')).toBeDisabled()
   await page.locator('input[autocomplete="username"]').fill('test-user')
   await expect(page.getByTestId('passkey-login-btn')).toBeEnabled()
+})
+
+test('login password field toggles visibility', async ({ page }) => {
+  await page.goto('/#/login')
+  const passwordField = page.locator('input[autocomplete="current-password"]')
+  await expect(passwordField).toHaveAttribute('type', 'password')
+  await page.getByRole('button', { name: 'Show password' }).click()
+  await expect(passwordField).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: 'Hide password' }).click()
+  await expect(passwordField).toHaveAttribute('type', 'password')
 })
 
 test('login remember me unchecked stores auth in session storage', async ({ page }) => {

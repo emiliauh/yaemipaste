@@ -287,16 +287,7 @@ export async function getShareXConfig(): Promise<Blob> {
     headers: { Authorization: `Bearer ${getJwt()}` },
   })
   if (!r.ok) throw new Error(await responseDetail(r, 'Failed to get ShareX config'))
-  let config: Record<string, unknown>
-  try {
-    config = await r.json() as Record<string, unknown>
-  } catch {
-    return r.blob()
-  }
-  // Transform upload response URL to use the new preview format via /view/ redirect
-  config.RegexList = ['https?://[^/\\n? ]+/([^\\n? /]+(?:/[^\\n? /]+)*)']
-  config.URL = `${window.location.origin}/view/$1`
-  return new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
+  return r.blob()
 }
 
 export function isShareXEnabled(): boolean {

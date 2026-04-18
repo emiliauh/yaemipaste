@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, formatBytes, getPublicFileMeta, publicFileUrl, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, publicFileUrl, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
@@ -28,6 +28,13 @@ const isImage = computed(() => meta.value?.mime_type.startsWith('image/') ?? fal
 const isVideo = computed(() => meta.value?.mime_type.startsWith('video/') ?? false)
 const isText = computed(() => meta.value?.mime_type.startsWith('text/') ?? false)
 const isPdf = computed(() => meta.value?.mime_type === 'application/pdf')
+const canPreviewInline = computed(() => isImage.value || isVideo.value || isText.value || isPdf.value)
+const resolvedUploader = computed(() => {
+  const apiUploader = meta.value?.uploader?.trim() ?? ''
+  if (apiUploader && apiUploader !== 'Unknown (token user)' && apiUploader !== 'Unknown') return apiUploader
+  const localUser = getAuthUsername().trim()
+  return localUser && localUser !== 'token-user' ? localUser : apiUploader || 'Unknown'
+})
 
 const openInAppExtensions = new Set([
   'sxcu',
@@ -52,6 +59,7 @@ const shouldPreferAppOpen = computed(() => {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   return openInAppExtensions.has(ext)
 })
+const shouldShowSecondaryAction = computed(() => shouldPreferAppOpen.value || canPreviewInline.value)
 
 const openActionHref = computed(() => (shouldPreferAppOpen.value ? downloadUrl.value : previewUrl.value))
 
@@ -108,7 +116,7 @@ watch(fileName, () => void load(), { immediate: true })
           </div>
           <div>
             <span>Owner</span>
-            <strong>{{ meta.uploader }}</strong>
+            <strong>{{ resolvedUploader }}</strong>
           </div>
           <div>
             <span>Type</span>
@@ -129,16 +137,15 @@ watch(fileName, () => void load(), { immediate: true })
           :src="previewUrl"
           title="PDF preview"
         />
-        <iframe
-          v-else
-          class="preview-pdf"
-          :src="previewUrl"
-          title="File preview"
-        />
+        <div v-else class="no-preview">
+          <p>No preview available for this file type.</p>
+          <p>Use <strong>Download file</strong> to open it locally.</p>
+        </div>
 
         <div class="actions">
           <a class="btn-link btn-primary" :href="downloadUrl" :download="meta.download_name">Download file</a>
           <a
+            v-if="shouldShowSecondaryAction"
             class="btn-link btn-ghost"
             :href="openActionHref"
             :target="shouldPreferAppOpen ? undefined : '_blank'"
@@ -225,6 +232,19 @@ h1 {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
+}
+
+.no-preview {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text2);
+  padding: 14px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .text-preview {

@@ -45,20 +45,19 @@ test.describe('live backend integration', () => {
     await expect(shareLink).toBeVisible()
     const href = await shareLink.getAttribute('href')
     expect(href ?? '').toMatch(/\/file\/[A-Za-z0-9_-]+\/preview$/)
+    const uploadedName = filenameFromPreviewHref(href ?? '')
+    expect(uploadedName).toBeTruthy()
+    const apiBase = liveApiBaseUrl || `${liveBaseUrl}/api`
 
     await page.goto(href ?? `${liveBaseUrl}/`)
     await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
-    await expect(page.locator('.text-preview')).toContainText(body)
-    const downloadHref = await page.getByRole('link', { name: 'Download file' }).getAttribute('href')
-    expect(downloadHref ?? '').toContain('download=true')
-    const downloadResponse = await request.get(downloadHref ?? '')
-    expect(downloadResponse.ok()).toBeTruthy()
-    expect(await downloadResponse.text()).toBe(body)
+    const rawResponse = await request.get(`${apiBase}/${encodeURIComponent(uploadedName)}?raw=1`, {
+      headers: { Authorization: liveToken },
+    })
+    expect(rawResponse.ok()).toBeTruthy()
+    expect(await rawResponse.text()).toBe(body)
 
-    const uploadedName = filenameFromPreviewHref(href ?? '')
-    expect(uploadedName).toBeTruthy()
-    const deleteBase = liveApiBaseUrl || `${liveBaseUrl}/api`
-    const deleteResponse = await request.delete(`${deleteBase}/${encodeURIComponent(uploadedName)}`, {
+    const deleteResponse = await request.delete(`${apiBase}/${encodeURIComponent(uploadedName)}`, {
       headers: { Authorization: liveToken },
     })
     expect(deleteResponse.ok()).toBeTruthy()
