@@ -177,7 +177,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
 
   await page.goto('/#/files')
   await expandExpiryIfCollapsed(page)
-  await page.getByTestId('encrypt-toggle').locator('input').check()
+  await page.getByTestId('encrypt-toggle').click()
   await page.getByTestId('expiry-trigger').click()
   await page.getByTestId('expiry-option-12h').click()
   await page.locator('input[type="file"]').setInputFiles({
@@ -188,7 +188,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
 
   await expect.poll(() => uploadExpiry).toBe('12h')
   const shareUrl = await page.evaluate(() => (navigator.clipboard as any).__written())
-  expect(shareUrl).toContain(`/index.html#/file?f=expiry-check.txt.rpenc&k=`)
+  expect(shareUrl).toMatch(/\/file\/[A-Za-z0-9_-]+\+[A-Za-z0-9_-]+\/preview$/)
 
   await page.route('**/api/expiry-check.txt.rpenc*', async (route) => {
     await route.fulfill({
@@ -209,7 +209,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByText(encryptedName)).toBeVisible()
+  await expect(page.getByText('expiry-check.txt')).toBeVisible()
 
   expired = true
   await page.reload()
@@ -240,7 +240,7 @@ test('upload shows progress and leaves a share link', async ({ page }) => {
   await expect(page.getByTestId('upload-progress')).toBeVisible()
   await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '100')
   await expect(page.getByText('Latest share link')).toBeVisible()
-  await expect(page.getByText(/\/progress-check\/file\.bin/)).toBeVisible()
+  await expect(page.getByText(/\/file\/[A-Za-z0-9_-]+\/preview/)).toBeVisible()
   await expect(page.getByTestId('upload-progress')).toBeHidden()
 })
 
@@ -265,8 +265,9 @@ test('upload accepts server short-path responses without surfacing an error', as
 
   await expect(page.getByTestId('notification-list')).toContainText('Uploaded & copied: server-id.txt')
   await expect(page.getByTestId('notification-list')).not.toContainText('Error')
-  await expect(page.getByTestId('share-row')).toContainText('/server-id/file.txt')
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/server-id/file.txt')
+  await expect(page.getByTestId('share-row')).toContainText('/file/')
+  await expect(page.getByTestId('share-row')).toContainText('/preview')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview/)
 })
 
 test('upload shows a clear error when API returns JSON instead of a file URL', async ({ page }) => {
@@ -314,7 +315,8 @@ test('upload success stays successful when clipboard copy is blocked', async ({ 
   await expect(page.getByTestId('notification-row')).toContainText('Success')
   await expect(page.getByTestId('notification-row')).toContainText('Uploaded: copy-blocked.txt. Copy the link below.')
   await expect(page.getByTestId('notification-row')).not.toContainText('Error')
-  await expect(page.getByTestId('share-row')).toContainText('/copy-blocked/file.txt')
+  await expect(page.getByTestId('share-row')).toContainText('/file/')
+  await expect(page.getByTestId('share-row')).toContainText('/preview')
 })
 
 test('mobile upload feedback stays inside the viewport and away from bottom controls', async ({ page }) => {
@@ -367,23 +369,18 @@ for (const viewport of [
   { name: 'tablet', width: 768, height: 1024 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
-  test(`encrypt checkbox stays square on ${viewport.name}`, async ({ page }) => {
+  test(`encrypt button cycles modes on ${viewport.name}`, async ({ page }) => {
     await signInWithToken(page)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto('/#/files')
-    const checkbox = page.getByTestId('encrypt-toggle').locator('input')
-    const style = await checkbox.evaluate((el) => {
-      const computed = getComputedStyle(el)
-      return {
-        width: computed.width,
-        height: computed.height,
-        borderRadius: computed.borderRadius,
-      }
-    })
     await expect(page.getByTestId('encrypt-toggle')).toContainText('encrypt?')
     await expect(page.getByTestId('keep-name-toggle')).toContainText('keep file name?')
-    expect(style.width).toBe(style.height)
-    expect(Number.parseFloat(style.borderRadius)).toBeLessThanOrEqual(3)
+    await page.getByTestId('encrypt-toggle').click()
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encrypt')
+    await page.getByTestId('encrypt-toggle').click()
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Password encrypt')
+    await page.getByTestId('encrypt-toggle').click()
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('encrypt?')
   })
 }
 
@@ -460,8 +457,8 @@ test('multi-file upload keeps encryption state per action and does not overwrite
   })
 
   await page.goto('/#/files')
-  const encryptToggle = page.getByTestId('encrypt-toggle').locator('input')
-  await encryptToggle.check()
+  const encryptToggle = page.getByTestId('encrypt-toggle')
+  await encryptToggle.click()
   await page.locator('input[type="file"]').setInputFiles([
     {
       name: 'alpha.txt',
@@ -474,7 +471,8 @@ test('multi-file upload keeps encryption state per action and does not overwrite
       buffer: Buffer.from('beta'),
     },
   ])
-  await encryptToggle.uncheck()
+  await encryptToggle.click()
+  await encryptToggle.click()
 
   await expect.poll(() => uploadedNames.length).toBe(2)
   expect(uploadedNames.every((name) => name.endsWith('.rpenc'))).toBeTruthy()
@@ -504,7 +502,7 @@ test('keep file name toggle randomizes encrypted URL while keeping original decr
   })
 
   await page.goto('/#/files')
-  await page.getByTestId('encrypt-toggle').locator('input').check()
+  await page.getByTestId('encrypt-toggle').click()
   await page.getByTestId('keep-name-toggle').locator('input').uncheck()
   await page.locator('input[type="file"]').setInputFiles({
     name: 'original-name.txt',
@@ -519,7 +517,7 @@ test('keep file name toggle randomizes encrypted URL while keeping original decr
   }
   expect(shareUrl).not.toBe('')
   expect(shareUrl).not.toContain('original-name')
-  expect(shareUrl).toContain('/index.html#/file?f=9q2f77m.rpenc&k=')
+  expect(shareUrl).toMatch(/\/file\/[A-Za-z0-9_-]+\+[A-Za-z0-9_-]+\/preview$/)
   await page.route('**/*.rpenc*', async (route) => {
     if (route.request().resourceType() === 'document') {
       await route.fallback()
@@ -551,7 +549,7 @@ test('encrypted decrypt success uses auto-clearing notification on mobile', asyn
   })
 
   await page.goto('/#/files')
-  await page.getByTestId('encrypt-toggle').locator('input').check()
+  await page.getByTestId('encrypt-toggle').click()
   await page.locator('input[type="file"]').setInputFiles({
     name: 'mobile-decrypt.txt',
     mimeType: 'text/plain',
@@ -709,12 +707,12 @@ test('upload preview download and delete work as one public-file flow', async ({
   })
 
   const shareLink = page.getByTestId('share-row').locator('a').first()
-  await expect(shareLink).toHaveText(/\/flow-e2e\/file\.txt$/)
+  await expect(shareLink).toHaveText(/\/file\/[A-Za-z0-9_-]+\/preview/)
   const href = await shareLink.getAttribute('href')
-  expect(href).toBe('http://127.0.0.1:5173/flow-e2e/file.txt')
+  expect(href).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview$/)
 
   await page.goto(href ?? '/')
-  await expect(page).toHaveURL(/#\/preview\?p=/)
+  await expect(page).toHaveURL(/\/file\/[A-Za-z0-9_-]+\/preview/)
   await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
   await expect(page.locator('.text-preview')).toContainText(body)
 
@@ -791,7 +789,7 @@ test('direct short file URL boots into preview route', async ({ page }) => {
   })
 
   await page.goto('/redirect-check/file.txt')
-  await expect(page).toHaveURL(/#\/preview\?p=/)
+  await expect(page).toHaveURL(/\/file\/[A-Za-z0-9_-]+\/preview/)
   await expect(page.getByText('redirect-check.txt')).toBeVisible()
   await expect(page.locator('.text-preview')).toContainText('preview')
 })
@@ -824,7 +822,7 @@ test('single-segment file URL boots into preview route for images', async ({ pag
   })
 
   await page.goto('/png-check.png')
-  await expect(page).toHaveURL(/#\/preview\?p=/)
+  await expect(page).toHaveURL(/\/file\/[A-Za-z0-9_-]+\/preview/)
   await expect(page.getByText('png-check.png')).toBeVisible()
   await expect(page.locator('.preview-frame img')).toBeVisible()
 })
@@ -967,7 +965,7 @@ test('history actions and settings buttons work', async ({ page }) => {
   await page.getByRole('button', { name: 'History' }).click()
   await expect(page.getByText('history-check.txt')).toBeVisible()
   await page.getByRole('button', { name: 'Copy' }).click()
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/history-check/file.txt')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview/)
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page.locator('.modal-backdrop')).toHaveCount(0)
   await expect(page.getByText('history-check.txt')).toBeHidden()
@@ -1140,7 +1138,7 @@ for (const viewport of [
     }
 
     await page.getByRole('button', { name: 'Logout' }).click()
-    await expect(page).toHaveURL(/#\/login$/)
+    await expect(page).toHaveURL(/\/login$/)
   })
 }
 
@@ -1225,7 +1223,7 @@ test('login remember me unchecked stores auth in session storage', async ({ page
   await page.getByLabel('remember me').uncheck()
   await page.getByRole('button', { name: 'Login' }).click()
 
-  await expect(page).toHaveURL(/#\/files$/)
+  await expect(page).toHaveURL(/\/files$/)
   await expect.poll(() => page.evaluate(() => ({
     localToken: localStorage.getItem('rp_token'),
     sessionToken: sessionStorage.getItem('rp_token'),

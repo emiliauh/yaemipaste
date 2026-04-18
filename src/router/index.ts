@@ -33,6 +33,13 @@ const router = createRouter({
     { path: '/file/:filekey/preview', component: () => import('../views/FileView.vue') },
     { path: '/file/:filekey/raw', component: () => import('../views/RawRedirectView.vue') },
     {
+      path: '/view/:filename',
+      redirect: (to) => {
+        const filename = String(to.params.filename)
+        return `/file/${encodeFileToken(filename)}/preview`
+      },
+    },
+    {
       path: '/files',
       component: () => import('../views/DashboardView.vue'),
       meta: { requiresAuth: true },
@@ -46,6 +53,17 @@ const router = createRouter({
         const filename = rawFileNameFromPublicPath(`${id}/${tail}`)
         if (filename) return `/file/${encodeFileToken(filename)}/preview`
         return '/files'
+      },
+    },
+    // backward compat: single-segment filenames like /name.ext
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: (to) => {
+        const seg = (to.params.pathMatch as string[]).join('/')
+        if (seg && seg.includes('.') && !seg.includes('/')) {
+          return `/file/${encodeFileToken(seg)}/preview`
+        }
+        return isLoggedIn() ? '/files' : '/login'
       },
     },
   ],

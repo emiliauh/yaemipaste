@@ -108,7 +108,11 @@ function isSafeStorageKey(fileName: string): boolean {
 function normalizeStoredKey(value: unknown, fallbackName: string): StoredKey | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const candidate = value as Partial<StoredKey>
-  if (typeof candidate.key !== 'string' || !BASE64URL_RE.test(candidate.key)) return null
+  if (typeof candidate.key !== 'string') return null
+  // allow base64url key OR 'pw:{base64url_salt}' for password-encrypted files
+  const isPwKey = candidate.key.startsWith('pw:')
+  const keyPayload = isPwKey ? candidate.key.slice(3) : candidate.key
+  if (!BASE64URL_RE.test(keyPayload)) return null
   if (typeof candidate.origin !== 'string') return null
   const type = typeof candidate.type === 'string' && candidate.type.trim()
     ? candidate.type
@@ -194,7 +198,7 @@ export async function encryptFile(file: File, uploader: string): Promise<Encrypt
   }
 }
 
-export async function decryptEncryptedBlob(blob: Blob, rawKey: string): Promise<DecryptionResult> {
+async function decryptBlobWithKey(blob: Blob, key: CryptoKey): Promise<DecryptionResult> {
   const payload = new Uint8Array(await blob.arrayBuffer())
   if (!hasMagicBytes(payload)) {
     throw new Error('This file is not a rustypaste encrypted file')
@@ -218,12 +222,16 @@ export async function decryptEncryptedBlob(blob: Blob, rawKey: string): Promise<
   }
   const ciphertext = payload.subarray(headerOffset + headerLength)
   if (!ciphertext.byteLength) throw new Error('Encrypted payload is empty')
-  const key = await importAesKey(rawKey)
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: bytesToArrayBuffer(base64UrlToBytes(header.iv)) },
-    key,
-    bytesToArrayBuffer(ciphertext),
-  )
+  let plaintext: ArrayBuffer
+  try {
+    plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: bytesToArrayBuffer(base64UrlToBytes(header.iv)) },
+      key,
+      bytesToArrayBuffer(ciphertext),
+    )
+  } catch {
+    throw new Error('Decryption failed. The key or password is incorrect.')
+  }
   const metadata = {
     name: header.name,
     type: header.type,
@@ -236,6 +244,69 @@ export async function decryptEncryptedBlob(blob: Blob, rawKey: string): Promise<
     blob: new Blob([plaintext], { type: metadata.type }),
     metadata,
   }
+}
+
+export async function decryptEncryptedBlob(blob: Blob, rawKey: string): Promise<DecryptionResult> {
+  const key = await importAesKey(rawKey)
+  return decryptBlobWithKey(blob, key)
+}
+
+async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  )
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: bytesToArrayBuffer(salt), iterations: 200_000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  )
+}
+
+export interface PasswordEncryptionResult {
+  blob: Blob
+  salt: string
+  metadata: EncryptedMetadata
+}
+
+export async function encryptFileWithPassword(file: File, password: string, uploader: string): Promise<PasswordEncryptionResult> {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const saltStr = bytesToBase64Url(salt)
+  const key = await deriveKeyFromPassword(password, salt)
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const metadata: EncryptedMetadata = {
+    name: file.name,
+    type: file.type || 'application/octet-stream',
+    size: file.size,
+    createdAt: new Date().toISOString(),
+    uploader,
+  }
+  const header: EncryptedHeader = {
+    v: 1,
+    alg: 'AES-GCM',
+    iv: bytesToBase64Url(iv),
+    ...metadata,
+  }
+  const headerBytes = new TextEncoder().encode(JSON.stringify(header))
+  const headerLength = new Uint8Array(4)
+  new DataView(headerLength.buffer).setUint32(0, headerBytes.byteLength)
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, await file.arrayBuffer())
+  return {
+    blob: new Blob([MAGIC_BYTES, headerLength, headerBytes, ciphertext], { type: 'application/octet-stream' }),
+    salt: saltStr,
+    metadata,
+  }
+}
+
+export async function decryptBlobWithPassword(blob: Blob, password: string, salt: string): Promise<DecryptionResult> {
+  const saltBytes = base64UrlToBytes(salt)
+  const key = await deriveKeyFromPassword(password, saltBytes)
+  return decryptBlobWithKey(blob, key)
 }
 
 export async function isRustypasteEncryptedBlob(blob: Blob): Promise<boolean> {
@@ -266,6 +337,11 @@ export function encryptedShareUrl(fileName: string, key: string, origin = window
   // imported lazily to avoid circular dep — inline the same base64url encoding
   const token = btoa(fileName).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
   return `${origin}/file/${token}+${key}/preview`
+}
+
+export function passwordEncryptedShareUrl(fileName: string, salt: string, origin = window.location.origin): string {
+  const token = btoa(fileName).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  return `${origin}/file/${token}+pw:${salt}/preview`
 }
 
 export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {

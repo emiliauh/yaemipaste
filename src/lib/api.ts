@@ -1,12 +1,15 @@
 import {
   encryptedShareUrl,
   encryptFile,
+  encryptFileWithPassword,
   forgetEncryptedFile,
   getStoredEncryptedFile,
   originFromUrl,
+  passwordEncryptedShareUrl,
   publicPathFromFileName,
   rawFileNameFromPublicPath,
   rememberEncryptedFile,
+  type EncryptedMetadata,
 } from './e2ee'
 
 const DEFAULT_PASTE_API = normalizeApiBase(import.meta.env.VITE_PASTE_API ?? '/api')
@@ -284,7 +287,16 @@ export async function getShareXConfig(): Promise<Blob> {
     headers: { Authorization: `Bearer ${getJwt()}` },
   })
   if (!r.ok) throw new Error(await responseDetail(r, 'Failed to get ShareX config'))
-  return r.blob()
+  let config: Record<string, unknown>
+  try {
+    config = await r.json() as Record<string, unknown>
+  } catch {
+    return r.blob()
+  }
+  // Transform upload response URL to use the new preview format via /view/ redirect
+  config.RegexList = ['https?://[^/\\n? ]+/([^\\n? /]+(?:/[^\\n? /]+)*)']
+  config.URL = `${window.location.origin}/view/$1`
+  return new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
 }
 
 export function isShareXEnabled(): boolean {
@@ -328,6 +340,7 @@ function pasteUploadUrl(): string {
 export interface UploadOptions {
   expiry?: string
   encrypt?: boolean
+  password?: string
   keepFileName?: boolean
   onProgress?: (progress: UploadProgress) => void
 }
@@ -406,14 +419,23 @@ function extractUploadTarget(responseText: string): string {
 
 export async function uploadFile(file: File, options: UploadOptions = {}): Promise<string> {
   const shouldEncrypt = options.encrypt ?? false
+  const password = options.password?.trim() ?? ''
+  const shouldEncryptWithPassword = !!password
+  const isAnyEncrypt = shouldEncrypt || shouldEncryptWithPassword
   const shouldKeepFileName = options.keepFileName ?? true
   const expiry = options.expiry
   const onProgress = options.onProgress
   let uploadFileValue = file
   let encryptedKey: string | null = null
-  let encryptedMetadata: Awaited<ReturnType<typeof encryptFile>>['metadata'] | null = null
-  onProgress?.({ phase: shouldEncrypt ? 'encrypting' : 'uploading', percent: shouldEncrypt ? 0 : 1 })
-  if (shouldEncrypt) {
+  let encryptedSalt: string | null = null
+  let encryptedMetadata: EncryptedMetadata | null = null
+  onProgress?.({ phase: isAnyEncrypt ? 'encrypting' : 'uploading', percent: isAnyEncrypt ? 0 : 1 })
+  if (shouldEncryptWithPassword) {
+    const encrypted = await encryptFileWithPassword(file, password, uploaderIdentity())
+    uploadFileValue = new File([encrypted.blob], `${file.name}.rpenc`, { type: 'application/octet-stream' })
+    encryptedSalt = encrypted.salt
+    encryptedMetadata = encrypted.metadata
+  } else if (shouldEncrypt) {
     const encrypted = await encryptFile(file, uploaderIdentity())
     uploadFileValue = new File([encrypted.blob], `${file.name}.rpenc`, { type: 'application/octet-stream' })
     encryptedKey = encrypted.key
@@ -435,13 +457,16 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
     throw new Error('Upload endpoint returned an invalid file URL')
   }
   const origin = originFromUrl(uploadTarget)
-  if (shouldEncrypt && encryptedKey && encryptedMetadata) {
+  if (encryptedSalt && encryptedMetadata) {
+    rememberEncryptedFile(fileName, `pw:${encryptedSalt}`, encryptedMetadata, origin)
+  } else if (encryptedKey && encryptedMetadata) {
     rememberEncryptedFile(fileName, encryptedKey, encryptedMetadata, origin)
   } else {
     forgetEncryptedFile(fileName)
   }
   onProgress?.({ phase: 'complete', percent: 100 })
-  if (shouldEncrypt && encryptedKey) return encryptedShareUrl(fileName, encryptedKey, origin)
+  if (encryptedSalt) return passwordEncryptedShareUrl(fileName, encryptedSalt, origin)
+  if (encryptedKey) return encryptedShareUrl(fileName, encryptedKey, origin)
   return publicPreviewUrl(fileName, origin)
 }
 

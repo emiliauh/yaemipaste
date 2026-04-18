@@ -103,9 +103,36 @@ function clearPreviewObjectUrl(state: PreviewState | null) {
   if (state?.url.startsWith('blob:')) URL.revokeObjectURL(state.url)
 }
 
+function isPasswordEncryptedFile(f: PasteFile): boolean {
+  return getStoredEncryptedFile(f.file_name)?.key.startsWith('pw:') ?? false
+}
+
+function canDownloadEncrypted(f: PasteFile): boolean {
+  const stored = getStoredEncryptedFile(f.file_name)
+  return !!stored && !stored.key.startsWith('pw:')
+}
+
+async function downloadEncrypted(f: PasteFile) {
+  const stored = getStoredEncryptedFile(f.file_name)
+  if (!stored || stored.key.startsWith('pw:')) return
+  try {
+    const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`)
+    if (!response.ok) throw new Error('Download failed')
+    const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
+    const url = URL.createObjectURL(decrypted.blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = decrypted.metadata.name
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    showToast(e.message ?? 'Download failed', 'error')
+  }
+}
+
 async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
   const stored = getStoredEncryptedFile(f.file_name)
-  if (!stored) {
+  if (!stored || stored.key.startsWith('pw:')) {
     return {
       file: f,
       url: `${publicFileUrl(f.file_name)}?raw=1`,
@@ -261,13 +288,30 @@ onBeforeUnmount(() => {
                   <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
                   <polyline points="13 2 13 9 20 9"/>
                 </svg>
-                {{ f.file_name }}
+                <svg v-if="getStoredEncryptedFile(f.file_name)" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="lock-icon" :title="isPasswordEncryptedFile(f) ? 'Password-encrypted' : 'Encrypted'">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                {{ previewName(f) }}
               </span>
             </td>
             <td class="size">{{ formatBytes(f.file_size) }}</td>
             <td class="expiry">{{ f.expires_at ?? 'Never' }}</td>
             <td class="actions">
               <div class="action-row">
+                <button
+                  v-if="canDownloadEncrypted(f)"
+                  class="btn-ghost"
+                  style="padding:3px 8px;font-size:11px"
+                  title="Download decrypted file"
+                  @click.stop="downloadEncrypted(f)"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                </button>
                 <button class="btn-orange" style="padding:3px 10px;font-size:11px" @click.stop="copy(f)">Copy</button>
                 <button
                   class="btn-red"
@@ -317,7 +361,8 @@ onBeforeUnmount(() => {
 .table-wrap { overflow-x: auto; }
 .sort-arrow { color: var(--text3); font-size: 10px; margin-left: 2px; }
 .state-msg { color: var(--text2); font-size: 12px; padding: 20px 0; text-align: center; }
-.filename { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.filename { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.lock-icon { color: var(--accent); flex-shrink: 0; }
 @media (hover: hover) and (pointer: fine) {
   .filename:hover { color: var(--accent); }
 }

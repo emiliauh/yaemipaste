@@ -144,6 +144,7 @@ async function submit() {
     router.push('/files')
   } catch (e: any) {
     setError(e.message ?? 'Login failed')
+    resetTurnstileToken()
   } finally {
     loading.value = false
   }

@@ -18,13 +18,20 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const longPressing = ref(false)
 const shareLinks = ref<Array<{ id: number; name: string; url: string }>>([])
 const uploadProgress = ref<UploadProgress | null>(null)
-const strongEncrypt = ref(false)
+const encryptMode = ref<'none' | 'encrypt' | 'password'>('none')
+const encryptPassword = ref('')
 let shareLinkId = 0
 const notificationStore = useNotificationStore()
 
 watch(keepFileName, (value) => {
   localStorage.setItem(KEEP_NAME_KEY, value ? '1' : '0')
 })
+
+function cycleEncrypt() {
+  if (encryptMode.value === 'none') encryptMode.value = 'encrypt'
+  else if (encryptMode.value === 'encrypt') encryptMode.value = 'password'
+  else { encryptMode.value = 'none'; encryptPassword.value = '' }
+}
 
 function setProgress(progress: UploadProgress) {
   uploadProgress.value = progress
@@ -64,23 +71,30 @@ async function handleFiles(files: FileList | File[]) {
     showToast('Upload already in progress', 'error')
     return
   }
+  if (encryptMode.value === 'password' && !encryptPassword.value.trim()) {
+    showToast('Enter a password before uploading', 'error')
+    return
+  }
   loading.value = true
-  const shouldEncrypt = strongEncrypt.value
+  const mode = encryptMode.value
+  const pw = encryptPassword.value.trim()
   const shouldKeepFileName = keepFileName.value
   const selectedExpiry = expiry.value === 'never' ? undefined : expiry.value
   const arr = Array.from(files)
   for (const f of arr) {
     try {
-      uploadProgress.value = { phase: shouldEncrypt ? 'encrypting' : 'uploading', percent: shouldEncrypt ? 0 : 1 }
+      uploadProgress.value = { phase: mode !== 'none' ? 'encrypting' : 'uploading', percent: mode !== 'none' ? 0 : 1 }
       const url = (await uploadFile(f, {
         expiry: selectedExpiry,
-        encrypt: shouldEncrypt,
+        encrypt: mode === 'encrypt',
+        password: mode === 'password' ? pw : undefined,
         keepFileName: shouldKeepFileName,
         onProgress: setProgress,
       })).trim()
       pushShareLink(f.name, url)
-      if (await copyShareUrl(url)) showToast(`${shouldEncrypt ? 'Encrypted' : 'Uploaded'} & copied: ${f.name}`)
-      else showToast(`${shouldEncrypt ? 'Encrypted' : 'Uploaded'}: ${f.name}. Copy the link below.`)
+      const label = mode === 'password' ? 'Password-encrypted' : mode === 'encrypt' ? 'Encrypted' : 'Uploaded'
+      if (await copyShareUrl(url)) showToast(`${label} & copied: ${f.name}`)
+      else showToast(`${label}: ${f.name}. Copy the link below.`)
     } catch (e: any) {
       showToast(e.message ?? 'Upload failed', 'error')
     }
@@ -110,21 +124,28 @@ async function submitText() {
     showToast('Upload already in progress', 'error')
     return
   }
+  if (encryptMode.value === 'password' && !encryptPassword.value.trim()) {
+    showToast('Enter a password before uploading', 'error')
+    return
+  }
   loading.value = true
-  const shouldEncrypt = strongEncrypt.value
+  const mode = encryptMode.value
+  const pw = encryptPassword.value.trim()
   const shouldKeepFileName = keepFileName.value
   const selectedExpiry = expiry.value === 'never' ? undefined : expiry.value
   try {
-    uploadProgress.value = { phase: shouldEncrypt ? 'encrypting' : 'uploading', percent: shouldEncrypt ? 0 : 1 }
+    uploadProgress.value = { phase: mode !== 'none' ? 'encrypting' : 'uploading', percent: mode !== 'none' ? 0 : 1 }
     const url = (await uploadText(textPaste.value, {
       expiry: selectedExpiry,
-      encrypt: shouldEncrypt,
+      encrypt: mode === 'encrypt',
+      password: mode === 'password' ? pw : undefined,
       keepFileName: shouldKeepFileName,
       onProgress: setProgress,
     })).trim()
     pushShareLink('paste.txt', url)
-    if (await copyShareUrl(url)) showToast(`Text ${shouldEncrypt ? 'encrypted' : 'uploaded'} & copied`)
-    else showToast(`Text ${shouldEncrypt ? 'encrypted' : 'uploaded'}. Copy the link below.`)
+    const label = mode === 'password' ? 'password-encrypted' : mode === 'encrypt' ? 'encrypted' : 'uploaded'
+    if (await copyShareUrl(url)) showToast(`Text ${label} & copied`)
+    else showToast(`Text ${label}. Copy the link below.`)
     textPaste.value = ''
   } catch (e: any) {
     showToast(e.message ?? 'Upload failed', 'error')
@@ -184,14 +205,37 @@ function onPasteAreaLongPressCancel() {
       </svg>
       <div>
         <div class="security-title">Upload security</div>
-        <div class="security-copy">{{ strongEncrypt ? 'Strong mode: encrypted in your browser before upload.' : 'Default mode: fast upload with clean short links.' }}</div>
+        <div class="security-copy">
+          <template v-if="encryptMode === 'password'">Password mode: only someone with the password can view this file.</template>
+          <template v-else-if="encryptMode === 'encrypt'">Strong mode: encrypted in your browser before upload.</template>
+          <template v-else>Default mode: fast upload with clean short links.</template>
+        </div>
       </div>
     </div>
     <div class="upload-options">
-      <label class="encrypt-toggle" data-testid="encrypt-toggle">
-        <input v-model="strongEncrypt" type="checkbox" />
-        <span>encrypt?</span>
-      </label>
+      <button
+        type="button"
+        class="encrypt-toggle encrypt-btn"
+        :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
+        data-testid="encrypt-toggle"
+        @click="cycleEncrypt"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>{{ encryptMode === 'none' ? 'encrypt?' : encryptMode === 'encrypt' ? 'Encrypt' : 'Password encrypt' }}</span>
+      </button>
+      <Transition name="pw-field">
+        <input
+          v-if="encryptMode === 'password'"
+          v-model="encryptPassword"
+          type="password"
+          class="pw-input"
+          placeholder="set password…"
+          autocomplete="new-password"
+        />
+      </Transition>
       <label class="encrypt-toggle" data-testid="keep-name-toggle">
         <input v-model="keepFileName" type="checkbox" />
         <span>keep file name?</span>
@@ -325,6 +369,21 @@ function onPasteAreaLongPressCancel() {
   font-size: 12px;
   width: fit-content;
 }
+.encrypt-btn {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.encrypt-btn:hover { border-color: var(--text3); }
+.encrypt-btn.active-encrypt {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--checked-bg);
+}
+.encrypt-btn.active-password {
+  border-color: var(--orange-h, #f0963a);
+  color: var(--orange-h, #f0963a);
+  background: color-mix(in srgb, var(--orange-h, #f0963a) 10%, transparent);
+}
 .encrypt-toggle input {
   appearance: none;
   width: 16px;
@@ -347,6 +406,22 @@ function onPasteAreaLongPressCancel() {
   inset: 2px;
   background: var(--accent);
   border-radius: 1px;
+}
+.pw-input {
+  width: 140px;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.pw-field-enter-active,
+.pw-field-leave-active {
+  transition: opacity 0.18s ease, max-width 0.22s ease;
+  overflow: hidden;
+  max-width: 160px;
+}
+.pw-field-enter-from,
+.pw-field-leave-to {
+  opacity: 0;
+  max-width: 0;
 }
 .share-result {
   border: 1px solid var(--border);
