@@ -97,7 +97,7 @@ test('production: password encryption upload + preview + history thumbnail', asy
   else await expect(page.locator('img')).toBeVisible()
   await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute(
     'href',
-    /https:\/\/paste\.yaemi\.one\/.+\?raw=1$/,
+    /https:\/\/papi\.yaemi\.one\/.+\?raw=1$/,
   )
 
   await page.goto('/#/files')

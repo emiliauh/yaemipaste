@@ -616,7 +616,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
       }),
     })
   })
-  await page.route('**/preview-check/file.txt?raw=1', async (route) => {
+  await page.route('**/api/preview-check.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -631,7 +631,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
   await expect(page.getByText('preview content')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Download file' })).toHaveAttribute(
     'href',
-    /\/preview-check\/file\.txt\?download=true$/,
+    /\/api\/preview-check\.txt\?download=true$/,
   )
 })
 
@@ -652,7 +652,7 @@ test('public preview falls back owner to logged-in username when uploader is unk
       }),
     })
   })
-  await page.route('**/owner-fallback/file.txt?raw=1', async (route) => {
+  await page.route('**/api/owner-fallback.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -699,10 +699,10 @@ test('upload preview download and delete work as one public-file flow', async ({
       }),
     })
   })
-  await page.route('**/flow-e2e/file.txt?raw=1', async (route) => {
+  await page.route('**/api/flow-e2e.txt?raw=1', async (route) => {
     await route.fulfill({ status: deleted ? 404 : 200, contentType: 'text/plain', body: deleted ? 'not found' : body })
   })
-  await page.route('**/flow-e2e/file.txt?download=true', async (route) => {
+  await page.route('**/api/flow-e2e.txt?download=true', async (route) => {
     await route.fulfill({
       status: deleted ? 404 : 200,
       contentType: 'text/plain',
@@ -778,7 +778,7 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
       }),
     })
   })
-  await page.route('**/sharex-config/file.sxcu?raw=1', async (route) => {
+  await page.route('**/api/sharex-config.sxcu?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -810,7 +810,7 @@ test('executable preview does not auto-fetch raw content and shows no-preview st
       }),
     })
   })
-  await page.route('**/setup/file.exe?raw=1', async (route) => {
+  await page.route('**/api/setup.exe?raw=1', async (route) => {
     rawRequested = true
     await route.fulfill({ status: 200, contentType: 'application/octet-stream', body: 'MZ' })
   })
@@ -839,7 +839,7 @@ test('direct short file URL boots into preview route', async ({ page }) => {
       }),
     })
   })
-  await page.route('**/redirect-check/file.txt?raw=1', async (route) => {
+  await page.route('**/api/redirect-check.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -869,7 +869,7 @@ test('single-segment file URL boots into preview route for images', async ({ pag
       }),
     })
   })
-  await page.route('**/png-check/file.png?raw=1', async (route) => {
+  await page.route('**/api/png-check.png?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -1033,7 +1033,7 @@ test('history actions and settings buttons work', async ({ page }) => {
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
   await expect(page.getByText('history-check.txt')).toBeVisible()
-  await page.getByRole('button', { name: 'Download' }).click()
+  await page.getByRole('button', { name: 'Download', exact: true }).click()
   await expect.poll(() => downloadRequested).toBeTruthy()
   await page.getByRole('button', { name: 'Copy' }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview/)
@@ -1051,6 +1051,94 @@ test('history actions and settings buttons work', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.locator('.settings-panel')).toBeHidden()
+})
+
+test('history supports multi-select delete selected', async ({ page }) => {
+  await signInWithToken(page)
+  const deleted = new Set<string>()
+  page.on('dialog', (dialog) => dialog.accept())
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          file_name: 'bulk-delete-a.txt',
+          file_size: 12,
+          creation_date_utc: '2026-04-17T01:00:00Z',
+          expires_at_utc: null,
+        },
+        {
+          file_name: 'bulk-delete-b.txt',
+          file_size: 16,
+          creation_date_utc: '2026-04-17T01:00:00Z',
+          expires_at_utc: null,
+        },
+      ]),
+    })
+  })
+  await page.route('**/api/bulk-delete-*.txt', async (route) => {
+    deleted.add(route.request().url().split('/').pop() ?? '')
+    await route.fulfill({ status: 204, body: '' })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByLabel('Select bulk-delete-a.txt').check()
+  await page.getByLabel('Select bulk-delete-b.txt').check()
+  await page.getByRole('button', { name: 'Actions' }).click()
+  await page.getByRole('button', { name: 'Delete Selected' }).click()
+
+  await expect.poll(() => deleted.size).toBe(2)
+  await expect(page.getByText('bulk-delete-a.txt')).toBeHidden()
+  await expect(page.getByText('bulk-delete-b.txt')).toBeHidden()
+})
+
+test('history downloads selected files as a zip archive', async ({ page }) => {
+  await signInWithToken(page)
+  let firstRaw = false
+  let secondRaw = false
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          file_name: 'bulk-dl-a.txt',
+          file_size: 12,
+          creation_date_utc: '2026-04-17T01:00:00Z',
+          expires_at_utc: null,
+        },
+        {
+          file_name: 'bulk-dl-b.txt',
+          file_size: 16,
+          creation_date_utc: '2026-04-17T01:00:00Z',
+          expires_at_utc: null,
+        },
+      ]),
+    })
+  })
+  await page.route('**/api/bulk-dl-a.txt?raw=1', async (route) => {
+    firstRaw = true
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: 'bulk-a' })
+  })
+  await page.route('**/api/bulk-dl-b.txt?raw=1', async (route) => {
+    secondRaw = true
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: 'bulk-b' })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByLabel('Select all files').check()
+  await page.getByRole('button', { name: 'Actions' }).click()
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download Selected' }).click()
+  const download = await downloadPromise
+
+  expect(download.suggestedFilename()).toMatch(/^yaemipaste-history-\d+\.zip$/)
+  await expect.poll(() => firstRaw && secondRaw).toBeTruthy()
 })
 
 test('settings shows passkey controls and branding copy', async ({ page }) => {

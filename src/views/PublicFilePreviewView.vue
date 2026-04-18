@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, publicFileUrl, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, publicApiFileUrl, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
@@ -21,9 +21,8 @@ const fileName = computed(() => {
   return String(route.query.f ?? '').replace(/^\/+/, '')
 })
 
-const publicUrl = computed(() => (fileName.value ? publicFileUrl(fileName.value) : ''))
-const previewUrl = computed(() => (publicUrl.value ? `${publicUrl.value}?raw=1` : ''))
-const downloadUrl = computed(() => (publicUrl.value ? `${publicUrl.value}?download=true` : ''))
+const rawUrl = computed(() => (fileName.value ? `${publicApiFileUrl(fileName.value)}?raw=1` : ''))
+const downloadUrl = computed(() => (fileName.value ? `${publicApiFileUrl(fileName.value)}?download=true` : ''))
 const isImage = computed(() => meta.value?.mime_type.startsWith('image/') ?? false)
 const isVideo = computed(() => meta.value?.mime_type.startsWith('video/') ?? false)
 const isText = computed(() => meta.value?.mime_type.startsWith('text/') ?? false)
@@ -61,13 +60,21 @@ const shouldPreferAppOpen = computed(() => {
 })
 const shouldShowSecondaryAction = computed(() => shouldPreferAppOpen.value || canPreviewInline.value)
 
-const openActionHref = computed(() => (shouldPreferAppOpen.value ? downloadUrl.value : previewUrl.value))
+const openActionHref = computed(() => (shouldPreferAppOpen.value ? downloadUrl.value : rawUrl.value))
 
 async function loadTextPreview() {
   textPreview.value = ''
-  if (!isText.value || !previewUrl.value) return
-  const response = await fetch(previewUrl.value, { cache: 'no-store' })
-  if (!response.ok) throw new Error('Could not load text preview')
+  if (!isText.value || !rawUrl.value) return
+  const response = await fetch(rawUrl.value, { cache: 'no-store' })
+  if (!response.ok) {
+    console.error('Text preview fetch failed', {
+      fileName: fileName.value,
+      url: rawUrl.value,
+      status: response.status,
+      statusText: response.statusText,
+    })
+    throw new Error('Could not load text preview')
+  }
   const payload = await response.text()
   textPreview.value = payload.length > 32_000 ? `${payload.slice(0, 32_000)}\n\n…` : payload
 }
@@ -125,16 +132,16 @@ watch(fileName, () => void load(), { immediate: true })
         </div>
 
         <div v-if="isImage" class="preview-frame">
-          <img :src="previewUrl" :alt="meta.display_name" />
+          <img :src="rawUrl" :alt="meta.display_name" />
         </div>
         <div v-else-if="isVideo" class="preview-frame">
-          <video :src="previewUrl" controls />
+          <video :src="rawUrl" controls />
         </div>
         <pre v-else-if="isText" class="text-preview">{{ textPreview }}</pre>
         <iframe
           v-else-if="isPdf"
           class="preview-pdf"
-          :src="previewUrl"
+          :src="rawUrl"
           title="PDF preview"
         />
         <div v-else class="no-preview">

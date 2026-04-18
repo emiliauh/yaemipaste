@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { zipSync } from 'fflate'
 import { listFiles, deleteFile, formatBytes, publicApiFileUrl, publicFileUrl, shareUrl, type PasteFile } from '../lib/api'
 import { decryptEncryptedBlob, getStoredEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
@@ -24,6 +25,10 @@ const sortDir = ref<1 | -1>(1)
 const preview = ref<PreviewState | null>(null)
 const hoverPreview = ref<PreviewState | null>(null)
 const deleting = ref<Set<string>>(new Set())
+const selectedFiles = ref<Set<string>>(new Set())
+const actionsOpen = ref(false)
+const bulkDeleting = ref(false)
+const bulkDownloading = ref(false)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const notificationStore = useNotificationStore()
 let hoverToken = 0
@@ -37,6 +42,8 @@ async function load() {
   error.value = ''
   try {
     files.value = await listFiles()
+    const knownNames = new Set(files.value.map((file) => file.file_name))
+    selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
   } catch (e: any) {
     error.value = e.message
   } finally {
@@ -78,6 +85,7 @@ async function del(f: PasteFile) {
   try {
     await deleteFile(f.file_name)
     files.value = files.value.filter((x) => x.file_name !== f.file_name)
+    selectedFiles.value.delete(f.file_name)
     showToast(`Deleted ${f.file_name}`)
   } catch (e: any) {
     showToast(e.message ?? 'Delete failed', 'error')
@@ -123,6 +131,114 @@ function triggerDownload(blob: Blob, fileName: string) {
 
 function getAuthToken(): string {
   return localStorage.getItem('rp_token') ?? sessionStorage.getItem('rp_token') ?? ''
+}
+
+const selectedInView = computed(() => filtered.value.filter((file) => selectedFiles.value.has(file.file_name)))
+const selectedCount = computed(() => selectedFiles.value.size)
+const hasSelection = computed(() => selectedCount.value > 0)
+const allVisibleSelected = computed(() => filtered.value.length > 0 && selectedInView.value.length === filtered.value.length)
+
+function toggleSelection(name: string, enabled: boolean) {
+  const next = new Set(selectedFiles.value)
+  if (enabled) next.add(name)
+  else next.delete(name)
+  selectedFiles.value = next
+}
+
+function toggleSelectAll(enabled: boolean) {
+  const next = new Set(selectedFiles.value)
+  if (enabled) {
+    for (const file of filtered.value) next.add(file.file_name)
+  } else {
+    for (const file of filtered.value) next.delete(file.file_name)
+  }
+  selectedFiles.value = next
+}
+
+function clearSelection() {
+  selectedFiles.value = new Set()
+}
+
+function uniqueArchiveName(name: string, used: Set<string>): string {
+  if (!used.has(name)) {
+    used.add(name)
+    return name
+  }
+  const extIndex = name.lastIndexOf('.')
+  const hasExt = extIndex > 0
+  const stem = hasExt ? name.slice(0, extIndex) : name
+  const ext = hasExt ? name.slice(extIndex) : ''
+  let counter = 2
+  while (used.has(`${stem}-${counter}${ext}`)) counter += 1
+  const finalName = `${stem}-${counter}${ext}`
+  used.add(finalName)
+  return finalName
+}
+
+async function downloadSelectedAsZip() {
+  if (!hasSelection.value || bulkDownloading.value) return
+  bulkDownloading.value = true
+  actionsOpen.value = false
+  const auth = getAuthToken()
+  const selected = [...selectedInView.value]
+  const entries: Record<string, Uint8Array> = {}
+  const names = new Set<string>()
+  const failed: string[] = []
+  try {
+    for (const file of selected) {
+      try {
+        const response = await fetch(`${publicApiFileUrl(file.file_name)}?raw=1`, {
+          headers: { Authorization: auth },
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const bytes = new Uint8Array(await response.arrayBuffer())
+        entries[uniqueArchiveName(file.file_name, names)] = bytes
+      } catch (error) {
+        console.error('Bulk download entry failed', { fileName: file.file_name, error })
+        failed.push(file.file_name)
+      }
+    }
+    const archiveEntries = Object.keys(entries)
+    if (!archiveEntries.length) throw new Error('Download failed for all selected files')
+    const archive = zipSync(entries, { level: 0 })
+    const archiveBytes = Uint8Array.from(archive)
+    triggerDownload(
+      new Blob([archiveBytes], { type: 'application/zip' }),
+      `yaemipaste-history-${Date.now()}.zip`,
+    )
+    if (failed.length) showToast(`Downloaded ${archiveEntries.length} file(s), ${failed.length} failed`, 'error')
+    else showToast(`Downloaded ${archiveEntries.length} file(s)`)
+  } catch (e: any) {
+    showToast(e.message ?? 'Bulk download failed', 'error')
+  } finally {
+    bulkDownloading.value = false
+  }
+}
+
+async function deleteSelected() {
+  if (!hasSelection.value || bulkDeleting.value) return
+  const selected = [...selectedInView.value]
+  if (!selected.length) return
+  if (!confirm(`Delete ${selected.length} selected file(s)?`)) return
+  actionsOpen.value = false
+  bulkDeleting.value = true
+  let deletedCount = 0
+  try {
+    for (const file of selected) {
+      try {
+        await deleteFile(file.file_name)
+        files.value = files.value.filter((item) => item.file_name !== file.file_name)
+        selectedFiles.value.delete(file.file_name)
+        deletedCount += 1
+      } catch (error) {
+        console.error('Bulk delete failed', { fileName: file.file_name, error })
+      }
+    }
+    if (deletedCount) showToast(`Deleted ${deletedCount} file(s)`)
+    if (deletedCount !== selected.length) showToast('Some selected files could not be deleted', 'error')
+  } finally {
+    bulkDeleting.value = false
+  }
 }
 
 async function downloadFile(f: PasteFile) {
@@ -244,6 +360,11 @@ onBeforeUnmount(() => {
   clearPreviewObjectUrl(preview.value)
   clearPreviewObjectUrl(hoverPreview.value)
 })
+
+watch(filtered, (nextFiles) => {
+  const visible = new Set(nextFiles.map((file) => file.file_name))
+  if (!visible.size) actionsOpen.value = false
+})
 </script>
 
 <template>
@@ -260,6 +381,57 @@ onBeforeUnmount(() => {
         </svg>
       </div>
     </div>
+    <div class="bulk-actions">
+      <label class="select-all">
+        <input
+          type="checkbox"
+          :checked="allVisibleSelected"
+          :disabled="!filtered.length || bulkDeleting || bulkDownloading"
+          aria-label="Select all files"
+          @change="toggleSelectAll(($event.target as HTMLInputElement).checked)"
+        />
+        <span>Select all</span>
+      </label>
+      <span class="selection-count">{{ selectedCount }} selected</span>
+      <div class="actions-menu-wrap">
+        <button
+          class="btn-ghost"
+          style="padding:4px 10px;font-size:12px"
+          :disabled="!hasSelection || bulkDeleting || bulkDownloading"
+          aria-haspopup="menu"
+          :aria-expanded="actionsOpen ? 'true' : 'false'"
+          @click="actionsOpen = !actionsOpen"
+        >
+          Actions
+        </button>
+        <div v-if="actionsOpen" class="actions-menu" role="menu">
+          <button
+            class="btn-ghost"
+            style="width:100%;justify-content:flex-start"
+            :disabled="bulkDeleting || bulkDownloading"
+            @click="downloadSelectedAsZip"
+          >
+            {{ bulkDownloading ? 'Downloading…' : 'Download Selected' }}
+          </button>
+          <button
+            class="btn-red"
+            style="width:100%;justify-content:flex-start"
+            :disabled="bulkDeleting || bulkDownloading"
+            @click="deleteSelected"
+          >
+            {{ bulkDeleting ? 'Deleting…' : 'Delete Selected' }}
+          </button>
+          <button
+            class="btn-ghost"
+            style="width:100%;justify-content:flex-start"
+            :disabled="bulkDeleting || bulkDownloading"
+            @click="clearSelection(); actionsOpen = false"
+          >
+            Clear Selection
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Loading / error -->
     <div v-if="loading" class="state-msg">Loading…</div>
@@ -271,6 +443,15 @@ onBeforeUnmount(() => {
       <table class="file-table">
         <thead>
           <tr>
+            <th style="width:1px">
+              <input
+                type="checkbox"
+                :checked="allVisibleSelected"
+                :disabled="!filtered.length || bulkDeleting || bulkDownloading"
+                aria-label="Select all rows"
+                @change="toggleSelectAll(($event.target as HTMLInputElement).checked)"
+              />
+            </th>
             <th class="sortable" @click="setSort('file_name')">
               Name <span class="sort-arrow">{{ sortKey === 'file_name' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
             </th>
@@ -292,6 +473,15 @@ onBeforeUnmount(() => {
             @mousemove="moveHover"
             @mouseleave="hideHover"
           >
+            <td class="select-col">
+              <input
+                type="checkbox"
+                :checked="selectedFiles.has(f.file_name)"
+                :aria-label="`Select ${f.file_name}`"
+                :disabled="bulkDeleting || bulkDownloading"
+                @change="toggleSelection(f.file_name, ($event.target as HTMLInputElement).checked)"
+              />
+            </td>
             <td class="name">
               <span
                 class="filename"
@@ -369,12 +559,32 @@ onBeforeUnmount(() => {
 <style scoped>
 .history-tab { display: flex; flex-direction: column; gap: 10px; padding-bottom: 20px; }
 .toolbar { display: flex; align-items: center; gap: 8px; }
+.bulk-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.select-all { display: inline-flex; align-items: center; gap: 6px; color: var(--text2); font-size: 12px; }
+.selection-count { color: var(--text3); font-size: 11px; }
+.actions-menu-wrap { position: relative; }
+.actions-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--bg1);
+  box-shadow: 0 8px 24px var(--shadow);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .search-wrap { position: relative; }
 .search-wrap input { padding-right: 28px; }
 .search-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text3); pointer-events: none; }
 .table-wrap { overflow-x: auto; }
 .sort-arrow { color: var(--text3); font-size: 10px; margin-left: 2px; }
 .state-msg { color: var(--text2); font-size: 12px; padding: 20px 0; text-align: center; }
+.select-col { width: 1px; }
 .filename { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .lock-icon { color: var(--accent); flex-shrink: 0; }
 @media (hover: hover) and (pointer: fine) {
