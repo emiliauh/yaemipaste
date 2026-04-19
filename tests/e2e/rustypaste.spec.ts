@@ -1746,7 +1746,7 @@ test('history shows ShareX badge for token-uploaded screenshot files', async ({ 
   await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
 })
 
-test('history falls back to ShareX badge for randomized screenshot names', async ({ page }) => {
+test('history does not show ShareX badge for web-uploaded files with random-looking names', async ({ page }) => {
   await signInWithToken(page)
   await page.route('**/api/list', async (route) => {
     await route.fulfill({
@@ -1778,7 +1778,7 @@ test('history falls back to ShareX badge for randomized screenshot names', async
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+  await expect(page.getByLabel('Uploaded with ShareX')).toHaveCount(0)
 })
 
 test('history preview modal provides copy action that copies preview URL', async ({ page }) => {

@@ -180,15 +180,8 @@ async function refreshSilently() {
 }
 
 function hasShareXBadge(fileName: string): boolean {
-  const meta = fileMetaMap.value[fileName]
-  const uploader = meta?.uploader?.toLowerCase() ?? ''
-  if (uploader.includes('sharex')) return true
-  const sharexLikeRandomName = /^[A-Za-z0-9]{6,16}\.(png|jpe?g|gif|webp|bmp|svg|avif|mp4|webm)$/i.test(fileName)
-  if (!sharexLikeRandomName) return false
-  const mime = (meta?.mime_type ?? '').toLowerCase()
-  if (!mime) return true
-  if (mime.startsWith('image/') || mime.startsWith('video/')) return true
-  return false
+  const uploader = fileMetaMap.value[fileName]?.uploader?.toLowerCase() ?? ''
+  return uploader.includes('sharex')
 }
 
 async function ensureVisibleMeta() {
