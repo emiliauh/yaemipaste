@@ -21,22 +21,38 @@ function json(response, status, body) {
   response.end(JSON.stringify(body))
 }
 
-async function resolveTokenOwner(token) {
-  const cleanToken = decodeToken(token)
-  if (!cleanToken || cleanToken.includes('\n')) return null
+function tokenCandidates(token) {
+  const candidates = new Set()
+  const clean = decodeToken(token)
+  if (clean) candidates.add(clean)
   try {
-    const escapedToken = cleanToken.replace(/'/g, "''")
-    const { stdout } = await execFileAsync('sqlite3', [
-      '-noheader',
-      '-batch',
-      USERS_DB_PATH,
-      `SELECT username FROM users WHERE token = '${escapedToken}' LIMIT 1;`,
-    ])
-    const username = stdout.trim()
-    return username || null
+    const normalized = clean.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4)
+    const decoded = Buffer.from(padded, 'base64').toString('utf8').trim()
+    if (decoded && !decoded.includes('\n')) candidates.add(decoded)
   } catch {
-    return null
+    // ignore invalid base64 tokens
   }
+  return [...candidates]
+}
+
+async function resolveTokenOwner(token) {
+  for (const candidate of tokenCandidates(token)) {
+    try {
+      const escapedToken = candidate.replace(/'/g, "''")
+      const { stdout } = await execFileAsync('sqlite3', [
+        '-noheader',
+        '-batch',
+        USERS_DB_PATH,
+        `SELECT username FROM users WHERE token = '${escapedToken}' LIMIT 1;`,
+      ])
+      const username = stdout.trim()
+      if (username) return username
+    } catch {
+      // continue to next candidate
+    }
+  }
+  return null
 }
 
 function decodeToken(token) {
