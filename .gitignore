@@ -15,6 +15,10 @@ dist-ssr
 .env.*
 !.env.example
 
+# Stray local archives
+*.7z
+*.zip
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

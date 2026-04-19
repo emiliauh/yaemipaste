@@ -1,0 +1,203 @@
+diff --git a/src/server.rs b/src/server.rs
+index b2fa219..0fb3dfc 100644
+--- a/src/server.rs
++++ b/src/server.rs
+@@ -335,6 +335,83 @@ pub struct ListItem {
+     pub expires_at_utc: Option<String>,
+ }
+ 
++#[derive(Serialize, Deserialize)]
++struct ResolveItem {
++    file_name: String,
++    raw_path: String,
++}
++
++fn public_path_from_file_name(file_name: &str) -> String {
++    let mut parts = file_name.splitn(2, '.');
++    let id = parts.next().unwrap_or("");
++    if let Some(ext) = parts.next() {
++        format!("/{id}/file.{ext}")
++    } else {
++        format!("/{id}/file")
++    }
++}
++
++fn resolve_token_to_file_name(token: &str, upload_path: &PathBuf) -> Result<String, Error> {
++    let token = token.trim().trim_start_matches('/');
++    if token.is_empty() || token.contains('/') {
++        return Err(error::ErrorNotFound("file is not found or expired :(\n"));
++    }
++
++    let mut matches = fs::read_dir(upload_path)?
++        .filter_map(|entry| {
++            let entry = entry.ok()?;
++            let name = entry.file_name().to_string_lossy().to_string();
++            if name == token || name.split('.').next() == Some(token) {
++                Some(name)
++            } else {
++                None
++            }
++        })
++        .collect::<Vec<_>>();
++
++    matches.sort();
++    if matches.len() != 1 {
++        return Err(error::ErrorNotFound("file is not found or expired :(\n"));
++    }
++
++    Ok(matches.remove(0))
++}
++
++#[get("/resolve/{token}")]
++async fn resolve(
++    token: web::Path<String>,
++    config: web::Data<RwLock<Config>>,
++) -> Result<HttpResponse, Error> {
++    let config = config
++        .read()
++        .map_err(|_| error::ErrorInternalServerError("cannot acquire config"))?;
++    let file_name = resolve_token_to_file_name(token.as_str(), &config.server.upload_path)?;
++    let raw_path = public_path_from_file_name(&file_name);
++
++    Ok(HttpResponse::Ok().json(ResolveItem { file_name, raw_path }))
++}
++
++#[get("/file/{token}/{mode}")]
++async fn file_route_redirect(
++    path: web::Path<(String, String)>,
++    config: web::Data<RwLock<Config>>,
++) -> Result<HttpResponse, Error> {
++    let (token, mode) = path.into_inner();
++    if !matches!(mode.as_str(), "preview" | "raw" | "download") {
++        return Err(error::ErrorNotFound("file is not found or expired :(\n"));
++    }
++    let config = config
++        .read()
++        .map_err(|_| error::ErrorInternalServerError("cannot acquire config"))?;
++    let clean_token = token.split('+').next().unwrap_or(token.as_str());
++    let file_name = resolve_token_to_file_name(clean_token, &config.server.upload_path)?;
++    let raw_path = public_path_from_file_name(&file_name);
++    Ok(HttpResponse::Found()
++        .append_header(("Location", raw_path))
++        .append_header(("Cache-Control", "no-store"))
++        .finish())
++}
++
+ /// Returns the list of files.
+ #[get("/list")]
+ #[actix_web_grants::protect("TokenType::Auth", ty = TokenType, error = unauthorized_error)]
+@@ -408,6 +485,8 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
+     cfg.service(
+         web::scope("")
+             .service(index)
++            .service(resolve)
++            .service(file_route_redirect)
+             .service(version)
+             .service(list)
+             .service(serve)
+@@ -575,6 +654,105 @@ mod tests {
+         Ok(())
+     }
+ 
++    #[actix_web::test]
++    async fn test_resolve() -> Result<(), Error> {
++        let mut config = Config::default();
++        let test_upload_dir = format!("test_resolve_{}", util::get_system_time()?.as_millis());
++        fs::create_dir(&test_upload_dir)?;
++        config.server.upload_path = PathBuf::from(&test_upload_dir);
++        fs::write(
++            PathBuf::from(&test_upload_dir).join("test-token.txt"),
++            "content",
++        )?;
++
++        let app = test::init_service(
++            App::new()
++                .app_data(Data::new(RwLock::new(config)))
++                .app_data(Data::new(Client::default()))
++                .configure(configure_routes),
++        )
++        .await;
++
++        let request = TestRequest::default().uri("/resolve/test-token").to_request();
++        let response = test::call_service(&app, request).await;
++        assert_eq!(StatusCode::OK, response.status());
++        assert_body(
++            response.into_body(),
++            "{\"file_name\":\"test-token.txt\",\"raw_path\":\"/test-token/file.txt\"}",
++        )
++        .await?;
++
++        fs::remove_dir_all(test_upload_dir)?;
++        Ok(())
++    }
++
++    #[actix_web::test]
++    async fn test_resolve_ambiguous() -> Result<(), Error> {
++        let mut config = Config::default();
++        let test_upload_dir = format!(
++            "test_resolve_ambiguous_{}",
++            util::get_system_time()?.as_millis()
++        );
++        fs::create_dir(&test_upload_dir)?;
++        config.server.upload_path = PathBuf::from(&test_upload_dir);
++        fs::write(PathBuf::from(&test_upload_dir).join("same-token.txt"), "a")?;
++        fs::write(PathBuf::from(&test_upload_dir).join("same-token.png"), "b")?;
++
++        let app = test::init_service(
++            App::new()
++                .app_data(Data::new(RwLock::new(config)))
++                .app_data(Data::new(Client::default()))
++                .configure(configure_routes),
++        )
++        .await;
++
++        let request = TestRequest::default().uri("/resolve/same-token").to_request();
++        let response = test::call_service(&app, request).await;
++        assert_eq!(StatusCode::NOT_FOUND, response.status());
++
++        fs::remove_dir_all(test_upload_dir)?;
++        Ok(())
++    }
++
++    #[actix_web::test]
++    async fn test_file_route_redirect() -> Result<(), Error> {
++        let mut config = Config::default();
++        let test_upload_dir = format!(
++            "test_file_route_redirect_{}",
++            util::get_system_time()?.as_millis()
++        );
++        fs::create_dir(&test_upload_dir)?;
++        config.server.upload_path = PathBuf::from(&test_upload_dir);
++        fs::write(
++            PathBuf::from(&test_upload_dir).join("test-token.txt"),
++            "content",
++        )?;
++
++        let app = test::init_service(
++            App::new()
++                .app_data(Data::new(RwLock::new(config)))
++                .app_data(Data::new(Client::default()))
++                .configure(configure_routes),
++        )
++        .await;
++
++        let request = TestRequest::default()
++            .uri("/file/test-token/preview")
++            .to_request();
++        let response = test::call_service(&app, request).await;
++        assert_eq!(StatusCode::FOUND, response.status());
++        assert_eq!(
++            response
++                .headers()
++                .get("Location")
++                .and_then(|value| value.to_str().ok()),
++            Some("/test-token/file.txt")
++        );
++
++        fs::remove_dir_all(test_upload_dir)?;
++        Ok(())
++    }
++
+     #[actix_web::test]
+     async fn test_version_without_auth() -> Result<(), Error> {
+         let mut config = Config::default();

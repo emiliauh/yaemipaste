@@ -11,6 +11,10 @@ This page explains every variable in `.env.example`, what it controls, and when 
 2. Edit only what you need.
 3. Start stack:
    ```bash
+   docker compose --profile with-resolver up --build -d
+   ```
+   To run without resolver service, omit the profile:
+   ```bash
    docker compose up --build -d
    ```
 
@@ -22,7 +26,7 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | --- | --- | --- | --- |
 | `VITE_PASTE_API` | Frontend base path for rustypaste API calls. | Change only if you route paste API under a different path/domain. | `/api` |
 | `VITE_AUTH_API` | Frontend base path for auth API calls. | Change only if auth is exposed under a different path/domain. | `/auth` |
-| `VITE_FILE_RESOLVE_BASE` | Frontend path or absolute URL used to resolve `/file/<id>/...` tokens back to full filenames. | Change only if resolver-server is exposed somewhere other than `/resolve`. | `/resolve` |
+| `VITE_FILE_RESOLVE_BASE` | Frontend path or absolute URL used to resolve `/file/<id>/...` tokens back to full filenames. Empty disables resolver fallback for token links (local cache still works). | Change if resolver is exposed somewhere other than `/resolve` (for Rust-native endpoint use `/api/resolve`), or set empty to disable fallback. | `/resolve` |
 | `VITE_PUBLIC_SITE_ORIGIN` | Explicit public site origin used for generated preview/share links. | Set when frontend is behind a different public hostname than current origin. | empty |
 | `VITE_HISTORY_WS` | Optional history websocket endpoint override. | Set if your history WS endpoint differs from default derived URL. | empty |
 | `VITE_TURNSTILE_SITE_KEY` | Enables Cloudflare Turnstile challenge in login flow. | Set when you want Turnstile protection; leave empty otherwise. | empty |
@@ -40,6 +44,7 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `PASSKEY_RP_ID` | Relying Party ID used for passkey verification. | Set when your RP ID must differ from origin hostname. | empty |
 | `PASSKEY_ORIGINS` | Comma-separated allowed origins for passkey ceremonies. | Set for multi-origin deployments (e.g. proxy + localhost dev). | empty |
 | `UI_PORT` | Host port mapped to UI container (`http://localhost:UI_PORT`). | Change if `8080` is busy or you prefer another port. | `8080` |
+| `RESOLVER_ENABLED` | Installer toggle that controls whether compose commands include `--profile with-resolver`. | Set `0` for resolver-free mode (for Rust-native endpoint pair with `VITE_FILE_RESOLVE_BASE=/api/resolve`), otherwise keep `1`. | `1` |
 | `RESOLVER_PORT` | Loopback-only port exposed for the bundled Node resolver service. | Change if `3101` is busy or you proxy it differently. | `3101` |
 | `RESOLVER_UPLOAD_DIR` | Host path where Rustypaste stores uploaded files. | Change if your Rustypaste upload directory differs. | `/var/lib/rustypaste/upload` |
 | `RESOLVER_PUBLIC_ORIGIN` | Public frontend origin used by resolver redirects. | Set to the same public hostname users open in the browser. | `http://localhost:8080` |
@@ -74,6 +79,16 @@ When `VITE_ENABLE_AUTH=0`, the frontend runs in public/anonymous mode:
 Security notes:
 - `VITE_PASTE_API` should be a relative path (`/api`) or trusted `https://` origin only.
 - `VITE_PUBLIC_SITE_ORIGIN` should be set only to your trusted public frontend origin.
+
+### Resolver-free mode with Rust backend endpoint
+
+Use this when your Rustypaste build provides `GET /resolve/{token}`:
+- `VITE_FILE_RESOLVE_BASE=/api/resolve`
+- `RESOLVER_ENABLED=0`
+- `PASTE_API_IMAGE=<your rustypaste image with /resolve endpoint>`
+
+The minimal backend patch template for this endpoint is included at:
+`patches/rustypaste-resolve-endpoint.patch`
 
 ## Custom domain behind reverse proxy
 
@@ -155,6 +170,10 @@ tokenized `/file/*/(preview|raw|download)` remains SPA, while short raw paths
 If you use the bundled `docker-compose.yml`, the resolver is intentionally bound to
 `127.0.0.1:${RESOLVER_PORT}` only. Expose it through your reverse proxy rather than
 opening it directly on all interfaces.
+
+The bundled compose file makes resolver optional via the `with-resolver` profile:
+- With resolver (current default behavior): `docker compose --profile with-resolver up --build -d`
+- Without resolver: `docker compose up --build -d`
 
 ## Non-interactive automation
 

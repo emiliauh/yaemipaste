@@ -52,6 +52,7 @@ The installer now supports user-tailored setup for:
 - API base paths (`VITE_PASTE_API`, `VITE_AUTH_API`)
 - ShareX UI toggle (`VITE_ENABLE_SHAREX`)
 - auth/login toggle (`VITE_ENABLE_AUTH`)
+- resolver service toggle (`RESOLVER_ENABLED`)
 - Turnstile site/secret keys
 - passkeys toggle and RP settings
 - JWT secret generation/persistence
@@ -63,12 +64,29 @@ The installer now supports user-tailored setup for:
 ```bash
 cp .env.example .env
 # edit .env
+docker compose --profile with-resolver up --build -d
+```
+
+Resolver-disabled mode:
+```bash
 docker compose up --build -d
 ```
 
 See [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) for all variables.
 
 The deployed stack is Rustypaste + Vite frontend + the bundled `resolver-server/`. There is no Python service in the application path.
+
+### Rust-native resolve path (migration mode)
+
+If your Rustypaste backend exposes `GET /resolve/{token}`:
+- set `VITE_FILE_RESOLVE_BASE=/api/resolve`
+- set `RESOLVER_ENABLED=0`
+- keep `VITE_PASTE_API=/api`
+
+This repository includes a minimal upstream patch template at
+`patches/rustypaste-resolve-endpoint.patch` to add that endpoint in Rustypaste.
+Apply it in a rustypaste checkout, then build/publish your own backend image and
+set `PASTE_API_IMAGE` accordingly.
 
 ---
 

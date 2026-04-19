@@ -20,6 +20,8 @@ services:
   resolver:
     image: node:22-alpine
     restart: unless-stopped
+    profiles:
+      - with-resolver
     command: ["node", "/app/resolver-server/server.mjs"]
     working_dir: /app
     environment:
@@ -50,7 +52,6 @@ services:
     restart: unless-stopped
     depends_on:
       - paste-api
-      - resolver
     ports:
       - "${UI_PORT:-8080}:80"
     networks:

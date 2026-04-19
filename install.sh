@@ -180,7 +180,14 @@ detect_compose_cmd() {
 compose() {
   [[ ${#COMPOSE_CMD[@]} -gt 0 ]] || detect_compose_cmd
   [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]] || die "Compose file not found at ${INSTALL_DIR}/${COMPOSE_FILE}"
-  run "${COMPOSE_CMD[@]}" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" "$@"
+  local resolver_enabled
+  local -a profile_args
+  resolver_enabled="$(env_get RESOLVER_ENABLED "1")"
+  profile_args=()
+  if [[ "$resolver_enabled" != "0" ]]; then
+    profile_args=(--profile with-resolver)
+  fi
+  run "${COMPOSE_CMD[@]}" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
 }
 
 ensure_repo_present() {
@@ -312,7 +319,7 @@ configure_env() {
     log "Created ${env_path} from .env.example"
   fi
 
-  local ui_port paste_image api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins
+  local ui_port paste_image api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
   ui_port="$(prompt "UI port to expose" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
   paste_image="$(prompt "Rustypaste image (includes /api + /auth)" "$(env_get PASTE_API_IMAGE "orhunp/rustypaste:latest")")"
   api_base="$(prompt "Frontend paste API base (path or URL)" "$(env_get VITE_PASTE_API "/api")")"
@@ -326,6 +333,7 @@ configure_env() {
   passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
   passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
   passkey_origins="$(prompt "Passkey allowed origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
+  resolver_enabled="$(prompt "Enable resolver service for public token links/bot embeds? (1=yes,0=no)" "$(env_get RESOLVER_ENABLED "1")")"
   admin_base="$(prompt "Auth admin base URL" "$(env_get AUTH_ADMIN_BASE_URL "http://localhost:${ui_port}/auth/admin")")"
   bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
   token_create_path="$(prompt "Token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
@@ -344,6 +352,21 @@ configure_env() {
   if [[ ! "$passkeys_enabled" =~ ^[01]$ ]]; then
     warn "Invalid passkeys toggle '${passkeys_enabled}', defaulting to 0"
     passkeys_enabled="0"
+  fi
+  if [[ ! "$resolver_enabled" =~ ^[01]$ ]]; then
+    warn "Invalid resolver toggle '${resolver_enabled}', defaulting to 1"
+    resolver_enabled="1"
+  fi
+  resolve_base="$(env_get VITE_FILE_RESOLVE_BASE "/resolve")"
+  if [[ "$resolver_enabled" == "0" ]]; then
+    if [[ "$resolve_base" == "/resolve" ]]; then
+      warn "Resolver disabled and VITE_FILE_RESOLVE_BASE is /resolve: clearing fallback path."
+      resolve_base=""
+    elif [[ -n "$resolve_base" ]]; then
+      log "Resolver disabled: keeping VITE_FILE_RESOLVE_BASE=${resolve_base} (custom backend resolver path)."
+    fi
+  elif [[ -z "$resolve_base" ]]; then
+    resolve_base="/resolve"
   fi
   if [[ "$auth_enabled" == "0" ]]; then
     if [[ -n "$turnstile_key" || -n "$turnstile_secret" || "$passkeys_enabled" == "1" ]]; then
@@ -365,6 +388,7 @@ configure_env() {
   upsert_env PASTE_API_IMAGE "$paste_image"
   upsert_env VITE_PASTE_API "$api_base"
   upsert_env VITE_AUTH_API "$auth_base"
+  upsert_env VITE_FILE_RESOLVE_BASE "$resolve_base"
   upsert_env VITE_ENABLE_SHAREX "$sharex_enabled"
   upsert_env VITE_ENABLE_AUTH "$auth_enabled"
   upsert_env VITE_TURNSTILE_SITE_KEY "$turnstile_key"
@@ -374,6 +398,7 @@ configure_env() {
   upsert_env PASSKEY_RP_NAME "$passkey_rp_name"
   upsert_env PASSKEY_RP_ID "$passkey_rp_id"
   upsert_env PASSKEY_ORIGINS "$passkey_origins"
+  upsert_env RESOLVER_ENABLED "$resolver_enabled"
   upsert_env AUTH_ADMIN_BASE_URL "$admin_base"
   upsert_env AUTH_BOOTSTRAP_PATH "$bootstrap_path"
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"

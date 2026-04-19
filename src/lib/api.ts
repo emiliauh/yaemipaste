@@ -18,7 +18,11 @@ const DEFAULT_PASTE_API = normalizeApiBase(import.meta.env.VITE_PASTE_API ?? '/a
 const AUTH_API = (import.meta.env.VITE_AUTH_API ?? '/auth').replace(/\/$/, '')
 const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '0').trim() === '1'
 const PUBLIC_SITE_ORIGIN = (import.meta.env.VITE_PUBLIC_SITE_ORIGIN ?? '').trim().replace(/\/$/, '')
-const FILE_RESOLVE_BASE = (import.meta.env.VITE_FILE_RESOLVE_BASE ?? '/resolve').trim().replace(/\/$/, '')
+const FILE_RESOLVE_BASE = (() => {
+  const configured = import.meta.env.VITE_FILE_RESOLVE_BASE
+  if (typeof configured !== 'string') return '/resolve'
+  return configured.trim().replace(/\/$/, '')
+})()
 const API_BASE_KEY = 'rp_api_base'
 const REMEMBER_ME_KEY = 'rp_remember_me'
 const AUTH_KEYS = ['rp_jwt', 'rp_token', 'rp_username'] as const
@@ -406,9 +410,10 @@ export async function getShareXConfig(): Promise<Blob> {
   parsed.Headers = headers
 
   // Override URL to return the frontend preview link instead of the raw API URL.
-  // ShareX regex extracts the filename from the Rustypaste response URL, trims any
-  // trailing line breaks, then builds example.invalid/file/{name}/preview.
-  parsed.URL = `${publicSiteOrigin()}/file/{regex:^\\s*.+/([^/\\r\\n\\s]+)\\s*$|1}/preview`
+  // ShareX parser treats the first `|` as the regex capture delimiter, and strips
+  // backslashes before passing to .NET — so use NO backslash sequences at all.
+  // [.] = literal dot, [A-Za-z0-9]+ = extension chars, [^A-Za-z0-9]*$ = strip trailing junk.
+  parsed.URL = `${publicSiteOrigin()}/file/{regex:([A-Za-z0-9_-]+)(?:[.][A-Za-z0-9]+)?[^A-Za-z0-9]*$|1}/preview`
 
   const uploaderLabel = uploaderIdentity() === 'Unknown (token user)' ? 'ShareX' : `${uploaderIdentity()} (ShareX)`
   const replaceUploaderSyntax = (value: string): string => value
@@ -762,6 +767,7 @@ export function fileNameFromUrl(value: string): string {
 }
 
 function fileResolveUrl(token: string, origin = publicSiteOrigin()): string {
+  if (!FILE_RESOLVE_BASE) throw new Error('Public file-token resolution is disabled for this deployment')
   const cleanToken = decodeFileToken(token)
   if (/^https?:\/\//i.test(FILE_RESOLVE_BASE)) return `${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}`
   return `${publicSiteOrigin(origin)}${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}`
@@ -773,6 +779,9 @@ export async function resolveFileName(tokenOrFileName: string, origin = publicSi
   if (!tokenNeedsFileResolution(decoded)) return decoded
   const localMatch = readResolvedFileNames()[decoded]
   if (localMatch) return localMatch
+  if (!FILE_RESOLVE_BASE) {
+    throw new Error('This file link needs resolver support, but resolver fallback is disabled on this deployment')
+  }
 
   let response: Response
   try {

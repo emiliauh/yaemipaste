@@ -917,8 +917,10 @@ test('sharex config trims trailing newlines from upload response filenames', asy
     return await blob.text()
   })
   const parsed = JSON.parse(generated) as Record<string, any>
-  expect(parsed.URL).toBe('http://127.0.0.1:4173/file/{regex:^\\s*.+/([^/\\r\\n\\s]+)\\s*$|1}/preview')
+  expect(parsed.URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/file\//)
+  expect(parsed.URL).toContain('{regex:([A-Za-z0-9_-]+)(?:[.][A-Za-z0-9]+)?[^A-Za-z0-9]*$|1}/preview')
   expect(parsed.URL).not.toContain('[^/]+')
+  expect((parsed.URL.match(/\|/g) ?? []).length).toBe(1)
 })
 
 test('executable preview does not auto-fetch raw content and shows no-preview state', async ({ page }) => {
