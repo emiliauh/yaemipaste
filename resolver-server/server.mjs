@@ -25,12 +25,12 @@ async function resolveTokenOwner(token) {
   const cleanToken = decodeToken(token)
   if (!cleanToken || cleanToken.includes('\n')) return null
   try {
+    const escapedToken = cleanToken.replace(/'/g, "''")
     const { stdout } = await execFileAsync('sqlite3', [
       '-noheader',
       '-batch',
       USERS_DB_PATH,
-      'SELECT username FROM users WHERE token = ?1 LIMIT 1;',
-      cleanToken,
+      `SELECT username FROM users WHERE token = '${escapedToken}' LIMIT 1;`,
     ])
     const username = stdout.trim()
     return username || null
