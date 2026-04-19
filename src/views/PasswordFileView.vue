@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, formatBytes, publicApiFileUrl } from '../lib/api'
-import { decryptBlobWithPassword, isRustypasteEncryptedBlob, type EncryptedMetadata } from '../lib/e2ee'
+import { decodeFileToken, formatBytes, publicApiFileUrl, publicFileUrl, publicSiteOrigin, resolveFileName } from '../lib/api'
+import { decryptBlobWithPassword, isRustypasteEncryptedBlob, rememberEncryptedFile, type EncryptedMetadata } from '../lib/e2ee'
 
 const route = useRoute()
 
@@ -17,11 +17,13 @@ const salt = computed(() => {
 
 const password = ref('')
 const decrypting = ref(false)
+const decryptStatus = ref('')
 const error = ref('')
 const objectUrl = ref('')
 const textPreview = ref('')
 const metadata = ref<EncryptedMetadata | null>(null)
 const decrypted = ref(false)
+const resolvedFileName = ref('')
 
 const isImage = computed(() => metadata.value?.type.startsWith('image/') ?? false)
 const isVideo = computed(() => metadata.value?.type.startsWith('video/') ?? false)
@@ -33,15 +35,38 @@ function clearObjectUrl() {
 }
 
 async function downloadPayload(): Promise<Blob> {
-  const apiUrl = publicApiFileUrl(fileName.value)
-  const attempts = [apiUrl, `${apiUrl}?download=true`, `${apiUrl}?raw=1`]
+  const publicUrl = publicFileUrl(resolvedFileName.value)
+  const apiUrl = publicApiFileUrl(resolvedFileName.value)
+  const attempts = [publicUrl, `${apiUrl}?raw=1`, `${apiUrl}?download=true`, apiUrl]
+  const timeoutMs = 12_000
+  let sawNotFound = false
+
   for (const url of attempts) {
-    const response = await fetch(url, { cache: 'no-store' })
-    if (!response.ok) continue
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+    let response: Response
+    try {
+      response = await fetch(url, { cache: 'no-store', signal: controller.signal })
+    } catch (fetchError) {
+      window.clearTimeout(timeout)
+      if (fetchError instanceof DOMException && fetchError.name === 'AbortError') continue
+      throw fetchError
+    }
+    window.clearTimeout(timeout)
+
+    if (!response.ok) {
+      if (response.status === 404) sawNotFound = true
+      continue
+    }
+
+    const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
+    if (contentType.includes('text/html') || contentType.includes('application/json')) continue
+
     const payload = await response.blob()
     if (await isRustypasteEncryptedBlob(payload)) return payload
   }
-  throw new Error('File not found or could not be downloaded')
+  if (sawNotFound) throw new Error('File not found or expired')
+  throw new Error('Could not load encrypted payload. Please try again.')
 }
 
 async function decrypt() {
@@ -55,11 +80,17 @@ async function decrypt() {
   }
   error.value = ''
   decrypting.value = true
+  decryptStatus.value = 'Downloading encrypted payload…'
   try {
+    resolvedFileName.value = await resolveFileName(fileName.value)
     const payload = await downloadPayload()
+    decryptStatus.value = 'Deriving decryption key…'
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+    decryptStatus.value = 'Decrypting file…'
     const result = await decryptBlobWithPassword(payload, password.value, salt.value)
     clearObjectUrl()
     metadata.value = result.metadata
+    rememberEncryptedFile(resolvedFileName.value, `pw:${salt.value}`, result.metadata, publicSiteOrigin())
     objectUrl.value = URL.createObjectURL(result.blob)
     if (result.metadata.type.startsWith('text/')) {
       textPreview.value = await result.blob.text()
@@ -69,6 +100,7 @@ async function decrypt() {
     error.value = e.message ?? 'Decryption failed'
   } finally {
     decrypting.value = false
+    decryptStatus.value = ''
   }
 }
 
@@ -105,6 +137,7 @@ onBeforeUnmount(clearObjectUrl)
             />
           </div>
           <div v-if="error" class="error-msg">{{ error }}</div>
+          <div v-else-if="decrypting && decryptStatus" class="status-msg">{{ decryptStatus }}</div>
           <button type="submit" class="btn-primary" :disabled="decrypting || !password.trim()">
             {{ decrypting ? 'Decrypting…' : 'Decrypt' }}
           </button>
@@ -209,6 +242,10 @@ onBeforeUnmount(clearObjectUrl)
 }
 .error-msg {
   color: var(--red-h);
+  font-size: 12px;
+}
+.status-msg {
+  color: var(--text2);
   font-size: 12px;
 }
 .details-grid {

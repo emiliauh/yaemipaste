@@ -2,18 +2,9 @@ import { expect, test } from '@playwright/test'
 
 const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
 
-function decodeFileToken(token: string): string {
-  try {
-    const b64 = token.replace(/-/g, '+').replace(/_/g, '/')
-    return atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
-  } catch {
-    return token
-  }
-}
-
-function fileNameFromPreviewHref(href: string): string {
+function tokenFromPreviewHref(href: string): string {
   const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview$/)
-  return match ? decodeFileToken(match[1]) : ''
+  return match ? decodeURIComponent(match[1]) : ''
 }
 
 test('production: password encryption upload + preview + history thumbnail', async ({ page, request }) => {
@@ -61,7 +52,10 @@ test('production: password encryption upload + preview + history thumbnail', asy
   await expect(passwordShare).toBeVisible()
   const passwordHref = await passwordShare.getAttribute('href')
   expect(passwordHref ?? '').toMatch(/^https:\/\/paste\.yaemi\.one\/file\/[A-Za-z0-9_-]+\+pw:[A-Za-z0-9_-]+\/preview$/)
-  const passwordFileName = fileNameFromPreviewHref(passwordHref ?? '')
+  const passwordToken = tokenFromPreviewHref(passwordHref ?? '')
+  const passwordResolve = await request.get(`https://example.invalid/resolve/${encodeURIComponent(passwordToken)}`)
+  expect(passwordResolve.ok()).toBeTruthy()
+  const passwordFileName = ((await passwordResolve.json()) as { file_name?: string }).file_name ?? ''
   expect(passwordFileName).toBeTruthy()
 
   await page.goto(passwordHref ?? '/')
@@ -87,7 +81,10 @@ test('production: password encryption upload + preview + history thumbnail', asy
   await expect(imageShare).toBeVisible()
   const imageHref = await imageShare.getAttribute('href')
   expect(imageHref ?? '').toMatch(/^https:\/\/paste\.yaemi\.one\/file\/[A-Za-z0-9_-]+\/preview$/)
-  const imageFileName = fileNameFromPreviewHref(imageHref ?? '')
+  const imageToken = tokenFromPreviewHref(imageHref ?? '')
+  const imageResolve = await request.get(`https://example.invalid/resolve/${encodeURIComponent(imageToken)}`)
+  expect(imageResolve.ok()).toBeTruthy()
+  const imageFileName = ((await imageResolve.json()) as { file_name?: string }).file_name ?? ''
   expect(imageFileName).toBeTruthy()
 
   await page.goto(imageHref ?? '/')
@@ -97,7 +94,7 @@ test('production: password encryption upload + preview + history thumbnail', asy
   else await expect(page.locator('img')).toBeVisible()
   await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute(
     'href',
-    /https:\/\/papi\.yaemi\.one\/.+\?raw=1$/,
+    /https:\/\/paste\.yaemi\.one\/file\/[A-Za-z0-9_-]+\/raw$/,
   )
 
   await page.goto('/#/files')

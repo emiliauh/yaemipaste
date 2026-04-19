@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   authLogin,
@@ -11,6 +11,7 @@ import {
   setRememberPreference,
 } from '../lib/api'
 import { credentialToJson, isPasskeySupported, toRequestOptions } from '../lib/passkeys'
+import { isAuthEnabled } from '../lib/features'
 
 const router = useRouter()
 const TURNSTILE_SITE_KEY = (
@@ -33,6 +34,8 @@ const tokenUsed = ref(false)
 const turnstileContainer = ref<HTMLElement | null>(null)
 const turnstileToken = ref('')
 const turnstileWidgetId = ref<string | number | null>(null)
+let restoreBodyOverflow = ''
+let restoreHtmlOverflow = ''
 
 type TurnstileWidgetId = string | number
 interface TurnstileApi {
@@ -116,9 +119,22 @@ function goToAccountLogin() {
 }
 
 onMounted(() => {
+  if (!isAuthEnabled()) {
+    router.replace('/files')
+    return
+  }
+  restoreBodyOverflow = document.body.style.overflow
+  restoreHtmlOverflow = document.documentElement.style.overflow
+  document.body.style.overflow = 'hidden'
+  document.documentElement.style.overflow = 'hidden'
   void mountTurnstile().catch((e: any) => {
     setError(e?.message ?? 'Security check failed to load')
   })
+})
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = restoreBodyOverflow
+  document.documentElement.style.overflow = restoreHtmlOverflow
 })
 
 async function submit() {

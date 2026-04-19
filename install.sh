@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME="yaemipaste"
-DEFAULT_REPO_URL="https://github.com/emiliauh/yaemipaste.git"
+DEFAULT_REPO_URL="https://github.com/emiliauh/rustypaste-ui.git"
 DEFAULT_BRANCH="main"
 DEFAULT_INSTALL_DIR="/opt/yaemipaste"
 DEFAULT_UI_PORT="8080"
@@ -61,6 +61,14 @@ command_exists() {
 require_command() {
   local cmd="$1"
   command_exists "$cmd" || die "Required command not found: ${cmd}"
+}
+
+generate_secret() {
+  if command_exists openssl; then
+    openssl rand -hex 32
+    return 0
+  fi
+  date +%s%N | sha256sum | awk '{print $1}'
 }
 
 prompt() {
@@ -304,10 +312,16 @@ configure_env() {
     log "Created ${env_path} from .env.example"
   fi
 
-  local ui_port paste_image turnstile_key admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins
+  local ui_port paste_image api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins
   ui_port="$(prompt "UI port to expose" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
   paste_image="$(prompt "Rustypaste image (includes /api + /auth)" "$(env_get PASTE_API_IMAGE "orhunp/rustypaste:latest")")"
+  api_base="$(prompt "Frontend paste API base (path or URL)" "$(env_get VITE_PASTE_API "/api")")"
+  auth_base="$(prompt "Frontend auth API base (path or URL)" "$(env_get VITE_AUTH_API "/auth")")"
+  sharex_enabled="$(prompt "Enable ShareX config in UI? (1=yes,0=no)" "$(env_get VITE_ENABLE_SHAREX "0")")"
+  auth_enabled="$(prompt "Enable login/accounts in UI? (1=yes,0=no anonymous mode)" "$(env_get VITE_ENABLE_AUTH "1")")"
   turnstile_key="$(prompt "Turnstile site key (leave empty to disable)" "$(env_get VITE_TURNSTILE_SITE_KEY "")")"
+  turnstile_secret="$(prompt "Turnstile secret key (leave empty to disable)" "$(env_get TURNSTILE_SECRET_KEY "")")"
+  jwt_secret="$(prompt "JWT signing secret (leave empty to auto-generate)" "$(env_get JWT_SECRET "")")"
   passkeys_enabled="$(prompt "Enable passkeys in Rust backend? (1=yes,0=no)" "$(env_get PASSKEYS_ENABLED "0")")"
   passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
   passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
@@ -319,15 +333,47 @@ configure_env() {
   register_url="$(prompt "Register endpoint URL" "$(env_get AUTH_REGISTER_URL "http://localhost:${ui_port}/auth/register")")"
   admin_bearer="$(prompt "Admin bearer token for /auth/admin (required for bootstrap/token actions)" "$(env_get AUTH_ADMIN_BEARER "")")"
 
+  if [[ ! "$sharex_enabled" =~ ^[01]$ ]]; then
+    warn "Invalid ShareX toggle '${sharex_enabled}', defaulting to 0"
+    sharex_enabled="0"
+  fi
+  if [[ ! "$auth_enabled" =~ ^[01]$ ]]; then
+    warn "Invalid auth toggle '${auth_enabled}', defaulting to 1"
+    auth_enabled="1"
+  fi
+  if [[ ! "$passkeys_enabled" =~ ^[01]$ ]]; then
+    warn "Invalid passkeys toggle '${passkeys_enabled}', defaulting to 0"
+    passkeys_enabled="0"
+  fi
+  if [[ "$auth_enabled" == "0" ]]; then
+    if [[ -n "$turnstile_key" || -n "$turnstile_secret" || "$passkeys_enabled" == "1" ]]; then
+      warn "Auth disabled: clearing Turnstile/passkey settings for anonymous mode."
+    fi
+    turnstile_key=""
+    turnstile_secret=""
+    passkeys_enabled="0"
+  fi
+  if [[ -n "$turnstile_key" && -z "$turnstile_secret" ]]; then
+    warn "Turnstile site key set but TURNSTILE_SECRET_KEY is empty; login challenges will fail."
+  fi
+  if [[ -z "$jwt_secret" ]]; then
+    jwt_secret="$(generate_secret)"
+    log "Generated JWT secret automatically."
+  fi
+
   upsert_env UI_PORT "$ui_port"
   upsert_env PASTE_API_IMAGE "$paste_image"
+  upsert_env VITE_PASTE_API "$api_base"
+  upsert_env VITE_AUTH_API "$auth_base"
+  upsert_env VITE_ENABLE_SHAREX "$sharex_enabled"
+  upsert_env VITE_ENABLE_AUTH "$auth_enabled"
   upsert_env VITE_TURNSTILE_SITE_KEY "$turnstile_key"
+  upsert_env TURNSTILE_SECRET_KEY "$turnstile_secret"
+  upsert_env JWT_SECRET "$jwt_secret"
   upsert_env PASSKEYS_ENABLED "$passkeys_enabled"
   upsert_env PASSKEY_RP_NAME "$passkey_rp_name"
   upsert_env PASSKEY_RP_ID "$passkey_rp_id"
   upsert_env PASSKEY_ORIGINS "$passkey_origins"
-  upsert_env VITE_PASTE_API "/api"
-  upsert_env VITE_AUTH_API "/auth"
   upsert_env AUTH_ADMIN_BASE_URL "$admin_base"
   upsert_env AUTH_BOOTSTRAP_PATH "$bootstrap_path"
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"

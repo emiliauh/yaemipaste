@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { encodeFileToken, isLoggedIn } from '../lib/api'
+import { encodeFileToken, isLoggedIn, rememberResolvedFileName } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
+import { isAuthEnabled } from '../lib/features'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +15,7 @@ const router = createRouter({
           const params = new URLSearchParams(hash.slice('#/file?'.length))
           const f = params.get('f')
           const k = params.get('k')
+          if (f) rememberResolvedFileName(f)
           if (f && k) return `/file/${encodeFileToken(f)}+${k}/preview`
           if (f) return `/file/${encodeFileToken(f)}/preview`
         }
@@ -23,8 +25,12 @@ const router = createRouter({
           const p = params.get('p') ?? ''
           const f = params.get('f') ?? ''
           const filename = rawFileNameFromPublicPath(p || f)
-          if (filename) return `/file/${encodeFileToken(filename)}/preview`
+          if (filename) {
+            rememberResolvedFileName(filename)
+            return `/file/${encodeFileToken(filename)}/preview`
+          }
         }
+        if (!isAuthEnabled()) return '/files'
         return isLoggedIn() ? '/files' : '/login'
       },
     },
@@ -32,17 +38,19 @@ const router = createRouter({
     { path: '/register', component: () => import('../views/RegisterView.vue') },
     { path: '/file/:filekey/preview', component: () => import('../views/FileView.vue') },
     { path: '/file/:filekey/raw', component: () => import('../views/RawRedirectView.vue') },
+    { path: '/file/:filekey/download', component: () => import('../views/DownloadRedirectView.vue') },
     {
       path: '/view/:filename',
       redirect: (to) => {
         const filename = String(to.params.filename)
+        rememberResolvedFileName(filename)
         return `/file/${encodeFileToken(filename)}/preview`
       },
     },
     {
       path: '/files',
       component: () => import('../views/DashboardView.vue'),
-      meta: { requiresAuth: true },
+      meta: { requiresAuth: isAuthEnabled() },
     },
     // backward compat: old /{id}/file.ext style direct URLs
     {
@@ -51,7 +59,10 @@ const router = createRouter({
         const id = String(to.params.id)
         const tail = String(to.params.tail)
         const filename = rawFileNameFromPublicPath(`${id}/${tail}`)
-        if (filename) return `/file/${encodeFileToken(filename)}/preview`
+        if (filename) {
+          rememberResolvedFileName(filename)
+          return `/file/${encodeFileToken(filename)}/preview`
+        }
         return '/files'
       },
     },
@@ -61,8 +72,10 @@ const router = createRouter({
       redirect: (to) => {
         const seg = (to.params.pathMatch as string[]).join('/')
         if (seg && seg.includes('.') && !seg.includes('/')) {
+          rememberResolvedFileName(seg)
           return `/file/${encodeFileToken(seg)}/preview`
         }
+        if (!isAuthEnabled()) return '/files'
         return isLoggedIn() ? '/files' : '/login'
       },
     },
@@ -70,6 +83,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
+  if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register')) return '/files'
   if (to.meta.requiresAuth && !isLoggedIn()) return '/login'
 })
 

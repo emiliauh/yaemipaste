@@ -22,13 +22,17 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | --- | --- | --- | --- |
 | `VITE_PASTE_API` | Frontend base path for rustypaste API calls. | Change only if you route paste API under a different path/domain. | `/api` |
 | `VITE_AUTH_API` | Frontend base path for auth API calls. | Change only if auth is exposed under a different path/domain. | `/auth` |
+| `VITE_FILE_RESOLVE_BASE` | Frontend path or absolute URL used to resolve `/file/<id>/...` tokens back to full filenames. | Change only if resolver-server is exposed somewhere other than `/resolve`. | `/resolve` |
+| `VITE_PUBLIC_SITE_ORIGIN` | Explicit public site origin used for generated preview/share links. | Set when frontend is behind a different public hostname than current origin. | empty |
+| `VITE_HISTORY_WS` | Optional history websocket endpoint override. | Set if your history WS endpoint differs from default derived URL. | empty |
 | `VITE_TURNSTILE_SITE_KEY` | Enables Cloudflare Turnstile challenge in login flow. | Set when you want Turnstile protection; leave empty otherwise. | empty |
 | `VITE_ENABLE_SHAREX` | Toggles ShareX download UI in account settings. | Set `1` after configuring generated ShareX output for your deployment. | `0` |
+| `VITE_ENABLE_AUTH` | Enables account/token authentication UI flows. | Set `0` for anonymous public mode (`/files` opens directly, no login/register). | `1` |
 | `VITE_REPOSITORY_URL` | Repository URL used by the in-app GitHub footer icon. | Change when you fork/rename the project repository. | `https://github.com/emiliauh/yaemipaste` |
 | `VITE_MAX_EXPIRY_DAYS` | Max day-based expiry option shown in the UI ("Keep for"). | Set to the maximum retention days your deployment allows. | `14` |
 | `PASTE_API_IMAGE` | Docker image for rustypaste backend (includes `/api` and `/auth`). | Pin to a specific version, custom build, or private registry image. | `orhunp/rustypaste:latest` |
 | `DB_PATH` | SQLite DB path used by rustypaste integrated auth. | Change only if you want a different in-container auth DB location. | `/var/lib/rustypaste-auth/users.db` |
-| `JWT_SECRET` | Session signing secret for `/auth` JWT tokens. | Always set a strong random value in production. | `change-me-in-production` |
+| `JWT_SECRET` | Session signing secret for `/auth` JWT tokens. | Always set a strong random value in production. | empty (required) |
 | `TURNSTILE_SECRET_KEY` | Server-side Turnstile verification secret. | Set when Turnstile is enabled for login. | empty |
 | `PASTE_PUBLIC_API` | Absolute API URL written into generated ShareX files. | Set to your public API URL when not running on localhost. | `http://localhost:8080/api` |
 | `PASSKEYS_ENABLED` | Enables Rust WebAuthn passkey endpoints (`/auth/passkeys/*`). | Set `1` only after configuring your passkey RP origins/ID. | `0` |
@@ -36,6 +40,10 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `PASSKEY_RP_ID` | Relying Party ID used for passkey verification. | Set when your RP ID must differ from origin hostname. | empty |
 | `PASSKEY_ORIGINS` | Comma-separated allowed origins for passkey ceremonies. | Set for multi-origin deployments (e.g. proxy + localhost dev). | empty |
 | `UI_PORT` | Host port mapped to UI container (`http://localhost:UI_PORT`). | Change if `8080` is busy or you prefer another port. | `8080` |
+| `RESOLVER_PORT` | Loopback-only port exposed for the bundled Node resolver service. | Change if `3101` is busy or you proxy it differently. | `3101` |
+| `RESOLVER_UPLOAD_DIR` | Host path where Rustypaste stores uploaded files. | Change if your Rustypaste upload directory differs. | `/var/lib/rustypaste/upload` |
+| `RESOLVER_PUBLIC_ORIGIN` | Public frontend origin used by resolver redirects. | Set to the same public hostname users open in the browser. | `http://localhost:8080` |
+| `RESOLVER_CACHE_TTL_MS` | Resolver cache TTL for ID -> filename lookups. | Raise only if your upload directory is large and churn is low. | `30000` |
 | `AUTH_ADMIN_BASE_URL` | Base URL for installer’s privileged auth operations. | Change if your auth admin endpoint is hosted elsewhere. | `http://localhost:8080/auth/admin` |
 | `AUTH_BOOTSTRAP_PATH` | Path for bootstrap first-user API. | Change only if your auth API uses a different route. | `/bootstrap` |
 | `AUTH_TOKEN_CREATE_PATH` | Path for token creation API. | Change only if your auth API uses a different route. | `/tokens` |
@@ -55,17 +63,30 @@ Keep defaults. Only set:
 - `TURNSTILE_SECRET_KEY` (optional)
 - `JWT_SECRET` (required for production)
 - `VITE_MAX_EXPIRY_DAYS` (optional)
+- `VITE_ENABLE_AUTH` (`0` for anonymous-only public mode)
 - `PASSKEYS_ENABLED` / `PASSKEY_*` (optional passkey tuning)
+
+When `VITE_ENABLE_AUTH=0`, the frontend runs in public/anonymous mode:
+- login/register routes are disabled
+- account-only settings (logout/passkeys/sharex config) are hidden
+- Turnstile and passkeys should remain disabled (`VITE_TURNSTILE_SITE_KEY` empty, `PASSKEYS_ENABLED=0`)
+
+Security notes:
+- `VITE_PASTE_API` should be a relative path (`/api`) or trusted `https://` origin only.
+- `VITE_PUBLIC_SITE_ORIGIN` should be set only to your trusted public frontend origin.
 
 ## Custom domain behind reverse proxy
 
 Usually still keep `VITE_PASTE_API=/api` and `VITE_AUTH_API=/auth`, then route:
 - `https://your-domain/api/*` → rustypaste `/`
 - `https://your-domain/auth/*` → rustypaste `/auth/*`
+- `https://your-domain/resolve/*` → `resolver-server`
+- keep the resolver listener on loopback only and let the reverse proxy expose it
 
-Public share links use paths such as `https://your-domain/abc123/file.png`.
-The plain path should return the SPA preview page. Requests with `?raw=1` or
-`?download=true` should proxy to rustypaste as raw file requests.
+Public browsing should be path-based:
+- `https://your-domain/file/<token>/preview` → SPA preview page
+- `https://your-domain/file/<token>/download` → SPA download route
+- `https://your-domain/<id>/file.<ext>` (or `/file`) → raw/embed bytes from rustypaste
 
 Example Caddy shape:
 
@@ -82,50 +103,58 @@ your-domain.example {
     reverse_proxy 127.0.0.1:9000
   }
 
-  @rawExt {
-    path_regexp rawExt ^/([^/]+)/file\.(.+)$
-    query raw=*
-  }
-  handle @rawExt {
-    rewrite * /{re.rawExt.1}.{re.rawExt.2}
-    reverse_proxy 127.0.0.1:9000
+  @resolve path /resolve/*
+  handle @resolve {
+    reverse_proxy 127.0.0.1:3101
   }
 
-  @rawNoExt {
-    path_regexp rawNoExt ^/([^/]+)/file$
-    query raw=*
-  }
-  handle @rawNoExt {
-    rewrite * /{re.rawNoExt.1}
-    reverse_proxy 127.0.0.1:9000
-  }
-
-  @downloadExt {
-    path_regexp downloadExt ^/([^/]+)/file\.(.+)$
-    query download=*
-  }
-  handle @downloadExt {
-    rewrite * /{re.downloadExt.1}.{re.downloadExt.2}
-    reverse_proxy 127.0.0.1:9000
+  # tokenized preview/raw/download routes are SPA routes
+  @fileRoutes path_regexp fileRoutes ^/file/[^/]+/(preview|raw|download)$
+  handle @fileRoutes {
+    rewrite * /index.html
+    root * /var/www/rustypasteui
+    file_server
   }
 
-  @downloadNoExt {
-    path_regexp downloadNoExt ^/([^/]+)/file$
-    query download=*
+  # short raw/embed paths: /<id>/file(.ext) -> /<id>(.ext)
+  @shortPathWithExt path_regexp shortExt ^/([^/]+)/file\.(.+)$
+  rewrite @shortPathWithExt /{re.shortExt.1}.{re.shortExt.2}
+  @shortPathNoExt path_regexp shortNoExt ^/([^/]+)/file$
+  rewrite @shortPathNoExt /{re.shortNoExt.1}
+
+  # preserve browser preview behavior for legacy one-segment IDs (without extension)
+  @browserPreview {
+    header Accept *text/html*
+    path_regexp singleId ^/[^/.]+$
   }
-  handle @downloadNoExt {
-    rewrite * /{re.downloadNoExt.1}
-    reverse_proxy 127.0.0.1:9000
+  handle @browserPreview {
+    rewrite * /index.html
+    root * /var/www/rustypasteui
+    file_server
   }
 
-  try_files {path} /index.html
-  file_server
+  @embedResolver {
+    path_regexp embedResolver ^/file/[^/]+/(preview|raw|download)$
+    header_regexp User-Agent (?i)(discordbot|telegrambot|facebookexternalhit|twitterbot|whatsapp|linkedinbot|slackbot|iframely)
+  }
+  handle @embedResolver {
+    reverse_proxy 127.0.0.1:3101
+  }
+
+  # raw/media/crawler traffic goes to rustypaste backend
+  handle {
+    reverse_proxy 127.0.0.1:9000
+  }
 }
 ```
 
-Adapt the raw/download matchers to your exact Caddy version and short-link
-rewrite pattern. The invariant is that only explicit raw/download requests go
-to rustypaste; normal share URLs stay on the frontend preview route.
+Adapt the matchers to your exact Caddy version. Keep the invariant:
+tokenized `/file/*/(preview|raw|download)` remains SPA, while short raw paths
+`/<id>/file(.ext)` resolve to rustypaste file bytes.
+
+If you use the bundled `docker-compose.yml`, the resolver is intentionally bound to
+`127.0.0.1:${RESOLVER_PORT}` only. Expose it through your reverse proxy rather than
+opening it directly on all interfaces.
 
 ## Non-interactive automation
 

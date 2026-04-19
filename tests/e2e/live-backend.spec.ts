@@ -4,16 +4,15 @@ const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
 const liveBaseUrl = process.env.PLAYWRIGHT_LIVE_BASE_URL?.replace(/\/$/, '') ?? ''
 const liveApiBaseUrl = process.env.PLAYWRIGHT_LIVE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 
-function decodeFileToken(token: string): string {
-  try {
-    const b64 = token.replace(/-/g, '+').replace(/_/g, '/')
-    return atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
-  } catch { return token }
+function tokenFromPreviewHref(href: string): string {
+  const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview$/)
+  return match ? decodeURIComponent(match[1]) : ''
 }
 
-function filenameFromPreviewHref(href: string): string {
-  const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview$/)
-  return match ? decodeFileToken(match[1]) : ''
+function publicPathFromFileName(fileName: string): string {
+  const [id = '', ...rest] = fileName.split('.')
+  const suffix = rest.join('.')
+  return suffix ? `/${id}/file.${suffix}` : `/${id}/file`
 }
 
 test.describe('live backend integration', () => {
@@ -45,15 +44,18 @@ test.describe('live backend integration', () => {
     await expect(shareLink).toBeVisible()
     const href = await shareLink.getAttribute('href')
     expect(href ?? '').toMatch(/\/file\/[A-Za-z0-9_-]+\/preview$/)
-    const uploadedName = filenameFromPreviewHref(href ?? '')
+    const token = tokenFromPreviewHref(href ?? '')
+    const resolveResponse = await request.get(`${liveBaseUrl}/resolve/${encodeURIComponent(token)}`)
+    expect(resolveResponse.ok()).toBeTruthy()
+    const resolvePayload = await resolveResponse.json() as { file_name?: string }
+    const uploadedName = resolvePayload.file_name ?? ''
     expect(uploadedName).toBeTruthy()
     const apiBase = liveApiBaseUrl || `${liveBaseUrl}/api`
+    const rawPublicUrl = `${liveBaseUrl}${publicPathFromFileName(uploadedName)}`
 
     await page.goto(href ?? `${liveBaseUrl}/`)
     await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
-    const rawResponse = await request.get(`${apiBase}/${encodeURIComponent(uploadedName)}?raw=1`, {
-      headers: { Authorization: liveToken },
-    })
+    const rawResponse = await request.get(rawPublicUrl)
     expect(rawResponse.ok()).toBeTruthy()
     expect(await rawResponse.text()).toBe(body)
 

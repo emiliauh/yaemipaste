@@ -17,11 +17,13 @@ import {
 } from '../lib/api'
 import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/passkeys'
 import { useNotificationStore } from '../stores/notifications'
+import { isAuthEnabled } from '../lib/features'
 
 const emit = defineEmits<{ close: [], logout: [] }>()
 const notificationStore = useNotificationStore()
 
 const username = getAuthUsername()
+const authEnabled = isAuthEnabled()
 const hasAccount = hasAccountAuth()
 const sharexEnabled = isShareXEnabled()
 const apiBase = ref(getPasteApiBase())
@@ -35,10 +37,14 @@ const passkeyLoading = ref(false)
 const passkeyError = ref('')
 
 function save() {
-  setPasteApiBase(apiBase.value)
-  apiBase.value = getPasteApiBase()
-  saved.value = true
-  setTimeout(() => { saved.value = false; emit('close') }, 800)
+  try {
+    setPasteApiBase(apiBase.value)
+    apiBase.value = getPasteApiBase()
+    saved.value = true
+    setTimeout(() => { saved.value = false; emit('close') }, 800)
+  } catch (e: any) {
+    notificationStore.push(e.message ?? 'Could not save API base URL', 'error')
+  }
 }
 
 async function downloadShareX() {
@@ -121,6 +127,7 @@ async function deletePasskey(id: number) {
 }
 
 function logout() {
+  if (!authEnabled) return
   authLogout()
   emit('logout')
 }
@@ -166,7 +173,7 @@ function logout() {
 
     <div class="settings-divider"></div>
 
-    <button class="btn-red logout-btn" type="button" @click="logout">Logout</button>
+    <button v-if="authEnabled" class="btn-red logout-btn" type="button" @click="logout">Logout</button>
 
     <div style="margin-top:8px; color:var(--text3); font-size:10px; text-align:center">
       ♥ yaemipaste + rustypaste

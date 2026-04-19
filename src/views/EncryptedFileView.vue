@@ -4,10 +4,11 @@ import { useRoute } from 'vue-router'
 import {
   decryptEncryptedBlob,
   isRustypasteEncryptedBlob,
+  rememberEncryptedFile,
   rawFileNameFromPublicPath,
   type EncryptedMetadata,
 } from '../lib/e2ee'
-import { decodeFileToken, formatBytes, publicApiFileUrl } from '../lib/api'
+import { decodeFileToken, formatBytes, publicApiFileUrl, publicFileUrl, publicSiteOrigin, resolveFileName } from '../lib/api'
 import { useNotificationStore } from '../stores/notifications'
 
 const route = useRoute()
@@ -18,6 +19,7 @@ const objectUrl = ref('')
 const textPreview = ref('')
 const metadata = ref<EncryptedMetadata | null>(null)
 const status = ref('Preparing encrypted paste…')
+const resolvedFileName = ref('')
 
 const fileName = computed(() => {
   const pk = String(route.params.filekey ?? '')
@@ -42,8 +44,9 @@ function clearObjectUrl() {
 }
 
 async function downloadEncryptedPayload(name: string): Promise<Blob> {
+  const publicUrl = publicFileUrl(name)
   const apiUrl = publicApiFileUrl(name)
-  const attempts = [apiUrl, `${apiUrl}?download=true`, `${apiUrl}?raw=1`]
+  const attempts = [publicUrl, `${apiUrl}?raw=1`, `${apiUrl}?download=true`, apiUrl]
   let sawHtmlPayload = false
   let sawNotFound = false
 
@@ -73,6 +76,7 @@ async function load() {
   metadata.value = null
   textPreview.value = ''
   error.value = ''
+  resolvedFileName.value = ''
 
   if (!fileName.value || !key.value) {
     error.value = 'Missing encrypted file or key'
@@ -83,10 +87,13 @@ async function load() {
   loading.value = true
   status.value = 'Downloading encrypted file…'
   try {
+    const resolvedName = await resolveFileName(fileName.value)
+    resolvedFileName.value = resolvedName
     const startedAt = performance.now()
-    const payload = await downloadEncryptedPayload(fileName.value)
+    const payload = await downloadEncryptedPayload(resolvedName)
     const decrypted = await decryptEncryptedBlob(payload, key.value)
     metadata.value = decrypted.metadata
+    rememberEncryptedFile(resolvedName, key.value, decrypted.metadata, publicSiteOrigin())
     objectUrl.value = URL.createObjectURL(decrypted.blob)
     if (decrypted.metadata.type.startsWith('text/')) {
       textPreview.value = await decrypted.blob.text()

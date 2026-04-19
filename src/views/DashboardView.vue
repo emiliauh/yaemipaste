@@ -5,10 +5,13 @@ import FilesTab from '../components/FilesTab.vue'
 import HistoryTab from '../components/HistoryTab.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import { useTheme, type ThemeMode } from '../lib/theme'
+import { isAuthEnabled } from '../lib/features'
 
 const router = useRouter()
 const tab = ref<'files' | 'history'>('files')
 const showSettings = ref(false)
+const authEnabled = isAuthEnabled()
+const HISTORY_REFRESH_EVENT = 'rp:history-refresh'
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
 const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
   { mode: 'system', label: 'Sys' },
@@ -21,7 +24,14 @@ const themeLabel = computed(() => {
 })
 
 function toggleSettings() {
+  if (!authEnabled) return
   showSettings.value = !showSettings.value
+}
+
+function setTab(next: 'files' | 'history') {
+  if (!authEnabled && next === 'history') return
+  tab.value = next
+  if (next === 'history') window.dispatchEvent(new CustomEvent(HISTORY_REFRESH_EVENT))
 }
 </script>
 
@@ -41,7 +51,7 @@ function toggleSettings() {
           {{ option.label }}
         </button>
       </div>
-      <button class="gear-btn" aria-label="Settings" @click="toggleSettings" title="Settings">
+      <button v-if="authEnabled" class="gear-btn" aria-label="Settings" @click="toggleSettings" title="Settings">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -52,15 +62,15 @@ function toggleSettings() {
     <!-- Tab bar -->
     <div class="topbar">
       <div class="tabs">
-        <button :class="{ active: tab === 'files' }" @click="tab = 'files'">Files</button>
-        <button :class="{ active: tab === 'history' }" @click="tab = 'history'">History</button>
+        <button :class="{ active: tab === 'files' }" @click="setTab('files')">Files</button>
+        <button v-if="authEnabled" :class="{ active: tab === 'history' }" @click="setTab('history')">History</button>
       </div>
     </div>
 
     <!-- Tab content -->
     <div class="content">
       <FilesTab v-if="tab === 'files'" />
-      <HistoryTab v-else />
+      <HistoryTab v-if="authEnabled && tab === 'history'" />
     </div>
 
     <!-- Settings panel -->

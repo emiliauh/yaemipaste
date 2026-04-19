@@ -1,8 +1,11 @@
 const MAGIC = 'RPENC1\n'
+import { encodeFileTokenFromName } from './fileTokens'
+
 const MAGIC_BYTES = new TextEncoder().encode(MAGIC)
 const MAX_HEADER_BYTES = 16 * 1024
 const KEY_STORAGE = 'rp_e2ee_keys'
 const BASE64URL_RE = /^[A-Za-z0-9_-]+$/
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/
 const BLOCKED_STORAGE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 export interface EncryptedMetadata {
   name: string
@@ -65,10 +68,19 @@ function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 async function importAesKey(rawKey: string): Promise<CryptoKey> {
-  if (!BASE64URL_RE.test(rawKey)) throw new Error('Invalid decryption key')
-  const keyBytes = base64UrlToBytes(rawKey)
+  const normalized = normalizeToBase64Url(rawKey)
+  if (!normalized) throw new Error('Invalid decryption key')
+  const keyBytes = base64UrlToBytes(normalized)
   if (keyBytes.byteLength !== 32) throw new Error('Invalid decryption key')
   return crypto.subtle.importKey('raw', bytesToArrayBuffer(keyBytes), 'AES-GCM', false, ['decrypt'])
+}
+
+function normalizeToBase64Url(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (BASE64URL_RE.test(trimmed)) return trimmed
+  if (!BASE64_RE.test(trimmed)) return null
+  return trimmed.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
 function readStoredKeys(): Record<string, StoredKey> {
@@ -112,8 +124,12 @@ function normalizeStoredKey(value: unknown, fallbackName: string): StoredKey | n
   // allow base64url key OR 'pw:{base64url_salt}' for password-encrypted files
   const isPwKey = candidate.key.startsWith('pw:')
   const keyPayload = isPwKey ? candidate.key.slice(3) : candidate.key
-  if (!BASE64URL_RE.test(keyPayload)) return null
-  if (typeof candidate.origin !== 'string') return null
+  const normalizedPayload = normalizeToBase64Url(keyPayload)
+  if (!normalizedPayload) return null
+  const normalizedKey = isPwKey ? `pw:${normalizedPayload}` : normalizedPayload
+  const origin = typeof candidate.origin === 'string' && candidate.origin.trim()
+    ? candidate.origin
+    : window.location.origin
   const type = typeof candidate.type === 'string' && candidate.type.trim()
     ? candidate.type
     : 'application/octet-stream'
@@ -124,8 +140,8 @@ function normalizeStoredKey(value: unknown, fallbackName: string): StoredKey | n
   const size = Number.isFinite(candidate.size) && Number(candidate.size) >= 0 ? Number(candidate.size) : 0
   const name = typeof candidate.name === 'string' && candidate.name ? candidate.name : fallbackName
   return {
-    key: candidate.key,
-    origin: candidate.origin,
+    key: normalizedKey,
+    origin,
     name,
     type,
     size,
@@ -328,20 +344,35 @@ export function forgetEncryptedFile(fileName: string) {
   writeStoredKeys(keys)
 }
 
+function keyLookupCandidates(fileName: string): string[] {
+  const cleaned = fileName.replace(/^\/+/, '')
+  const candidates = new Set<string>([cleaned])
+  if (cleaned.toLowerCase().endsWith('.rpenc')) candidates.add(cleaned.slice(0, -6))
+  else candidates.add(`${cleaned}.rpenc`)
+  return [...candidates].filter(isSafeStorageKey)
+}
+
 export function getStoredEncryptedFile(fileName: string): StoredKey | null {
   if (!isSafeStorageKey(fileName)) return null
-  return readStoredKeys()[fileName] ?? null
+  const keys = readStoredKeys()
+  for (const candidate of keyLookupCandidates(fileName)) {
+    const stored = keys[candidate]
+    if (!stored) continue
+    if (candidate !== fileName) {
+      keys[fileName] = stored
+      writeStoredKeys(keys)
+    }
+    return stored
+  }
+  return null
 }
 
 export function encryptedShareUrl(fileName: string, key: string, origin = window.location.origin): string {
-  // imported lazily to avoid circular dep — inline the same base64url encoding
-  const token = btoa(fileName).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-  return `${origin}/file/${token}+${key}/preview`
+  return `${origin}/file/${encodeFileTokenFromName(fileName)}+${key}/preview`
 }
 
 export function passwordEncryptedShareUrl(fileName: string, salt: string, origin = window.location.origin): string {
-  const token = btoa(fileName).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-  return `${origin}/file/${token}+pw:${salt}/preview`
+  return `${origin}/file/${encodeFileTokenFromName(fileName)}+pw:${salt}/preview`
 }
 
 export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {

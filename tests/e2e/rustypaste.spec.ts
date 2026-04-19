@@ -270,6 +270,70 @@ test('upload accepts server short-path responses without surfacing an error', as
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview/)
 })
 
+test('latest share link toggles between preview and raw media URL for uploaded images', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  const uploadedName = 'toggle-image.png'
+  const token = Buffer.from(uploadedName).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `http://127.0.0.1:5173/file/${token}/preview`,
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: uploadedName,
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+
+  const shareRow = page.getByTestId('share-row').first()
+  await expect(shareRow).toContainText('/file/')
+  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Preview URL')
+  await expect(page.locator('.share-result img, .share-result video')).toHaveCount(0)
+
+  await shareRow.getByTestId('share-link-mode-toggle').click()
+  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Raw media URL')
+  await expect(shareRow.locator('a')).toContainText('/toggle-image/file.png')
+
+  await shareRow.getByTestId('share-link-mode-toggle').click()
+  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Preview URL')
+  await expect(shareRow.locator('a')).toContainText('/file/')
+})
+
+test('latest share link toggles between preview and raw media URL for uploaded videos', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  const uploadedName = 'toggle-video.mp4'
+  const token = Buffer.from(uploadedName).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `http://127.0.0.1:5173/file/${token}/preview`,
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: uploadedName,
+    mimeType: 'video/mp4',
+    buffer: Buffer.from('fake-video'),
+  })
+
+  const shareRow = page.getByTestId('share-row').first()
+  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Preview URL')
+  await shareRow.getByTestId('share-link-mode-toggle').click()
+  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Raw media URL')
+  await expect(shareRow.locator('a')).toContainText('/toggle-video/file.mp4')
+})
+
 test('upload shows a clear error when API returns JSON instead of a file URL', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
@@ -616,7 +680,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
       }),
     })
   })
-  await page.route('**/api/preview-check.txt?raw=1', async (route) => {
+  await page.route('**/preview-check/file.txt', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -631,7 +695,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
   await expect(page.getByText('preview content')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Download file' })).toHaveAttribute(
     'href',
-    /\/api\/preview-check\.txt\?download=true$/,
+    /\/file\/[A-Za-z0-9_-]+\/download$/,
   )
 })
 
@@ -652,7 +716,7 @@ test('public preview falls back owner to logged-in username when uploader is unk
       }),
     })
   })
-  await page.route('**/api/owner-fallback.txt?raw=1', async (route) => {
+  await page.route('**/owner-fallback/file.txt', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -699,16 +763,8 @@ test('upload preview download and delete work as one public-file flow', async ({
       }),
     })
   })
-  await page.route('**/api/flow-e2e.txt?raw=1', async (route) => {
+  await page.route('**/flow-e2e/file.txt', async (route) => {
     await route.fulfill({ status: deleted ? 404 : 200, contentType: 'text/plain', body: deleted ? 'not found' : body })
-  })
-  await page.route('**/api/flow-e2e.txt?download=true', async (route) => {
-    await route.fulfill({
-      status: deleted ? 404 : 200,
-      contentType: 'text/plain',
-      headers: { 'content-disposition': `attachment; filename="${fileName}"` },
-      body: deleted ? 'not found' : body,
-    })
   })
   await page.route('**/api/list', async (route) => {
     await route.fulfill({
@@ -752,8 +808,10 @@ test('upload preview download and delete work as one public-file flow', async ({
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByText(fileName)).toBeVisible()
-  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  const fileRow = page.locator('tr.file-row', { hasText: fileName }).first()
+  await expect(fileRow).toBeVisible()
+  await fileRow.getByRole('button', { name: 'More' }).click()
+  await fileRow.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect.poll(() => deleteAuth).toBe('test-token')
   await expect(page.getByText(fileName)).toBeHidden()
 
@@ -778,7 +836,7 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
       }),
     })
   })
-  await page.route('**/api/sharex-config.sxcu?raw=1', async (route) => {
+  await page.route('**/sharex-config/file.sxcu', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -789,8 +847,48 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
   await page.goto('/#/preview?p=/sharex-config/file.sxcu')
   await expect(page.getByText('No preview available for this file type.')).toBeVisible()
   const openButton = page.getByRole('link', { name: 'Open in app' })
-  await expect(openButton).toHaveAttribute('href', /download=true$/)
-  await expect(openButton).toHaveAttribute('download', 'yaemipaste.sxcu')
+  await expect(openButton).toHaveAttribute('href', /\/file\/[A-Za-z0-9_-]+\/download$/)
+})
+
+test('sharex config sanitizes unsupported uploader syntax placeholders', async ({ page }) => {
+  await signInWithAccount(page)
+  await page.goto('/#/files')
+  const sharexEnabled = await page.evaluate(async () => {
+    const mod = await import('/src/lib/api.ts')
+    return mod.isShareXEnabled()
+  })
+  test.skip(!sharexEnabled, 'ShareX integration disabled in this build')
+  await page.route('**/auth/sharex', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        RequestMethod: 'POST',
+        URL: 'https://api.example.invalid/',
+        Headers: { Authorization: '$jwt$' },
+        Arguments: {
+          uploader: '$uploader()$',
+          note: '$uploader(test)$',
+          direct: '%uploader%',
+          meta: '{"uploader":"$uploader()$","source":"ShareX"}',
+        },
+      }),
+    })
+  })
+
+  const generated = await page.evaluate(async () => {
+    const mod = await import('/src/lib/api.ts')
+    const blob = await mod.getShareXConfig()
+    return await blob.text()
+  })
+  const parsed = JSON.parse(generated) as Record<string, any>
+  const args = parsed.Arguments ?? {}
+  expect(Object.prototype.hasOwnProperty.call(args, 'uploader')).toBeFalsy()
+  expect(args.meta).toContain('test-user (ShareX)')
+  expect(args.note).toBe('test-user (ShareX)')
+  expect(args.direct).toBe('test-user (ShareX)')
+  expect(JSON.stringify(parsed)).not.toContain('uploader(')
+  expect(parsed.Headers['X-Upload-Client']).toBe('ShareX')
 })
 
 test('executable preview does not auto-fetch raw content and shows no-preview state', async ({ page }) => {
@@ -810,7 +908,7 @@ test('executable preview does not auto-fetch raw content and shows no-preview st
       }),
     })
   })
-  await page.route('**/api/setup.exe?raw=1', async (route) => {
+  await page.route('**/setup/file.exe', async (route) => {
     rawRequested = true
     await route.fulfill({ status: 200, contentType: 'application/octet-stream', body: 'MZ' })
   })
@@ -818,7 +916,7 @@ test('executable preview does not auto-fetch raw content and shows no-preview st
   await page.goto('/#/preview?p=/setup/file.exe')
   await expect(page.getByText('No preview available for this file type.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Download file' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Open in app' })).toHaveAttribute('href', /download=true$/)
+  await expect(page.getByRole('link', { name: 'Open in app' })).toHaveAttribute('href', /\/file\/[A-Za-z0-9_-]+\/download$/)
   await page.waitForTimeout(100)
   expect(rawRequested).toBeFalsy()
 })
@@ -839,7 +937,11 @@ test('direct short file URL boots into preview route', async ({ page }) => {
       }),
     })
   })
-  await page.route('**/api/redirect-check.txt?raw=1', async (route) => {
+  await page.route('**/redirect-check/file.txt', async (route) => {
+    if (route.request().resourceType() === 'document') {
+      await route.fallback()
+      return
+    }
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -869,7 +971,7 @@ test('single-segment file URL boots into preview route for images', async ({ pag
       }),
     })
   })
-  await page.route('**/api/png-check.png?raw=1', async (route) => {
+  await page.route('**/png-check/file.png', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -966,7 +1068,7 @@ test('history hover preview clears immediately when deleting the hovered file', 
   await page.route('**/api/hover-delete.png', async (route) => {
     await route.fulfill({ status: 200, body: '' })
   })
-  await page.route('**/api/hover-delete.png?raw=1', async (route) => {
+  await page.route('**/hover-delete/file.png', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -982,7 +1084,8 @@ test('history hover preview clears immediately when deleting the hovered file', 
   const row = page.locator('tr.file-row').first()
   await row.hover()
   await expect(page.locator('.hover-preview')).toBeVisible()
-  await row.getByRole('button', { name: 'Delete' }).click()
+  await row.getByRole('button', { name: 'More' }).click()
+  await row.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page.locator('.hover-preview')).toHaveCount(0)
 })
 
@@ -1032,14 +1135,16 @@ test('history actions and settings buttons work', async ({ page }) => {
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByText('history-check.txt')).toBeVisible()
-  await page.getByRole('button', { name: 'Download', exact: true }).click()
+  const historyRow = page.locator('tr.file-row', { hasText: 'history-check.txt' }).first()
+  await expect(historyRow).toBeVisible()
+  await historyRow.getByRole('button', { name: 'Download', exact: true }).click()
   await expect.poll(() => downloadRequested).toBeTruthy()
-  await page.getByRole('button', { name: 'Copy' }).click()
+  await historyRow.getByRole('button', { name: 'Copy' }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview/)
-  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await historyRow.getByRole('button', { name: 'More' }).click()
+  await historyRow.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page.locator('.modal-backdrop')).toHaveCount(0)
-  await expect(page.getByText('history-check.txt')).toBeHidden()
+  await expect(page.locator('tr.file-row', { hasText: 'history-check.txt' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByLabel('API Base URL')).toBeVisible()
@@ -1051,6 +1156,898 @@ test('history actions and settings buttons work', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.locator('.settings-panel')).toBeHidden()
+})
+
+test('history copy includes decryption key for encrypted files', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+
+  const fileName = 'secret.png.rpenc'
+  const decryptKey = 'AbCdEf123_-'
+  await page.addInitScript(({ name, key }) => {
+    const payload = {
+      [name]: {
+        key,
+        origin: 'https://example.invalid',
+        name: 'secret.png',
+        type: 'application/octet-stream',
+        size: 123,
+        createdAt: '2026-04-18T00:00:00Z',
+        uploader: 'owner',
+      },
+    }
+    localStorage.setItem('rp_e2ee_keys', JSON.stringify(payload))
+  }, { name: fileName, key: decryptKey })
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: fileName,
+        file_size: 123,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/secret.png.rpenc', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: fileName,
+        display_name: fileName,
+        uploader: 'owner',
+        upload_date_utc: '2026-04-18 00:00:00',
+        download_name: fileName,
+        file_size: 123,
+        mime_type: 'application/octet-stream',
+      }),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByRole('button', { name: 'Copy' }).click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`+${decryptKey}/preview`)
+})
+
+test('history encrypted modal copy includes key and hides raw media URL action', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+
+  const fileName = 'secret.bin.rpenc'
+  const decryptKey = 'AbCdEf123_-'
+  await page.addInitScript(({ name, key }) => {
+    const payload = {
+      [name]: {
+        key,
+        origin: 'https://example.invalid',
+        name: 'secret.bin',
+        type: 'application/octet-stream',
+        size: 345,
+        createdAt: '2026-04-18T00:00:00Z',
+        uploader: 'owner',
+      },
+    }
+    localStorage.setItem('rp_e2ee_keys', JSON.stringify(payload))
+  }, { name: fileName, key: decryptKey })
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: fileName,
+        file_size: 345,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/secret.bin.rpenc', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: fileName,
+        display_name: fileName,
+        uploader: 'owner',
+        upload_date_utc: '2026-04-18 00:00:00',
+        download_name: fileName,
+        file_size: 345,
+        mime_type: 'application/octet-stream',
+      }),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByText('secret.bin').click()
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText('Size: 345 B', { exact: true })).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Copy raw media URL' })).toHaveCount(0)
+  await modal.getByRole('button', { name: 'Copy URL' }).click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`+${decryptKey}/preview`)
+})
+
+test('history marks rpenc files as encrypted and explains locked preview', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'locked-image.png.rpenc',
+        file_size: 2048,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  const row = page.locator('tr.file-row').first()
+  await expect(row.locator('.lock-icon')).toBeVisible()
+  await row.locator('.filename').click()
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText('No inline preview available')).toBeVisible()
+  await expect(modal.getByText('This is an encrypted file. Add the decryption key/password to preview it.')).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Copy raw media URL' })).toHaveCount(0)
+})
+
+test('history decrypts rpenc previews when legacy key entries omit origin', async ({ page }) => {
+  await signInWithToken(page)
+  let uploadedEncryptedBody: Buffer | null = null
+  const encryptedName = 'legacy-image.png.rpenc'
+
+  await page.route('**/api/', async (route) => {
+    const body = route.request().postDataBuffer()
+    if (!body) throw new Error('Missing upload body')
+    uploadedEncryptedBody = extractMultipartField(body, route.request().headers()['content-type'] ?? '', 'file')
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `http://127.0.0.1:5173/${encryptedName}`,
+    })
+  })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: encryptedName,
+        file_size: 256,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route(`**/api/${encryptedName}?raw=1`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/octet-stream',
+      body: uploadedEncryptedBody ?? Buffer.from(''),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByTestId('encrypt-toggle').click()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'legacy-image.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('rp_e2ee_keys')
+    if (!raw) return
+    const parsed = JSON.parse(raw) as Record<string, any>
+    const migrated: Record<string, any> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object') continue
+      if (typeof value.key === 'string' && !value.key.startsWith('pw:')) {
+        value.key = `${value.key.replace(/-/g, '+').replace(/_/g, '/')}==`
+      }
+      delete value.origin
+      const targetKey = key.endsWith('.rpenc') ? key.slice(0, -6) : key
+      migrated[targetKey] = value
+    }
+    localStorage.setItem('rp_e2ee_keys', JSON.stringify(migrated))
+  })
+
+  await page.getByRole('button', { name: 'History' }).click()
+  const row = page.locator('tr.file-row').first()
+  await expect(row).toContainText('legacy-image')
+  await expect(row).toContainText('.png')
+  await expect(row).not.toContainText('.rpenc')
+  await row.locator('.filename').click()
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByRole('img')).toBeVisible()
+  await expect(modal.getByText('This is an encrypted file. Add the decryption key/password to preview it.')).toHaveCount(0)
+})
+
+test('history decrypts and previews inline text for encrypted text files', async ({ page }) => {
+  await signInWithToken(page)
+  let encryptedPayload: Buffer | null = null
+  const encryptedName = 'secret-note.txt.rpenc'
+  const plainText = 'encrypted text should preview inline'
+
+  await page.route('**/api/', async (route) => {
+    const body = route.request().postDataBuffer()
+    if (!body) throw new Error('Missing upload body')
+    encryptedPayload = extractMultipartField(body, route.request().headers()['content-type'] ?? '', 'file')
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `http://127.0.0.1:5173/${encryptedName}`,
+    })
+  })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: encryptedName,
+        file_size: 256,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route(`**/api/${encryptedName}?raw=1`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/octet-stream',
+      body: encryptedPayload ?? Buffer.from(''),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByTestId('encrypt-toggle').click()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'secret-note.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from(plainText),
+  })
+
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.locator('tr.file-row .filename').first().click()
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText(plainText)).toBeVisible()
+  await expect(modal.getByText('No inline preview available')).toHaveCount(0)
+})
+
+test('encrypted upload keeps history key when server returns /file/<token>/preview URL', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  const encryptedName = 'tokenized-short-path.txt.rpenc'
+  const token = Buffer.from(encryptedName).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `http://127.0.0.1:5173/file/${token}/preview`,
+    })
+  })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: encryptedName,
+        file_size: 64,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByTestId('encrypt-toggle').click()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'tokenized-short-path.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('tokenized-short-path'),
+  })
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByRole('button', { name: 'Copy' }).click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('+')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/preview')
+})
+
+test('history password-encrypted download requires password prompt', async ({ page }) => {
+  await signInWithToken(page)
+  let rawRequested = false
+  const fileName = 'secret.png.rpenc'
+  await page.addInitScript(({ name }) => {
+    const payload = {
+      [name]: {
+        key: 'pw:header-token',
+        origin: 'https://example.invalid',
+        name: 'secret.png',
+        type: 'application/octet-stream',
+        size: 123,
+        createdAt: '2026-04-18T00:00:00Z',
+        uploader: 'owner',
+      },
+    }
+    localStorage.setItem('rp_e2ee_keys', JSON.stringify(payload))
+  }, { name: fileName })
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: fileName,
+        file_size: 123,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/secret.png.rpenc?raw=1', async (route) => {
+    rawRequested = true
+    await route.fulfill({ status: 200, body: '' })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByRole('button', { name: 'Download', exact: true }).click()
+  await expect(page.getByText('Download password-encrypted file')).toBeVisible()
+  await expect.poll(() => rawRequested).toBeFalsy()
+})
+
+test('history password change closes modal and keeps success notification after encrypted upload flow', async ({ page }) => {
+  await signInWithToken(page)
+
+  let uploadCalls = 0
+  let firstEncryptedBody: Buffer | null = null
+  let historyFileName = 'change-target.rpenc'
+  let deleteCalled = false
+
+  await page.route('**/api/', async (route) => {
+    uploadCalls += 1
+    const body = route.request().postDataBuffer()
+    if (!body) throw new Error('Missing upload body')
+    const contentType = route.request().headers()['content-type'] ?? ''
+    const encryptedFile = extractMultipartField(body, contentType, 'file')
+    if (uploadCalls === 1) {
+      firstEncryptedBody = encryptedFile
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/plain',
+        body: 'http://127.0.0.1:5173/change-target.rpenc',
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: 'http://127.0.0.1:5173/change-target-rotated.rpenc',
+    })
+  })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: historyFileName,
+        file_size: 128,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/*', async (route) => {
+    const last = route.request().url().split('/').pop() ?? historyFileName
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: last,
+        display_name: last,
+        uploader: 'owner',
+        upload_date_utc: '2026-04-18 00:00:00',
+        download_name: last,
+        file_size: 128,
+        mime_type: 'application/octet-stream',
+      }),
+    })
+  })
+  await page.route('**/api/change-target.rpenc*', async (route) => {
+    if (route.request().url().includes('?raw=1')) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/octet-stream',
+        body: firstEncryptedBody ?? Buffer.from(''),
+      })
+      return
+    }
+    deleteCalled = true
+    historyFileName = 'change-target-rotated.rpenc'
+    await route.fulfill({ status: 200, body: '' })
+  })
+
+  await page.goto('/#/files')
+  await page.getByTestId('encrypt-toggle').click()
+  await page.getByTestId('encrypt-toggle').click()
+  await page.locator('.pw-input').fill('old-pass')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'change-target.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('password-change-check'),
+  })
+  await expect.poll(() => uploadCalls).toBe(1)
+
+  await page.getByRole('button', { name: 'History' }).click()
+  const historyRow = page.locator('tr.file-row').first()
+  await expect(historyRow).toBeVisible()
+  await historyRow.getByRole('button', { name: 'More' }).click()
+  await historyRow.getByRole('button', { name: 'Change decryption password' }).click()
+
+  await page.getByLabel('Current password').fill('old-pass')
+  await page.getByLabel('New password', { exact: true }).fill('new-pass')
+  await page.getByLabel('Confirm new password', { exact: true }).fill('new-pass')
+  await page.getByRole('button', { name: 'Save password' }).click()
+
+  await expect(page.getByText(/Downloading encrypted file|Decrypting with current password|Encrypting and uploading/)).toBeVisible()
+  await expect(page.locator('.password-modal')).toHaveCount(0)
+  await expect(page.getByTestId('notification-list')).toContainText('Decryption password updated')
+  await expect(page.locator('.row-item-menu')).toHaveCount(0)
+  await expect.poll(() => uploadCalls).toBe(2)
+  await expect.poll(() => deleteCalled).toBeTruthy()
+})
+
+test('history auto-refreshes after upload refresh event', async ({ page }) => {
+  await signInWithToken(page)
+  let listVersion = 0
+  await page.route('**/api/list', async (route) => {
+    const files = listVersion === 0
+      ? [{
+        file_name: 'existing-history.txt',
+        file_size: 10,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]
+      : [{
+        file_name: 'existing-history.txt',
+        file_size: 10,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }, {
+        file_name: 'new-upload.txt',
+        file_size: 15,
+        creation_date_utc: '2026-04-17T01:05:00Z',
+        expires_at_utc: null,
+      }]
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(files),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByLabel('Select existing-history.txt')).toBeVisible()
+  await expect(page.getByText('new-upload.txt')).toHaveCount(0)
+
+  listVersion = 1
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('rp:history-refresh')))
+  await expect(page.getByText('new-upload.txt')).toBeVisible()
+})
+
+test('history refreshes when History tab is clicked again', async ({ page }) => {
+  await signInWithToken(page)
+  let listVersion = 0
+  await page.route('**/api/list', async (route) => {
+    const files = listVersion === 0
+      ? [{
+        file_name: 'first-list.txt',
+        file_size: 10,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]
+      : [{
+        file_name: 'first-list.txt',
+        file_size: 10,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }, {
+        file_name: 'second-list.txt',
+        file_size: 12,
+        creation_date_utc: '2026-04-17T01:01:00Z',
+        expires_at_utc: null,
+      }]
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(files),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByText('first-list.txt')).toBeVisible()
+  await expect(page.getByText('second-list.txt')).toHaveCount(0)
+
+  listVersion = 1
+  await page.getByRole('button', { name: 'Files' }).click()
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByText('second-list.txt')).toBeVisible()
+})
+
+test('history shows ShareX badge for token-uploaded screenshot files', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'Ab12Cd34.png',
+        file_size: 4096,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/Ab12Cd34.png', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'Ab12Cd34.png',
+        display_name: 'Ab12Cd34.png',
+        uploader: 'ShareX',
+        upload_date_utc: '2026-04-17T01:00:00Z',
+        download_name: 'Ab12Cd34.png',
+        file_size: 4096,
+        mime_type: 'image/png',
+      }),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+})
+
+test('history falls back to ShareX badge for randomized screenshot names', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: '03kZwAgf.png',
+        file_size: 25500,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/03kZwAgf.png', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: '03kZwAgf.png',
+        display_name: '03kZwAgf.png',
+        uploader: 'Unknown (token user)',
+        upload_date_utc: '2026-04-17T01:00:00Z',
+        download_name: '03kZwAgf.png',
+        file_size: 25500,
+        mime_type: 'image/png',
+      }),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+})
+
+test('history preview modal provides copy URL and copy raw media URL actions', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'history-modal.png',
+        file_size: 68,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/history-modal/file.png', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByText('history-modal.png').click()
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText('Size: 68 B')).toBeVisible()
+
+  await modal.getByRole('button', { name: 'Copy URL' }).click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(
+    /\/file\/[A-Za-z0-9_-]+\/preview$/,
+  )
+  await expect(page.getByTestId('notification-row').filter({ hasText: 'Copied URL' })).toHaveCount(1)
+
+  await modal.getByRole('button', { name: 'Copy raw media URL' }).click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(
+    /\/history-modal\/file\.png$/,
+  )
+  await expect(page.getByTestId('notification-row').filter({ hasText: 'Copied raw media URL' })).toHaveCount(1)
+})
+
+test('history non-image preview shows size and download button', async ({ page }) => {
+  await signInWithToken(page)
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'history-doc.pdf',
+        file_size: 12,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/history-doc.pdf?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/pdf',
+      body: Buffer.from('dummy pdf payload'),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByText('history-doc.pdf').click()
+
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText('No inline preview available')).toBeVisible()
+  await expect(modal.getByText('File size: 12 B')).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Download file' })).toBeVisible()
+})
+
+test('history preview shows inline text content for text files', async ({ page }) => {
+  await signInWithToken(page)
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'history-note.txt',
+        file_size: 30,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/history-note.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'history-note.txt',
+        display_name: 'history-note.txt',
+        uploader: 'owner',
+        upload_date_utc: '2026-04-17 01:00:00',
+        download_name: 'history-note.txt',
+        file_size: 30,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+  await page.route('**/history-note/file.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: 'hello from history text preview',
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByText('history-note.txt').click()
+
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible()
+  await expect(modal.getByText('hello from history text preview')).toBeVisible()
+  await expect(modal.getByText('No inline preview available')).toHaveCount(0)
+})
+
+test('history non-image preview opens instantly without waiting on raw fetch', async ({ page }) => {
+  await signInWithToken(page)
+  let rawRequested = false
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'history-slow.docx',
+        file_size: 1024,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/history-slow.docx?raw=1', async (route) => {
+    rawRequested = true
+    await page.waitForTimeout(1500)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      body: Buffer.from('delayed payload'),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByText('history-slow.docx').click()
+
+  const modal = page.locator('.modal')
+  await expect(modal).toBeVisible({ timeout: 300 })
+  await expect(modal.getByText('No inline preview available')).toBeVisible()
+  await expect.poll(() => rawRequested).toBeFalsy()
+})
+
+test('history paginates at 15 by default and supports page-size menu', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        Array.from({ length: 20 }, (_, i) => ({
+          file_name: `page-file-${String(i).padStart(2, '0')}.txt`,
+          file_size: 10 + i,
+          creation_date_utc: '2026-04-17T01:00:00Z',
+          expires_at_utc: null,
+        })),
+      ),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.locator('tr.file-row')).toHaveCount(15)
+  await expect(page.getByText('Page 1 of 2')).toBeVisible()
+  await expect(page.getByText('page-file-00.txt')).toBeVisible()
+  await expect(page.getByText('page-file-14.txt')).toBeVisible()
+  await expect(page.getByText('page-file-15.txt')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Next' }).click()
+  await expect(page.getByText('Page 2 of 2')).toBeVisible()
+  await expect(page.locator('tr.file-row')).toHaveCount(5)
+  await expect(page.getByText('page-file-15.txt')).toBeVisible()
+
+  await page.getByRole('button', { name: '30' }).click()
+  await expect(page.getByText('Page 1 of 1')).toBeVisible()
+  await expect(page.locator('tr.file-row')).toHaveCount(20)
+})
+
+test('history does not overflow horizontally on mobile with long names', async ({ page }) => {
+  await signInWithToken(page)
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'this-is-a-very-long-file-name-that-should-truncate-on-mobile-and-not-cause-horizontal-scroll-overflow.png',
+        file_size: 2048,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/this-is-a-very-long-file-name-that-should-truncate-on-mobile-and-not-cause-horizontal-scroll-overflow.png', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'this-is-a-very-long-file-name-that-should-truncate-on-mobile-and-not-cause-horizontal-scroll-overflow.png',
+        display_name: 'this-is-a-very-long-file-name-that-should-truncate-on-mobile-and-not-cause-horizontal-scroll-overflow.png',
+        uploader: 'owner',
+        upload_date_utc: '2026-04-17 01:00:00',
+        download_name: 'this-is-a-very-long-file-name-that-should-truncate-on-mobile-and-not-cause-horizontal-scroll-overflow.png',
+        file_size: 2048,
+        mime_type: 'image/png',
+      }),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.locator('tr.file-row')).toHaveCount(1)
+  const visibleName = (await page.locator('.filename-text').first().textContent())?.trim() ?? ''
+  expect(visibleName).toMatch(/^this-is-a-very-\.\.\.png$/)
+  const metrics = await page.evaluate(() => ({
+    docScrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+    tableScrollWidth: (document.querySelector('.table-wrap') as HTMLElement | null)?.scrollWidth ?? 0,
+    tableClientWidth: (document.querySelector('.table-wrap') as HTMLElement | null)?.clientWidth ?? 0,
+  }))
+  expect(metrics.docScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1)
+  expect(metrics.tableScrollWidth).toBeLessThanOrEqual(metrics.tableClientWidth + 1)
+})
+
+test('history keeps file extension visible for long filenames', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'this-is-an-extremely-long-file-name-that-would-normally-hide-the-extension-in-a-tight-column-layout.png',
+        file_size: 1024,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.locator('tr.file-row')).toHaveCount(1)
+  await expect(page.locator('.filename-ext').first()).toHaveText('.png')
+})
+
+test('history actions menu closes when clicking outside', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'outside-close.txt',
+        file_size: 12,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.getByLabel('Select outside-close.txt').check()
+  await page.getByRole('button', { name: 'Actions' }).click()
+  await expect(page.getByRole('button', { name: 'Delete Selected' })).toBeVisible()
+  await page.locator('.toolbar').click()
+  await expect(page.getByRole('button', { name: 'Delete Selected' })).toHaveCount(0)
 })
 
 test('history supports multi-select delete selected', async ({ page }) => {
@@ -1298,6 +2295,23 @@ for (const viewport of [
 
     await page.getByRole('button', { name: 'Logout' }).click()
     await expect(page).toHaveURL(/\/login$/)
+  })
+
+  test(`register page is centered on ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.goto('/register')
+
+    const box = await page.getByTestId('register-center').boundingBox()
+    expect(box).not.toBeNull()
+    if (!box) return
+
+    const centerX = box.x + box.width / 2
+    const centerY = box.y + box.height / 2
+    expect(Math.abs(centerX - viewport.width / 2)).toBeLessThanOrEqual(1)
+    expect(Math.abs(centerY - viewport.height / 2)).toBeLessThanOrEqual(1)
+
+    await page.locator('input[autocomplete="username"]').click()
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   })
 }
 

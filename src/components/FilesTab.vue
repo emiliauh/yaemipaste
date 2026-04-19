@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { uploadFile, uploadText, type UploadProgress } from '../lib/api'
+import { publicFileUrl, publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
 import ExpirySelector from './ExpirySelector.vue'
 import { defaultExpiryValue, isValidExpiryValue, type ExpiryValue } from '../lib/expiry'
 import { useNotificationStore } from '../stores/notifications'
 
 const EXPIRY_KEY = 'rp_expiry'
 const KEEP_NAME_KEY = 'rp_keep_file_name'
+const HISTORY_REFRESH_EVENT = 'rp:history-refresh'
 const savedExpiry = localStorage.getItem(EXPIRY_KEY)
 const keepNameSaved = localStorage.getItem(KEEP_NAME_KEY)
 const expiry = ref<ExpiryValue>(isValidExpiryValue(savedExpiry) ? savedExpiry : defaultExpiryValue)
@@ -16,7 +17,14 @@ const textPaste = ref('')
 const loading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const longPressing = ref(false)
-const shareLinks = ref<Array<{ id: number; name: string; url: string }>>([])
+interface ShareLinkItem {
+  id: number
+  name: string
+  previewUrl: string
+  embedUrl: string | null
+  showingEmbed: boolean
+}
+const shareLinks = ref<ShareLinkItem[]>([])
 const uploadProgress = ref<UploadProgress | null>(null)
 const encryptMode = ref<'none' | 'encrypt' | 'password'>('none')
 const encryptPassword = ref('')
@@ -46,14 +54,49 @@ function showToast(msg: string, type: 'success' | 'error' = 'success') {
   notificationStore.push(msg, type)
 }
 
+function notifyHistoryRefresh() {
+  window.dispatchEvent(new CustomEvent(HISTORY_REFRESH_EVENT))
+}
+
 function clearNotifications() {
   notificationStore.clear()
 }
 
-function pushShareLink(name: string, url: string) {
+function isEmbeddableFileName(name: string): boolean {
+  return /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico|mp4|webm|mov|m4v|ogv)$/i.test(name)
+}
+
+function absolutePublicUrl(value: string): string {
+  return new URL(value, publicSiteOrigin()).toString()
+}
+
+function currentShareUrl(share: ShareLinkItem): string {
+  if (share.showingEmbed && share.embedUrl) return share.embedUrl
+  return share.previewUrl
+}
+
+function toggleShareLinkMode(shareId: number) {
+  shareLinks.value = shareLinks.value.map((item) => {
+    if (item.id !== shareId || !item.embedUrl) return item
+    return { ...item, showingEmbed: !item.showingEmbed }
+  })
+}
+
+function pushShareLink(name: string, previewUrl: string, fileName: string) {
+  const isEncrypted = fileName.toLowerCase().endsWith('.rpenc')
+  const embedUrl = !isEncrypted && isEmbeddableFileName(fileName)
+    ? absolutePublicUrl(publicFileUrl(fileName))
+    : null
+  const entry: ShareLinkItem = {
+    id: ++shareLinkId,
+    name,
+    previewUrl: absolutePublicUrl(previewUrl),
+    embedUrl,
+    showingEmbed: false,
+  }
   shareLinks.value = [
-    { id: ++shareLinkId, name, url },
-    ...shareLinks.value.filter((item) => item.url !== url),
+    entry,
+    ...shareLinks.value.filter((item) => item.previewUrl !== entry.previewUrl),
   ].slice(0, 20)
 }
 
@@ -84,17 +127,19 @@ async function handleFiles(files: FileList | File[]) {
   for (const f of arr) {
     try {
       uploadProgress.value = { phase: mode !== 'none' ? 'encrypting' : 'uploading', percent: mode !== 'none' ? 0 : 1 }
-      const url = (await uploadFile(f, {
+      const upload = await uploadFile(f, {
         expiry: selectedExpiry,
         encrypt: mode === 'encrypt',
         password: mode === 'password' ? pw : undefined,
         keepFileName: shouldKeepFileName,
         onProgress: setProgress,
-      })).trim()
-      pushShareLink(f.name, url)
+      })
+      const url = upload.url.trim()
+      pushShareLink(f.name, url, upload.fileName)
       const label = mode === 'password' ? 'Password-encrypted' : mode === 'encrypt' ? 'Encrypted' : 'Uploaded'
       if (await copyShareUrl(url)) showToast(`${label} & copied: ${f.name}`)
       else showToast(`${label}: ${f.name}. Copy the link below.`)
+      notifyHistoryRefresh()
     } catch (e: any) {
       showToast(e.message ?? 'Upload failed', 'error')
     }
@@ -135,18 +180,20 @@ async function submitText() {
   const selectedExpiry = expiry.value === 'never' ? undefined : expiry.value
   try {
     uploadProgress.value = { phase: mode !== 'none' ? 'encrypting' : 'uploading', percent: mode !== 'none' ? 0 : 1 }
-    const url = (await uploadText(textPaste.value, {
+    const upload = await uploadText(textPaste.value, {
       expiry: selectedExpiry,
       encrypt: mode === 'encrypt',
       password: mode === 'password' ? pw : undefined,
       keepFileName: shouldKeepFileName,
       onProgress: setProgress,
-    })).trim()
-    pushShareLink('paste.txt', url)
+    })
+    const url = upload.url.trim()
+    pushShareLink('paste.txt', url, upload.fileName)
     const label = mode === 'password' ? 'password-encrypted' : mode === 'encrypt' ? 'encrypted' : 'uploaded'
     if (await copyShareUrl(url)) showToast(`Text ${label} & copied`)
     else showToast(`Text ${label}. Copy the link below.`)
     textPaste.value = ''
+    notifyHistoryRefresh()
   } catch (e: any) {
     showToast(e.message ?? 'Upload failed', 'error')
   } finally {
@@ -315,11 +362,23 @@ function onPasteAreaLongPressCancel() {
       <div v-for="share in shareLinks" :key="share.id" class="share-row" data-testid="share-row">
         <div class="share-link-block">
           <span class="share-file">{{ share.name }}</span>
-          <a :href="share.url" target="_blank" rel="noopener">{{ share.url }}</a>
+          <span v-if="share.embedUrl" class="share-mode" data-testid="share-link-mode">{{ share.showingEmbed ? 'Raw media URL' : 'Preview URL' }}</span>
+          <a :href="currentShareUrl(share)" target="_blank" rel="noopener">{{ currentShareUrl(share) }}</a>
         </div>
-        <button class="btn-ghost" type="button" @click="copyShareUrl(share.url).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
-          Copy
-        </button>
+        <div class="share-actions">
+          <button
+            v-if="share.embedUrl"
+            class="btn-ghost"
+            type="button"
+            data-testid="share-link-mode-toggle"
+            @click="toggleShareLinkMode(share.id)"
+          >
+            {{ share.showingEmbed ? 'Show preview URL' : 'Show raw media URL' }}
+          </button>
+          <button class="btn-ghost" type="button" @click="copyShareUrl(currentShareUrl(share)).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
+            Copy
+          </button>
+        </div>
       </div>
     </div>
 
@@ -364,10 +423,12 @@ function onPasteAreaLongPressCancel() {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 10px;
-  color: var(--text2);
-  font-size: 12px;
-  width: fit-content;
+   min-height: 36px;
+   padding: 0 10px;
+   color: var(--text2);
+   font-size: 12px;
+   width: fit-content;
+   box-sizing: border-box;
 }
 .encrypt-btn {
   cursor: pointer;
@@ -408,9 +469,11 @@ function onPasteAreaLongPressCancel() {
   border-radius: 1px;
 }
 .pw-input {
-  width: 140px;
-  font-size: 12px;
-  padding: 7px 10px;
+   width: 140px;
+   min-height: 36px;
+   font-size: 12px;
+   padding: 0 10px;
+   box-sizing: border-box;
 }
 .pw-field-enter-active,
 .pw-field-leave-active {
@@ -453,11 +516,23 @@ function onPasteAreaLongPressCancel() {
   font-size: 11px;
   margin-bottom: 3px;
 }
+.share-mode {
+  display: block;
+  color: var(--text3);
+  font-size: 10px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
 .share-result a {
   color: var(--accent-h);
   font-size: 12px;
   overflow-wrap: anywhere;
   text-decoration: none;
+}
+.share-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .text-actions-row {
   display: flex;
@@ -519,12 +594,16 @@ function onPasteAreaLongPressCancel() {
     align-items: stretch;
     flex-direction: column-reverse;
   }
-  .text-actions-row button,
-  .share-row .btn-ghost {
+  .text-actions-row button {
     width: 100%;
   }
   .share-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .share-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .share-result {
     padding: 12px;

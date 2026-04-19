@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authRegister, authLogin } from '../lib/api'
+import { isAuthEnabled } from '../lib/features'
 
 const router = useRouter()
 
@@ -12,6 +13,24 @@ const token = ref('')
 const error = ref('')
 const loading = ref(false)
 const tokenUsed = ref(false)
+let restoreBodyOverflow = ''
+let restoreHtmlOverflow = ''
+
+onMounted(() => {
+  if (!isAuthEnabled()) {
+    router.replace('/files')
+    return
+  }
+  restoreBodyOverflow = document.body.style.overflow
+  restoreHtmlOverflow = document.documentElement.style.overflow
+  document.body.style.overflow = 'hidden'
+  document.documentElement.style.overflow = 'hidden'
+})
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = restoreBodyOverflow
+  document.documentElement.style.overflow = restoreHtmlOverflow
+})
 
 async function submit() {
   error.value = ''
@@ -46,8 +65,8 @@ async function submit() {
 
 <template>
   <div class="page">
-    <div class="center">
-      <div class="card" style="width:400px; max-width:calc(100vw - 32px)">
+    <div class="center" data-testid="register-center">
+      <div class="card register-card">
         <h2 style="font-size:14px; font-weight:normal; margin-bottom:16px; color:var(--text)">Create Account</h2>
 
         <form @submit.prevent="submit">
@@ -90,8 +109,23 @@ async function submit() {
 </template>
 
 <style scoped>
-.page { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-.center { display: flex; flex-direction: column; align-items: center; }
+.page {
+  height: 100dvh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.center {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.register-card {
+  width: 100%;
+}
 .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .field label { color: var(--text); font-size: 12px; }
 .field-hint { color: var(--text3); font-size: 11px; }
@@ -120,4 +154,9 @@ async function submit() {
 }
 .link { color: var(--text2); font-size: 12px; text-decoration: none; }
 .link:hover { color: var(--text); }
+
+@media (max-width: 420px) {
+  .page { padding: 12px; }
+  .card { padding: 16px; }
+}
 </style>

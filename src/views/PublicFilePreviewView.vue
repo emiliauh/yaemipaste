@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, publicApiFileUrl, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, encodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, publicDownloadUrl, publicFileUrl, resolveFileName, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
@@ -9,8 +9,10 @@ const loading = ref(true)
 const error = ref('')
 const textPreview = ref('')
 const meta = ref<PublicFileMeta | null>(null)
+const resolvedFileName = ref('')
+const routeFileKey = computed(() => String(route.params.filekey ?? ''))
 
-const fileName = computed(() => {
+const requestedFileName = computed(() => {
   const pk = String(route.params.filekey ?? '')
   if (pk) return decodeFileToken(pk.split('+')[0])
   // backward compat: old query params
@@ -21,8 +23,18 @@ const fileName = computed(() => {
   return String(route.query.f ?? '').replace(/^\/+/, '')
 })
 
-const rawUrl = computed(() => (fileName.value ? `${publicApiFileUrl(fileName.value)}?raw=1` : ''))
-const downloadUrl = computed(() => (fileName.value ? `${publicApiFileUrl(fileName.value)}?download=true` : ''))
+const rawUrl = computed(() => (resolvedFileName.value ? publicFileUrl(resolvedFileName.value) : ''))
+const rawRouteUrl = computed(() => {
+  const token = routeFileKey.value.split('+')[0]
+  if (token) return `/file/${token}/raw`
+  return resolvedFileName.value ? `/file/${encodeFileToken(resolvedFileName.value)}/raw` : ''
+})
+const downloadUrl = computed(() => {
+  const token = routeFileKey.value.split('+')[0]
+  if (token) return `/file/${token}/download`
+  return resolvedFileName.value ? publicDownloadUrl(resolvedFileName.value) : ''
+})
+const mediaUrl = computed(() => rawUrl.value)
 const isImage = computed(() => meta.value?.mime_type.startsWith('image/') ?? false)
 const isVideo = computed(() => meta.value?.mime_type.startsWith('video/') ?? false)
 const isText = computed(() => meta.value?.mime_type.startsWith('text/') ?? false)
@@ -54,13 +66,16 @@ const openInAppExtensions = new Set([
 ])
 
 const shouldPreferAppOpen = computed(() => {
-  const name = meta.value?.download_name || fileName.value
+  const name = meta.value?.download_name || resolvedFileName.value || requestedFileName.value
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   return openInAppExtensions.has(ext)
 })
 const shouldShowSecondaryAction = computed(() => shouldPreferAppOpen.value || canPreviewInline.value)
 
-const openActionHref = computed(() => (shouldPreferAppOpen.value ? downloadUrl.value : rawUrl.value))
+const openActionHref = computed(() => {
+  if (shouldPreferAppOpen.value) return downloadUrl.value
+  return rawRouteUrl.value
+})
 
 async function loadTextPreview() {
   textPreview.value = ''
@@ -68,7 +83,7 @@ async function loadTextPreview() {
   const response = await fetch(rawUrl.value, { cache: 'no-store' })
   if (!response.ok) {
     console.error('Text preview fetch failed', {
-      fileName: fileName.value,
+      fileName: resolvedFileName.value,
       url: rawUrl.value,
       status: response.status,
       statusText: response.statusText,
@@ -84,14 +99,20 @@ async function load() {
   loading.value = true
   meta.value = null
   textPreview.value = ''
-  if (!fileName.value) {
+  resolvedFileName.value = ''
+  if (!requestedFileName.value) {
     error.value = 'Missing file name'
     loading.value = false
     return
   }
 
   try {
-    meta.value = await getPublicFileMeta(fileName.value)
+    const fileName = await resolveFileName(requestedFileName.value)
+    if (fileName.toLowerCase().endsWith('.rpenc')) {
+      throw new Error("This file is encrypted but the link doesn't include a decryption key. Ask whoever shared this file for the full link.")
+    }
+    resolvedFileName.value = fileName
+    meta.value = await getPublicFileMeta(fileName)
     await loadTextPreview()
   } catch (e: any) {
     error.value = e.message ?? 'Could not load preview'
@@ -100,7 +121,7 @@ async function load() {
   }
 }
 
-watch(fileName, () => void load(), { immediate: true })
+watch(requestedFileName, () => void load(), { immediate: true })
 </script>
 
 <template>
@@ -132,10 +153,10 @@ watch(fileName, () => void load(), { immediate: true })
         </div>
 
         <div v-if="isImage" class="preview-frame">
-          <img :src="rawUrl" :alt="meta.display_name" />
+          <img :src="mediaUrl" :alt="meta.display_name" />
         </div>
         <div v-else-if="isVideo" class="preview-frame">
-          <video :src="rawUrl" controls />
+          <video :src="mediaUrl" controls />
         </div>
         <pre v-else-if="isText" class="text-preview">{{ textPreview }}</pre>
         <iframe
@@ -150,7 +171,7 @@ watch(fileName, () => void load(), { immediate: true })
         </div>
 
         <div class="actions">
-          <a class="btn-link btn-primary" :href="downloadUrl" :download="meta.download_name">Download file</a>
+          <a class="btn-link btn-primary" :href="downloadUrl">Download file</a>
           <a
             v-if="shouldShowSecondaryAction"
             class="btn-link btn-ghost"

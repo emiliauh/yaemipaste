@@ -1,124 +1,108 @@
-# yaemipaste
+# yaemipaste (rustypaste-ui)
 
-> A self-hosted paste and file-sharing stack built on top of **[rustypaste](https://github.com/orhun/rustypaste)**.
+Frontend and deployment wrapper for a rustypaste-based stack with:
+- file/text upload UI
+- encrypted share flows
+- history/actions UX
+- optional auth (accounts/tokens/passkeys)
+- optional Turnstile
+- optional ShareX integration
+- extension-free public preview routes resolved by a small Node resolver service
 
-If you want the short version: rustypaste handles file storage, serving, and the auth API. This project wraps it with a cleaner UI, token workflows, end-to-end encrypted shares, passkeys, ShareX support, and a proper upload history. You get a full stack without stitching things together manually.
-
-This repository is public-facing and intended for independent deployments.
-
----
-
-## What's included
-
-| Feature | Notes |
-|---------|-------|
-| Upload & history | Drag-and-drop or paste. Per-file expiry. Delete from history. |
-| E2E encrypted shares | AES-GCM client-side encryption. Key never leaves the browser — it lives in the share URL fragment. |
-| Passkeys | Passwordless login via WebAuthn on supported devices and password managers. |
-| ShareX config | One-click `.sxcu` download once authenticated. |
-| Public preview | Clean preview page for images, video, text, and PDFs shared with anyone. |
-| Open-source friendly | All private features are opt-in through env vars. Works without accounts or Turnstile. |
+This repository is structured to support both:
+1. **Private production deployments** (recommended first)
+2. **Public open-source distribution** with configurable features
 
 ---
 
-## Recent operational notes
+## Deployment modes
 
-- Public preview now avoids auto-preview/autodownload for non-previewable types (e.g. `.exe`), and shows a clear no-preview state.
-- History now shows a **Download** action for all files (encrypted files still decrypt client-side when applicable).
-- Login includes a password visibility toggle.
-- Playwright can run against production/staging using `PLAYWRIGHT_BASE_URL` and `PLAYWRIGHT_DISABLE_WEBSERVER=1`.
+### 1. Authenticated mode (default)
+- `VITE_ENABLE_AUTH=1`
+- login/register routes enabled
+- account settings (logout/passkeys/sharex) enabled
+- Turnstile can be enabled with `VITE_TURNSTILE_SITE_KEY` (+ backend `TURNSTILE_SECRET_KEY`)
+
+### 2. Anonymous public mode
+- `VITE_ENABLE_AUTH=0`
+- `/files` opens directly
+- login/register flows disabled
+- account-only controls hidden
+- Turnstile/passkeys should stay disabled in this mode
 
 ---
 
-## Documentation
+## Quick start
 
-For the full reference — environment variables, feature behavior, and troubleshooting — start here:
-
-- [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) — every env var explained
-- [`docs/KNOWLEDGEBASE.md`](docs/KNOWLEDGEBASE.md) — edge cases, notes, and gotchas
-
----
-
-## Install
-
-### Option 1 — One-command installer *(recommended)*
-
+### Interactive installer (recommended)
 ```bash
 curl -fsSL "https://example.invalid/install.sh?v=latest" | bash
 ```
 
-The installer is interactive. It walks you through the full setup and supports:
-
-- full stack install and updates
-- first user initialization
-- token create and revoke
-- service start / stop / restart / status
-- safe uninstall with confirmation prompts
-
-You can also run it from a local clone:
-
+Or from source:
 ```bash
-git clone https://github.com/emiliauh/yaemipaste.git
-cd yaemipaste
+git clone https://github.com/emiliauh/rustypaste-ui.git
+cd rustypaste-ui
 ./install.sh
 ```
 
+For this private repository, `install.sh` defaults to cloning `https://github.com/emiliauh/rustypaste-ui.git`.
+
+The installer now supports user-tailored setup for:
+- API base paths (`VITE_PASTE_API`, `VITE_AUTH_API`)
+- ShareX UI toggle (`VITE_ENABLE_SHAREX`)
+- auth/login toggle (`VITE_ENABLE_AUTH`)
+- Turnstile site/secret keys
+- passkeys toggle and RP settings
+- JWT secret generation/persistence
+
 ---
 
-### Option 2 — Docker Compose *(manual)*
+## Manual compose run
 
 ```bash
-git clone https://github.com/emiliauh/yaemipaste.git
-cd yaemipaste
 cp .env.example .env
-# edit .env to taste
+# edit .env
 docker compose up --build -d
 ```
 
-The UI is exposed on `http://localhost:8080` by default.  
-Set `UI_PORT` in `.env` to change the port.
+See [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) for all variables.
+
+The deployed stack is Rustypaste + Vite frontend + the bundled `resolver-server/`. There is no Python service in the application path.
 
 ---
 
-## Configuration
+## Security baseline
 
-Edit `.env` for your deployment. See [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) for a complete variable-by-variable breakdown.
+Current baseline in this repo:
+- strict TypeScript build (`vue-tsc`)
+- Playwright regression suite (`npm run test:e2e`)
+- dependency audit (`npm audit --audit-level=moderate`)
+- hardened installer guard rails (safe install path + explicit secret config)
+- no default insecure JWT fallback in compose (`JWT_SECRET` must be set)
 
-No personal credentials or private keys belong in repository files — everything sensitive is injected through env vars at build time or runtime.
-
-**A few things worth knowing upfront:**
-
-- `VITE_MAX_EXPIRY_DAYS` controls the maximum day-based retention shown in the UI (default: 14).
-- To reveal a **Forever** retention option in the selector, hold **Shift** and click the **Keep for** control.
-- `VITE_ENABLE_SHAREX=1` enables the ShareX config download for logged-in users.
-- Turnstile is fully optional — leave `VITE_TURNSTILE_SITE_KEY` unset and the login form skips the challenge.
+> Note: no software can truthfully claim “all industry standards” are fully and permanently satisfied. Treat security as continuous work: patching, review, monitoring, and periodic audits.
 
 ---
 
-## Exposing to the web
+## Environment highlights
 
-The typical pattern for a public deployment:
+Commonly tuned values:
 
-1. Set `UI_PORT` (e.g. `8080`) in your `.env`.
-2. Put a reverse proxy in front — Caddy, Nginx, or Traefik all work.
-3. Route your public domain to `localhost:${UI_PORT}`.
-4. Enable TLS — Let's Encrypt or your own certificate.
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `VITE_PASTE_API` | Frontend paste API base | `/api` |
+| `VITE_AUTH_API` | Frontend auth API base | `/auth` |
+| `VITE_FILE_RESOLVE_BASE` | Public resolver path for extension-free file links | `/resolve` |
+| `VITE_ENABLE_AUTH` | Enable login/account flows | `1` |
+| `VITE_ENABLE_SHAREX` | Show ShareX config controls | `0` |
+| `VITE_TURNSTILE_SITE_KEY` | Turnstile in login UI | empty |
+| `TURNSTILE_SECRET_KEY` | Backend Turnstile validation | empty |
+| `JWT_SECRET` | Auth JWT signing secret | required |
+| `PASSKEYS_ENABLED` | Backend passkey support | `0` |
+| `RESOLVER_PORT` | Local port for `resolver-server` | `3101` |
 
-Caddy users can look at [`docker/nginx/default.conf`](docker/nginx/default.conf) for a starting point.
-
----
-
-## Screenshots
-
-<table>
-  <tr>
-    <td><strong>Login</strong><br><img src="docs/screenshots/login-dark.png" alt="Login view (dark mode)" /></td>
-    <td><strong>Preview</strong><br><img src="docs/screenshots/preview-dark.png" alt="Public preview view (dark mode)" /></td>
-  </tr>
-  <tr>
-    <td colspan="2"><strong>Dashboard</strong><br><img src="docs/screenshots/private-dark.png" alt="Private dashboard view (dark mode)" /></td>
-  </tr>
-</table>
+Full reference: [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md)
 
 ---
 
@@ -129,20 +113,30 @@ npm run build
 npm run test:e2e
 npm audit --audit-level=moderate
 bash -n ./install.sh
+rm -rf /tmp/rustypaste-ui-installer-smoke
+git clone . /tmp/rustypaste-ui-installer-smoke
+/tmp/rustypaste-ui-installer-smoke/install.sh --action install --install-dir /tmp/rustypaste-ui-installer-smoke --yes --dry-run
 ```
 
-The e2e suite runs fully mocked — no backend required. For a live end-to-end test against a real deployment:
+---
 
+## Private repo handoff workflow
+
+To publish this refactored state to a private repository:
 ```bash
-PLAYWRIGHT_LIVE_BASE_URL=https://your-paste-domain.com \
-PLAYWRIGHT_LIVE_API_BASE_URL=https://your-api-domain.com \
-PLAYWRIGHT_LIVE_PASTE_TOKEN=your-token \
-npx playwright test tests/e2e/live-backend.spec.ts
+git remote add private <your-private-repo-url>
+git push private <branch-name>
+```
+
+If your private repo has a different default branch or requires GitHub CLI auth:
+```bash
+gh auth login
+gh repo create <owner>/<repo> --private
+git push -u origin <branch-name>
 ```
 
 ---
 
 ## Credits
 
-**rustypaste** by [@orhun](https://github.com/orhun) — the file backend this whole stack runs on.  
-https://github.com/orhun/rustypaste
+- rustypaste: https://github.com/orhun/rustypaste
