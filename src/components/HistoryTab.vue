@@ -12,6 +12,7 @@ interface PreviewState {
   url: string
   name: string
   type: string
+  textContent?: string
   x: number
   y: number
   loading: boolean
@@ -584,12 +585,14 @@ async function submitPasswordPreview() {
     if (!isPreviewMimeType(decrypted.metadata.type, decrypted.metadata.name)) {
       throw new Error('This password-encrypted file type has no inline preview')
     }
+    const textContent = isText(decrypted.metadata.name) ? await decrypted.blob.text() : undefined
     clearPreviewObjectUrl(preview.value)
     preview.value = {
       file,
       url: URL.createObjectURL(decrypted.blob),
       name: decrypted.metadata.name,
       type: decrypted.metadata.type,
+      textContent,
       x: 0,
       y: 0,
       loading: false,
@@ -762,12 +765,14 @@ async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
     })
     if (!response.ok) throw new Error('Preview download failed')
     const payload = await response.blob()
+    const textContent = kind === 'text' ? await payload.text() : undefined
     return {
       file: f,
       url: URL.createObjectURL(payload),
       name: previewName(f),
       type: response.headers.get('content-type')
         || (kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : kind === 'text' ? 'text/plain' : 'application/octet-stream'),
+      textContent,
       x,
       y,
       loading: false,
@@ -780,11 +785,13 @@ async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
   })
   if (!response.ok) throw new Error('Preview download failed')
   const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
+  const textContent = kind === 'text' ? await decrypted.blob.text() : undefined
   return {
     file: f,
     url: URL.createObjectURL(decrypted.blob),
     name: decrypted.metadata.name,
     type: decrypted.metadata.type,
+    textContent,
     x,
     y,
     loading: false,
@@ -1328,6 +1335,7 @@ onBeforeUnmount(() => {
       :source-url="preview.url"
       :display-name="preview.name"
       :mime-type="preview.type"
+      :text-content="preview.textContent"
       :loading="preview.loading"
       @download="downloadFile"
       @close="closePreview"

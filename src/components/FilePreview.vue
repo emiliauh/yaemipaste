@@ -9,6 +9,7 @@ const props = defineProps<{
   sourceUrl?: string
   displayName?: string
   mimeType?: string
+  textContent?: string
   loading?: boolean
 }>()
 const emit = defineEmits<{ close: []; download: [file: PasteFile] }>()
@@ -52,6 +53,10 @@ async function loadTextPreview() {
   textPreview.value = ''
   textError.value = ''
   if (!isText.value || props.loading || encryptedPreviewLocked.value) return
+  if (typeof props.textContent === 'string') {
+    textPreview.value = props.textContent.length > 32_000 ? `${props.textContent.slice(0, 32_000)}\n\n…` : props.textContent
+    return
+  }
   try {
     const headers: Record<string, string> = {}
     if (url.value.includes('/api/')) {

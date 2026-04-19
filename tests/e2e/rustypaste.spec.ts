@@ -753,7 +753,7 @@ test('token-auth upload hydrates owner name before sending metadata', async ({ p
   await mockClipboard(page)
 
   let uploadedMeta: Record<string, unknown> | null = null
-  await page.route('**/token-owner', async (route) => {
+  await page.route('**/token-owner**', async (route) => {
     expect(route.request().headers().authorization).toBe('test-token')
     await route.fulfill({
       status: 200,
