@@ -161,22 +161,42 @@ async function resolveFileRecord(token) {
 
   const rootEntries = await readdir(UPLOAD_DIR, { withFileTypes: true })
   const matches = (await findMatchesInDirectory(UPLOAD_DIR, cleanToken))
-    .map((fileName) => ({ fileName, ownerToken: null }))
+    .map((fileName) => ({ fileName, canonicalFileName: stripGeneratedSuffix(fileName), ownerToken: null }))
 
   for (const entry of rootEntries) {
     if (!entry.isDirectory()) continue
     if (['oneshot', 'oneshot_url', 'url'].includes(entry.name)) continue
     for (const name of await findMatchesInDirectory(join(UPLOAD_DIR, entry.name), cleanToken)) {
-      matches.push({ fileName: name, ownerToken: entry.name })
+      matches.push({ fileName: name, canonicalFileName: stripGeneratedSuffix(name), ownerToken: entry.name })
     }
   }
 
-  const uniqueMatches = [...new Map(matches.map((entry) => [`${entry.ownerToken ?? ''}:${entry.fileName}`, entry])).values()]
+  // Rustypaste can expose the same file under several names:
+  // - root and token-scoped mirrors/symlinks
+  // - generated timestamp suffixes (e.g. .mp4.1777...)
+  // Collapse to one canonical filename, preferring owner-scoped and clean names.
+  const byCanonicalName = new Map()
+  for (const entry of matches) {
+    const key = entry.canonicalFileName
+    const existing = byCanonicalName.get(key)
+    if (!existing) {
+      byCanonicalName.set(key, entry)
+      continue
+    }
+    if (!existing.ownerToken && entry.ownerToken) {
+      byCanonicalName.set(key, entry)
+      continue
+    }
+    if (existing.fileName !== existing.canonicalFileName && entry.fileName === entry.canonicalFileName) {
+      byCanonicalName.set(key, entry)
+    }
+  }
+  const uniqueMatches = [...byCanonicalName.values()]
   if (uniqueMatches.length !== 1) return null
 
   const resolved = uniqueMatches[0]
-  cache.set(cleanToken, { fileName: resolved.fileName, ownerToken: resolved.ownerToken, expiresAt: Date.now() + CACHE_TTL_MS })
-  return resolved
+  cache.set(cleanToken, { fileName: resolved.canonicalFileName, ownerToken: resolved.ownerToken, expiresAt: Date.now() + CACHE_TTL_MS })
+  return { fileName: resolved.canonicalFileName, ownerToken: resolved.ownerToken }
 }
 
 function routeSegments(pathname) {
