@@ -148,6 +148,50 @@ git clone . /tmp/rustypaste-ui-installer-smoke
 
 ---
 
+## Development -> production workflow (required)
+
+Branch strategy:
+- `production`: stable, deployed branch
+- `development`: active branch for all feature and fix work
+
+Set up an isolated development directory once:
+```bash
+git checkout production
+bash ./scripts/setup-dev-worktree.sh ../Rustypaste-ui-dev
+```
+
+Daily workflow:
+```bash
+cd ../Rustypaste-ui-dev
+git checkout development
+git pull --ff-only origin development
+# implement changes here only
+npm run validate:release
+```
+
+Promotion workflow (validation-gated):
+```bash
+cd ../Rustypaste-ui-dev
+npm run promote:production
+# optional: also push development to private mirror while PR is open
+bash ./scripts/promote-production.sh origin private
+```
+
+`promote:production` runs build + Playwright, pushes `development`, and opens/updates a `development -> production` pull request (using `gh` when available).
+Merge that PR only after required checks pass.
+
+Required repository protection settings:
+1. Protect `production` and require pull requests.
+2. Require status checks from `.github/workflows/branch-gates.yml`.
+3. Restrict pushes to `production` so direct edits are blocked.
+
+This repository now includes CI gates that:
+- run build + Playwright on `development` and `production`
+- only allow `development -> production` pull requests
+- fail pushes to `production` that do not include `development` history
+
+---
+
 ## Private repo handoff workflow
 
 To publish this refactored state to a private repository:
