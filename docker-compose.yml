@@ -1,6 +1,6 @@
 services:
   paste-api:
-    image: ${PASTE_API_IMAGE:-orhunp/rustypaste:latest}
+    image: ${PASTE_API_IMAGE:-ghcr.io/replace-me/rustypaste:latest}
     restart: unless-stopped
     environment:
       DB_PATH: ${DB_PATH:-/var/lib/rustypaste-auth/users.db}
@@ -9,13 +9,13 @@ services:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
       PASTE_API: ${PASTE_PUBLIC_API:-http://localhost:8080/api}
       PASSKEYS_ENABLED: ${PASSKEYS_ENABLED:-0}
-      PASSKEY_RP_NAME: ${PASSKEY_RP_NAME:-yaemipaste}
+      PASSKEY_RP_NAME: ${PASSKEY_RP_NAME:-rustypaste-ui}
       PASSKEY_RP_ID: ${PASSKEY_RP_ID:-}
       PASSKEY_ORIGINS: ${PASSKEY_ORIGINS:-}
     volumes:
-      - yaemipaste-auth:/var/lib/rustypaste-auth
+      - rustypaste-ui-auth:/var/lib/rustypaste-auth
     networks:
-      - yaemipaste
+      - rustypaste-ui
 
   resolver:
     image: node:22-alpine
@@ -35,7 +35,7 @@ services:
     ports:
       - "127.0.0.1:${RESOLVER_PORT:-3101}:${RESOLVER_PORT:-3101}"
     networks:
-      - yaemipaste
+      - rustypaste-ui
 
   ui:
     build:
@@ -47,7 +47,7 @@ services:
         VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
         VITE_ENABLE_SHAREX: ${VITE_ENABLE_SHAREX:-0}
         VITE_ENABLE_AUTH: ${VITE_ENABLE_AUTH:-1}
-        VITE_REPOSITORY_URL: ${VITE_REPOSITORY_URL:-https://github.com/emiliauh/yaemipaste}
+        VITE_REPOSITORY_URL: ${VITE_REPOSITORY_URL:-https://github.com/emiliauh/rustypaste-ui}
         VITE_MAX_EXPIRY_DAYS: ${VITE_MAX_EXPIRY_DAYS:-14}
     restart: unless-stopped
     depends_on:
@@ -55,11 +55,11 @@ services:
     ports:
       - "${UI_PORT:-8080}:80"
     networks:
-      - yaemipaste
+      - rustypaste-ui
 
 networks:
-  yaemipaste:
-    name: yaemipaste
+  rustypaste-ui:
+    name: rustypaste-ui
 
 volumes:
-  yaemipaste-auth:
+  rustypaste-ui-auth:

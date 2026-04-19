@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 
 const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
+const liveBaseUrl = process.env.PLAYWRIGHT_LIVE_BASE_URL?.replace(/\/$/, '') ?? ''
+const liveApiBaseUrl = process.env.PLAYWRIGHT_LIVE_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const liveResolveBaseUrl = process.env.PLAYWRIGHT_LIVE_RESOLVE_BASE_URL?.replace(/\/$/, '') ?? (liveBaseUrl ? `${liveBaseUrl}/resolve` : '')
 
 function tokenFromPreviewHref(href: string): string {
   const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview(?:\?.*)?$/)
@@ -9,18 +12,20 @@ function tokenFromPreviewHref(href: string): string {
 
 test('production: password encryption upload + preview + history thumbnail', async ({ page, request }) => {
   test.skip(!liveToken, 'Set PLAYWRIGHT_LIVE_PASTE_TOKEN to run production live verification')
+  test.skip(!liveBaseUrl, 'Set PLAYWRIGHT_LIVE_BASE_URL to run production live verification')
+  test.skip(!liveApiBaseUrl, 'Set PLAYWRIGHT_LIVE_API_BASE_URL to run production live verification')
 
   const uploadRequestUrls: string[] = []
   const uploadResponseBodies: string[] = []
 
   page.on('request', (req) => {
-    if (req.method() === 'POST' && req.url().startsWith('https://api.example.invalid')) {
+    if (req.method() === 'POST' && req.url().startsWith(liveApiBaseUrl)) {
       uploadRequestUrls.push(req.url())
     }
   })
 
   page.on('response', async (resp) => {
-    if (resp.request().method() === 'POST' && resp.url().startsWith('https://api.example.invalid')) {
+    if (resp.request().method() === 'POST' && resp.url().startsWith(liveApiBaseUrl)) {
       try {
         uploadResponseBodies.push(await resp.text())
       } catch {
@@ -51,9 +56,9 @@ test('production: password encryption upload + preview + history thumbnail', asy
   const passwordShare = page.locator('[data-testid="share-row"] a').first()
   await expect(passwordShare).toBeVisible()
   const passwordHref = await passwordShare.getAttribute('href')
-  expect(passwordHref ?? '').toMatch(/^https:\/\/paste\.yaemi\.one\/file\/[A-Za-z0-9_-]+\+pw:[A-Za-z0-9_-]+\/preview$/)
+  expect(passwordHref ?? '').toMatch(new RegExp(`^${liveBaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/file/[A-Za-z0-9_-]+\\+pw:[A-Za-z0-9_-]+/preview$`))
   const passwordToken = tokenFromPreviewHref(passwordHref ?? '')
-  const passwordResolve = await request.get(`https://example.invalid/resolve/${encodeURIComponent(passwordToken)}`)
+  const passwordResolve = await request.get(`${liveResolveBaseUrl}/${encodeURIComponent(passwordToken)}`)
   expect(passwordResolve.ok()).toBeTruthy()
   const passwordFileName = ((await passwordResolve.json()) as { file_name?: string }).file_name ?? ''
   expect(passwordFileName).toBeTruthy()
@@ -80,9 +85,9 @@ test('production: password encryption upload + preview + history thumbnail', asy
   const imageShare = page.locator('[data-testid="share-row"] a').first()
   await expect(imageShare).toBeVisible()
   const imageHref = await imageShare.getAttribute('href')
-  expect(imageHref ?? '').toMatch(/^https:\/\/paste\.yaemi\.one\/file\/[A-Za-z0-9_-]+\/preview$/)
+  expect(imageHref ?? '').toMatch(new RegExp(`^${liveBaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/file/[A-Za-z0-9_-]+/preview$`))
   const imageToken = tokenFromPreviewHref(imageHref ?? '')
-  const imageResolve = await request.get(`https://example.invalid/resolve/${encodeURIComponent(imageToken)}`)
+  const imageResolve = await request.get(`${liveResolveBaseUrl}/${encodeURIComponent(imageToken)}`)
   expect(imageResolve.ok()).toBeTruthy()
   const imageFileName = ((await imageResolve.json()) as { file_name?: string }).file_name ?? ''
   expect(imageFileName).toBeTruthy()
@@ -94,7 +99,7 @@ test('production: password encryption upload + preview + history thumbnail', asy
   else await expect(page.locator('img')).toBeVisible()
   await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute(
     'href',
-    /https:\/\/paste\.yaemi\.one\/file\/[A-Za-z0-9_-]+\/raw$/,
+    new RegExp(`^${liveBaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/file/[A-Za-z0-9_-]+/raw$`),
   )
 
   await page.goto('/#/files')
@@ -105,13 +110,13 @@ test('production: password encryption upload + preview + history thumbnail', asy
   await expect(firstHistoryRow.getByRole('img').first()).toBeVisible()
 
   expect(uploadRequestUrls.length).toBeGreaterThanOrEqual(2)
-  for (const url of uploadRequestUrls) expect(url).toBe('https://api.example.invalid/')
+  for (const url of uploadRequestUrls) expect(url).toBe(`${liveApiBaseUrl}/`)
   expect(uploadResponseBodies.some((body) => body.toLowerCase().includes('rustypaste api root'))).toBeFalsy()
 
-  await request.delete(`https://api.example.invalid/${encodeURIComponent(imageFileName)}`, {
+  await request.delete(`${liveApiBaseUrl}/${encodeURIComponent(imageFileName)}`, {
     headers: { Authorization: liveToken },
   })
-  await request.delete(`https://api.example.invalid/${encodeURIComponent(passwordFileName)}`, {
+  await request.delete(`${liveApiBaseUrl}/${encodeURIComponent(passwordFileName)}`, {
     headers: { Authorization: liveToken },
   })
 })

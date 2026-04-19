@@ -1,13 +1,24 @@
 {
   "name": "rustypaste-ui",
-  "private": true,
-  "version": "0.0.0",
+  "private": false,
+  "version": "0.1.0",
+  "description": "Vite frontend for a compatible rustypaste backend with auth, history, previews, encryption, and ShareX support.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emiliauh/rustypaste-ui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/emiliauh/rustypaste-ui/issues"
+  },
+  "homepage": "https://github.com/emiliauh/rustypaste-ui#readme",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test",
+    "audit:deps": "npm audit --audit-level=moderate",
     "validate:release": "npm run build && npm run test:e2e",
     "promote:production": "bash ./scripts/promote-production.sh"
   },

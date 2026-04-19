@@ -21,7 +21,7 @@ const PUBLIC_SITE_ORIGIN = (import.meta.env.VITE_PUBLIC_SITE_ORIGIN ?? '').trim(
 const TOKEN_OWNER_PATH = (import.meta.env.VITE_TOKEN_OWNER_PATH ?? '/token-owner').trim()
 const FILE_RESOLVE_BASE = (() => {
   const configured = import.meta.env.VITE_FILE_RESOLVE_BASE
-  if (typeof configured !== 'string') return '/resolve'
+  if (typeof configured !== 'string') return '/api/resolve'
   return configured.trim().replace(/\/$/, '')
 })()
 const API_BASE_KEY = 'rp_api_base'

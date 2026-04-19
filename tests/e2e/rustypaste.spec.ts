@@ -1,7 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { encryptFileWithPassword } from '../../src/lib/e2ee'
 
 const PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\/preview$/
 const ENCRYPTED_PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\+(?:pw:)?[A-Za-z0-9_-]+\/preview$/
+const PUBLIC_ORIGIN = 'https://paste.example.test'
+const API_ORIGIN = 'https://api.example.test'
 
 async function signInWithToken(page: Page) {
   await page.addInitScript(() => {
@@ -882,10 +885,10 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
       contentType: 'application/json',
       body: JSON.stringify({
         file_name: 'sharex-config.sxcu',
-        display_name: 'yaemipaste.sxcu',
+        display_name: 'rustypaste-ui.sxcu',
         uploader: 'test-user',
         upload_date_utc: '2026-04-17T01:00:00Z',
-        download_name: 'yaemipaste.sxcu',
+        download_name: 'rustypaste-ui.sxcu',
         file_size: 1200,
         mime_type: 'application/json',
       }),
@@ -919,7 +922,7 @@ test('sharex config sanitizes unsupported uploader syntax placeholders', async (
       contentType: 'application/json',
       body: JSON.stringify({
         RequestMethod: 'POST',
-        URL: 'https://api.example.invalid/',
+        URL: `${API_ORIGIN}/`,
         Headers: { Authorization: '$jwt$' },
         Arguments: {
           uploader: '$uploader()$',
@@ -960,7 +963,7 @@ test('sharex config trims trailing newlines from upload response filenames', asy
       contentType: 'application/json',
       body: JSON.stringify({
         RequestMethod: 'POST',
-        URL: 'https://api.example.invalid/',
+        URL: `${API_ORIGIN}/`,
         Headers: { Authorization: '$jwt$' },
       }),
     })
@@ -1291,7 +1294,7 @@ test('history copy includes decryption key for encrypted files', async ({ page }
     const payload = {
       [name]: {
         key,
-        origin: 'https://example.invalid',
+        origin: 'https://paste.example.test',
         name: 'secret.png',
         type: 'application/octet-stream',
         size: 123,
@@ -1346,7 +1349,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
     const payload = {
       [name]: {
         key,
-        origin: 'https://example.invalid',
+        origin: 'https://paste.example.test',
         name: 'secret.bin',
         type: 'application/octet-stream',
         size: 345,
@@ -1633,7 +1636,7 @@ test('history password-encrypted download requires password prompt', async ({ pa
     const payload = {
       [name]: {
         key: 'pw:header-token',
-        origin: 'https://example.invalid',
+        origin: 'https://paste.example.test',
         name: 'secret.png',
         type: 'application/octet-stream',
         size: 123,
@@ -1666,6 +1669,81 @@ test('history password-encrypted download requires password prompt', async ({ pa
   await page.getByRole('button', { name: 'Download', exact: true }).click()
   await expect(page.getByText('Download password-encrypted file')).toBeVisible()
   await expect.poll(() => rawRequested).toBeFalsy()
+})
+
+test('history password-encrypted text preview decrypts inline', async ({ page }) => {
+  await signInWithToken(page)
+
+  const fileName = 'secret-note.txt.rpenc'
+  const password = 'PreviewPass!123'
+  const textBody = 'password protected inline text'
+  const encrypted = await encryptFileWithPassword(
+    new File([textBody], 'secret-note.txt', { type: 'text/plain' }),
+    password,
+    'owner',
+  )
+  const encryptedPayload = {
+    salt: encrypted.salt,
+    bytes: Array.from(new Uint8Array(await encrypted.blob.arrayBuffer())),
+  }
+
+  await page.addInitScript(({ fileName, salt }) => {
+    localStorage.setItem('rp_e2ee_keys', JSON.stringify({
+      [fileName]: {
+        key: `pw:${salt}`,
+        origin: 'https://paste.example.test',
+        name: 'secret-note.txt',
+        type: 'application/octet-stream',
+        size: 30,
+        createdAt: '2026-04-18T00:00:00Z',
+        uploader: 'owner',
+      },
+    }))
+  }, { fileName, salt: encryptedPayload.salt })
+
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: fileName,
+        file_size: encryptedPayload.bytes.length,
+        creation_date_utc: '2026-04-18T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('**/api/meta/secret-note.txt.rpenc', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: fileName,
+        display_name: fileName,
+        uploader: 'owner',
+        upload_date_utc: '2026-04-18 00:00:00',
+        download_name: fileName,
+        file_size: encryptedPayload.bytes.length,
+        mime_type: 'application/octet-stream',
+      }),
+    })
+  })
+  await page.route('**/api/secret-note.txt.rpenc?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/octet-stream',
+      body: Buffer.from(encryptedPayload.bytes),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.locator('tr.file-row .filename').first().click()
+  await expect(page.getByText('Preview password-encrypted file')).toBeVisible()
+  await page.getByLabel('Decryption password').fill(password)
+  await page.getByRole('button', { name: 'Preview file' }).click()
+  await expect(page.getByText('This password-encrypted file type has no inline preview')).toHaveCount(0)
+  await expect(page.locator('.text-preview')).toContainText(textBody)
 })
 
 test('history password change closes modal and keeps success notification after encrypted upload flow', async ({ page }) => {
@@ -2436,7 +2514,7 @@ test('history downloads selected files as a zip archive', async ({ page }) => {
   await page.getByRole('button', { name: 'Download Selected' }).click()
   const download = await downloadPromise
 
-  expect(download.suggestedFilename()).toMatch(/^yaemipaste-history-\d+\.zip$/)
+  expect(download.suggestedFilename()).toMatch(/^rustypaste-ui-history-\d+\.zip$/)
   await expect.poll(() => firstRaw && secondRaw).toBeTruthy()
 })
 
@@ -2456,7 +2534,7 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'Settings' }).click()
-  await expect(page.getByText('♥ yaemipaste + rustypaste')).toBeVisible()
+  await expect(page.getByText('rustypaste-ui + rustypaste')).toBeVisible()
   await expect(page.getByTestId('open-passkey-modal')).toBeVisible()
   await expect(page.getByTestId('open-change-password')).toBeVisible()
   await page.getByTestId('open-passkey-modal').click()
@@ -2551,7 +2629,7 @@ test('passkey registration accepts wrapped browser options', async ({ page }) =>
       body: JSON.stringify({
         publicKey: {
           challenge: base64Url([1, 2, 3, 4]),
-          rp: { name: 'yaemipaste' },
+          rp: { name: 'rustypaste-ui' },
           user: { id: base64Url([5, 6, 7]), name: 'test-user', displayName: 'test-user' },
           pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
           exclude_credentials: [{ type: 'public-key', id: base64Url([8, 9]), transports: ['internal'] }],

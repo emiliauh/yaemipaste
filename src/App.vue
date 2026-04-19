@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import NotificationStack from './components/NotificationStack.vue'
 
-const repoUrl = (import.meta.env.VITE_REPOSITORY_URL ?? 'https://github.com/emiliauh/yaemipaste').trim()
+const repoUrl = (import.meta.env.VITE_REPOSITORY_URL ?? 'https://github.com/emiliauh/rustypaste-ui').trim()
 </script>
 
 <template>

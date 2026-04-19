@@ -556,8 +556,8 @@ async function submitPasswordChange() {
 }
 
 function isPreviewMimeType(type: string, name: string): boolean {
-  if (type.startsWith('image/') || type.startsWith('video/')) return true
-  return isImage(name) || isVideo(name)
+  if (type.startsWith('image/') || type.startsWith('video/') || type.startsWith('text/')) return true
+  return isImage(name) || isVideo(name) || isText(name)
 }
 
 async function submitPasswordPreview() {
@@ -691,7 +691,7 @@ async function downloadSelectedAsZip() {
     const archiveBytes = Uint8Array.from(archive)
     triggerDownload(
       new Blob([archiveBytes], { type: 'application/zip' }),
-      `yaemipaste-history-${Date.now()}.zip`,
+      `rustypaste-ui-history-${Date.now()}.zip`,
     )
     if (failed.length) showToast(`Downloaded ${archiveEntries.length} file(s), ${failed.length} failed`, 'error')
     else showToast(`Downloaded ${archiveEntries.length} file(s)`)

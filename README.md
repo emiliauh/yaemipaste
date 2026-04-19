@@ -1,214 +1,345 @@
-# yaemipaste (rustypaste-ui)
+# rustypaste-ui
 
-Frontend and deployment wrapper for a rustypaste-based stack with:
-- file/text upload UI
-- encrypted share flows
-- history/actions UX
-- optional auth (accounts/tokens/passkeys)
-- optional Turnstile
-- optional ShareX integration
-- extension-free public preview routes resolved by a small Node resolver service
+`rustypaste-ui` is a Vue 3 + Vite frontend for a compatible Rustypaste backend.
 
-This repository is structured to support both:
-1. **Private production deployments** (recommended first)
-2. **Public open-source distribution** with configurable features
+It provides a browser UI for:
+- file uploads and text pastes
+- account and token-based access
+- history, preview, download, and delete flows
+- client-side encryption and password-protected shares
+- optional passkeys and ShareX config generation
 
----
+This repository contains the frontend, deployment assets, tests, and operator docs. It does not contain the Rust backend source itself.
 
-## Deployment modes
+## What It Does
 
-### 1. Authenticated mode (default)
-- `VITE_ENABLE_AUTH=1`
-- login/register routes enabled
-- account settings (logout/passkeys/sharex) enabled
-- Turnstile can be enabled with `VITE_TURNSTILE_SITE_KEY` (+ backend `TURNSTILE_SECRET_KEY`)
+The UI sits in front of a Rust backend and handles the user-facing workflow:
 
-### 2. Anonymous public mode
-- `VITE_ENABLE_AUTH=0`
-- `/files` opens directly
-- login/register flows disabled
-- account-only controls hidden
-- Turnstile/passkeys should stay disabled in this mode
+1. Upload a file or paste text.
+2. Optionally encrypt it in the browser before upload.
+3. Store session state, history keys, and preview metadata locally.
+4. Generate clean public links such as `/file/<token>/preview`.
+5. Resolve those links back to the stored file name through a compatible backend route.
 
----
+Recommended production architecture:
+- static frontend built with Vite
+- one Rust backend exposing file APIs and any optional auth/passkey/resolve routes you enable
 
-## Quick start
+Legacy compatibility note:
+- `resolver-server/` is still included for older deployments that have not moved token resolution into Rust yet.
+- It is not the recommended default for new public deployments.
 
-### Interactive installer (recommended)
+## How It Works
+
+Important routing rules:
+- Authenticated API operations go to `VITE_PASTE_API` and `VITE_AUTH_API`.
+- User-facing preview/download links stay on the frontend origin.
+- Extension-free links such as `/file/<token>/preview` require a resolver path, typically `/api/resolve`.
+
+Frontend responsibilities:
+- upload and paste UI
+- auth session storage
+- encrypted file key storage
+- history and preview rendering
+- ShareX config generation
+
+Backend responsibilities:
+- upload, list, delete, and metadata APIs
+- optional `/auth/*` routes
+- optional `/auth/passkeys/*` routes
+- token-to-file resolution route, recommended at `/resolve/{token}` and exposed to the frontend as `/api/resolve`
+- optional token owner lookup used by uploads, typically `/token-owner`
+
+## Architecture Audit
+
+This repository ships a few pieces, but only two are part of the intended product architecture:
+
+1. the Vite-built frontend
+2. a compatible Rust backend
+
+What else exists and why:
+- `resolver-server/`: optional compatibility layer for older deployments that do not yet expose a native Rust resolve route
+- nginx in `Dockerfile`: static file host for the built frontend image, not a third application with business logic
+- Playwright: test tooling only
+- installer scripts and docs: operator tooling only
+
+If you are starting fresh, the target deployment should still feel like one frontend plus one Rust backend.
+
+## Repository Audit Summary
+
+Current release posture after this pass:
+- `npm run build` succeeds locally.
+- Core Playwright coverage exists and includes the password-encrypted text preview regression.
+- The repo no longer defaults to personal domains, names, or repository links.
+- The installer and env template now default to the two-service deployment story.
+- Public docs now state the real backend contract instead of implying stock upstream Rustypaste is enough for every feature.
+
+Known constraint:
+- Full end-to-end runtime validation depends on a compatible Rust backend image and a host where browser tests can bind a local port.
+
+## Prerequisites
+
+For frontend development:
+- Node.js 20+
+- npm 10+
+
+For container deployment:
+- Docker with Compose plugin, or `docker-compose`
+- a compatible Rust backend image
+- a reverse proxy or static file host for the built frontend
+
+For passkeys:
+- HTTPS in production
+- correct RP ID and allowed origins
+
+## Installation
+
+### Option 1: Interactive installer
+
+Run the bootstrap script from the public repository:
+
 ```bash
-curl -fsSL "https://example.invalid/install.sh?v=latest" | bash
+curl -fsSL https://raw.githubusercontent.com/emiliauh/rustypaste-ui/main/public/install.sh | bash
 ```
 
-Or from source:
+Or clone and run locally:
+
 ```bash
 git clone https://github.com/emiliauh/rustypaste-ui.git
 cd rustypaste-ui
 ./install.sh
 ```
 
-For this private repository, `install.sh` defaults to cloning `https://github.com/emiliauh/rustypaste-ui.git`.
+The installer can:
+- clone or update the repo
+- create `.env`
+- start or stop the compose stack
+- create the first user
+- create or revoke auth tokens
+- uninstall the local stack
 
-The installer now supports user-tailored setup for:
-- API base paths (`VITE_PASTE_API`, `VITE_AUTH_API`)
-- ShareX UI toggle (`VITE_ENABLE_SHAREX`)
-- auth/login toggle (`VITE_ENABLE_AUTH`)
-- resolver service toggle (`RESOLVER_ENABLED`)
-- Turnstile site/secret keys
-- passkeys toggle and RP settings
-- JWT secret generation/persistence
-
----
-
-## Manual compose run
+### Option 2: Manual install
 
 ```bash
+git clone https://github.com/emiliauh/rustypaste-ui.git
+cd rustypaste-ui
 cp .env.example .env
-# edit .env
-docker compose --profile with-resolver up --build -d
 ```
 
-Resolver-disabled mode:
+Edit `.env`, then start the stack:
+
 ```bash
 docker compose up --build -d
 ```
 
-See [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) for all variables.
+Use the legacy compatibility resolver only if your backend does not expose a native resolve endpoint:
 
-The deployed stack is Rustypaste + Vite frontend + the bundled `resolver-server/`. There is no Python service in the application path.
+```bash
+docker compose --profile with-resolver up --build -d
+```
 
-### Rust-native resolve path (migration mode)
+## Configuration
 
-If your Rustypaste backend exposes both:
-- `GET /resolve/{token}`
-- `GET /file/{token}/{preview|raw|download}` for crawler/bot redirects
+Important variables:
 
-then:
-- set `VITE_FILE_RESOLVE_BASE=/api/resolve`
-- set `RESOLVER_ENABLED=0`
-- keep `VITE_PASTE_API=/api`
-
-This repository includes a minimal upstream patch template at
-`patches/rustypaste-resolve-endpoint.patch` to add those routes in Rustypaste.
-Apply it in a rustypaste checkout, then build/publish your own backend image and
-set `PASTE_API_IMAGE` accordingly.
-
-The patch template mirrors the bundled Node resolver’s important behavior:
-- token lookup accepts either full filenames or id-only tokens
-- immediate upload subdirectories are scanned, skipping special non-file buckets
-- `/file/{token}/{mode}` returns `302` + `Cache-Control: no-store` to the public raw bytes path for embed parity
-
----
-
-## Security baseline
-
-Current baseline in this repo:
-- strict TypeScript build (`vue-tsc`)
-- Playwright regression suite (`npm run test:e2e`)
-- dependency audit (`npm audit --audit-level=moderate`)
-- hardened installer guard rails (safe install path + explicit secret config)
-- no default insecure JWT fallback in compose (`JWT_SECRET` must be set)
-
-> Note: no software can truthfully claim “all industry standards” are fully and permanently satisfied. Treat security as continuous work: patching, review, monitoring, and periodic audits.
-
----
-
-## Environment highlights
-
-Commonly tuned values:
-
-| Variable | Purpose | Default |
+| Variable | Purpose | Typical value |
 | --- | --- | --- |
-| `VITE_PASTE_API` | Frontend paste API base | `/api` |
-| `VITE_AUTH_API` | Frontend auth API base | `/auth` |
-| `VITE_FILE_RESOLVE_BASE` | Public resolver path for extension-free file links | `/resolve` |
-| `VITE_TOKEN_OWNER_PATH` | Token-owner endpoint used to prefill uploader metadata for token-auth uploads | `/token-owner` |
-| `VITE_ENABLE_AUTH` | Enable login/account flows | `1` |
-| `VITE_ENABLE_SHAREX` | Show ShareX config controls | `0` |
-| `VITE_TURNSTILE_SITE_KEY` | Turnstile in login UI | empty |
-| `TURNSTILE_SECRET_KEY` | Backend Turnstile validation | empty |
-| `JWT_SECRET` | Auth JWT signing secret | required |
-| `PASSKEYS_ENABLED` | Backend passkey support | `0` |
-| `RESOLVER_PORT` | Local port for `resolver-server` | `3101` |
+| `VITE_PASTE_API` | Frontend path or URL for file APIs | `/api` |
+| `VITE_AUTH_API` | Frontend path or URL for auth APIs | `/auth` |
+| `VITE_FILE_RESOLVE_BASE` | Token resolution path | `/api/resolve` |
+| `VITE_TOKEN_OWNER_PATH` | Optional token owner lookup path | `/token-owner` |
+| `VITE_ENABLE_AUTH` | Enable login/register/account UI | `1` |
+| `VITE_ENABLE_SHAREX` | Show ShareX download UI | `0` or `1` |
+| `PASTE_API_IMAGE` | Rust backend image | your compatible image |
+| `JWT_SECRET` | JWT signing secret | random 32+ byte secret |
+| `PASSKEYS_ENABLED` | Enable backend passkey routes | `0` or `1` |
+| `PASSKEY_RP_NAME` | Passkey display name | `rustypaste-ui` |
+| `AUTH_ADMIN_BEARER` | Admin bearer used by installer token/user actions | strong random string |
 
-Full reference: [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md)
+Full reference: [docs/ENVIRONMENT.md](/path/to/repo/docs/ENVIRONMENT.md)
 
----
+### Backend compatibility
 
-## Validation
+Do not assume the stock upstream Rustypaste image supports this UI's optional features.
+
+For authenticated mode, passkeys, token-owner hydration, or extension-free public token links, your Rust backend must provide the routes you enable.
+
+At minimum:
+- file upload and delete APIs compatible with the UI
+- metadata and list endpoints used by history
+
+For full feature parity:
+- `/auth/*`
+- `/auth/passkeys/*`
+- `/resolve/{token}`
+- `/token-owner`
+
+The included patch template at [patches/rustypaste-resolve-endpoint.patch](/path/to/repo/patches/rustypaste-resolve-endpoint.patch) documents the expected resolve behavior.
+
+## Development
+
+Install dependencies:
+
+```bash
+npm ci
+```
+
+Run the dev server:
+
+```bash
+npm run dev
+```
+
+Build:
 
 ```bash
 npm run build
+```
+
+Run Playwright:
+
+```bash
 npm run test:e2e
-npm audit --audit-level=moderate
-bash -n ./install.sh
-rm -rf /tmp/rustypaste-ui-installer-smoke
-git clone . /tmp/rustypaste-ui-installer-smoke
-/tmp/rustypaste-ui-installer-smoke/install.sh --action install --install-dir /tmp/rustypaste-ui-installer-smoke --yes --dry-run
 ```
 
----
+Release validation:
 
-## Development -> production workflow (required)
-
-Branch strategy:
-- `production`: stable, deployed branch
-- `development`: active branch for all feature and fix work
-
-Set up an isolated development directory once:
 ```bash
-git checkout production
-bash ./scripts/setup-dev-worktree.sh ../Rustypaste-ui-dev
-```
-
-Daily workflow:
-```bash
-cd ../Rustypaste-ui-dev
-git checkout development
-git pull --ff-only origin development
-# implement changes here only
 npm run validate:release
 ```
 
-Promotion workflow (validation-gated):
+Branch workflow used in this repository:
+- `development` for active work
+- `production` for promotion-ready state
+- `main` mirrors the public stable line
+
+Helper scripts:
+- [scripts/setup-dev-worktree.sh](/path/to/repo/scripts/setup-dev-worktree.sh)
+- [scripts/promote-production.sh](/path/to/repo/scripts/promote-production.sh)
+
+## Production Deployment
+
+### Minimal recommended deployment
+
+Use only:
+1. the built frontend
+2. your Rust backend
+
+Recommended flow:
+
 ```bash
-cd ../Rustypaste-ui-dev
-npm run promote:production
-# optional: also push development to private mirror while PR is open
-bash ./scripts/promote-production.sh origin private
+npm ci
+npm run build
 ```
 
-`promote:production` runs build + Playwright, pushes `development`, and opens/updates a `development -> production` pull request (using `gh` when available).
-Merge that PR only after required checks pass.
+Then publish `dist/` to your static host and route:
+- `/api/*` to the Rust backend file API
+- `/auth/*` to the Rust backend auth API if enabled
+- `/api/resolve/*` or equivalent to the Rust backend resolver route
+- `/<id>/file` and `/<id>/file.<ext>` to raw bytes on the backend
 
-Required repository protection settings:
-1. Protect `production` and require pull requests.
-2. Require status checks from `.github/workflows/branch-gates.yml`.
-3. Restrict pushes to `production` so direct edits are blocked.
+Typical remote-host flow:
 
-This repository now includes CI gates that:
-- run build + Playwright on `development` and `production`
-- only allow `development -> production` pull requests
-- fail pushes to `production` that do not include `development` history
-
----
-
-## Private repo handoff workflow
-
-To publish this refactored state to a private repository:
 ```bash
-git remote add private <your-private-repo-url>
-git push private <branch-name>
+npm ci
+npm run build
+rsync -avz --delete dist/ user@your-host:/path/to/static-root/
+ssh user@your-host 'sudo systemctl reload your-web-server'
 ```
 
-If your private repo has a different default branch or requires GitHub CLI auth:
+Replace the host, path, and reload command with your own environment. Keep instance-specific values in private operator notes instead of committing them here.
+
+If you use the bundled container image:
+- the frontend is served by nginx as a static asset container
+- nginx is only the static file host, not a third application layer in the product architecture
+
+### Legacy compatibility resolver
+
+If your backend does not yet expose native resolve endpoints, enable the bundled resolver profile and proxy `/resolve/*` to it. This is maintained for compatibility, but new deployments should prefer native Rust routes.
+
+## User and Token Management
+
+The installer exposes user/token operations:
+
 ```bash
-gh auth login
-gh repo create <owner>/<repo> --private
-git push -u origin <branch-name>
+./install.sh --action init-user
+./install.sh --action create-token
+./install.sh --action revoke-token
 ```
 
----
+Those commands use:
+- `AUTH_ADMIN_BASE_URL`
+- `AUTH_BOOTSTRAP_PATH`
+- `AUTH_TOKEN_CREATE_PATH`
+- `AUTH_TOKEN_REVOKE_PATH`
+- `AUTH_REGISTER_URL`
+- `AUTH_ADMIN_BEARER`
 
-## Credits
+Typical flow:
+1. Install the stack and set `AUTH_ADMIN_BEARER`.
+2. Start the backend.
+3. Create the first user with `./install.sh --action init-user`.
+4. Create access tokens as needed with `./install.sh --action create-token`.
+5. Revoke tokens with `./install.sh --action revoke-token`.
 
-- rustypaste: https://github.com/orhun/rustypaste
+If you disable auth mode with `VITE_ENABLE_AUTH=0`, the login/register UI is hidden and these lifecycle commands are not part of the normal deployment flow.
+
+## Uninstall
+
+Interactive uninstall:
+
+```bash
+./install.sh --action uninstall
+```
+
+The uninstall path can:
+- stop containers
+- remove volumes if you confirm the destructive option
+- delete the install directory after explicit confirmation
+
+Manual uninstall:
+
+```bash
+docker compose down --remove-orphans
+docker compose down --volumes --remove-orphans
+rm -rf /path/to/install
+```
+
+Use the volume-removal command only if you intend to delete persisted auth data.
+
+## Troubleshooting
+
+Common issues:
+
+- Login works in UI but requests fail:
+  verify `VITE_AUTH_API`, reverse-proxy routes, and backend auth support.
+- Uploads fail:
+  verify `VITE_PASTE_API` and the backend upload route.
+- Public token links fail:
+  verify `VITE_FILE_RESOLVE_BASE` and the backend resolve route.
+- Installer token actions fail:
+  verify `AUTH_ADMIN_BEARER` and the admin endpoint paths.
+- Playwright fails before tests start:
+  the local environment may forbid binding a dev server port. Run it on a host where localhost listeners are allowed.
+
+More operator detail:
+- [docs/wiki/Architecture.md](/path/to/repo/docs/wiki/Architecture.md)
+- [docs/wiki/Deployment.md](/path/to/repo/docs/wiki/Deployment.md)
+- [docs/wiki/User-and-Token-Management.md](/path/to/repo/docs/wiki/User-and-Token-Management.md)
+- [docs/wiki/Troubleshooting.md](/path/to/repo/docs/wiki/Troubleshooting.md)
+
+## Contributing
+
+Before opening a PR:
+
+```bash
+npm ci
+npm run build
+npm run test:e2e
+```
+
+Keep changes scoped. Avoid mixing routing, UI, installer, and deployment rewrites unless they are directly related.
+
+## License
+
+[MIT](/path/to/repo/LICENSE)

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_NAME="yaemipaste"
+APP_NAME="rustypaste-ui"
 DEFAULT_REPO_URL="https://github.com/emiliauh/rustypaste-ui.git"
 DEFAULT_BRANCH="main"
-DEFAULT_INSTALL_DIR="/opt/yaemipaste"
+DEFAULT_INSTALL_DIR="/opt/rustypaste-ui"
 DEFAULT_UI_PORT="8080"
 COMPOSE_FILE="docker-compose.yml"
 ENV_FILE=".env"
@@ -179,10 +179,16 @@ detect_compose_cmd() {
 
 compose() {
   [[ ${#COMPOSE_CMD[@]} -gt 0 ]] || detect_compose_cmd
-  [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]] || die "Compose file not found at ${INSTALL_DIR}/${COMPOSE_FILE}"
+  if [[ ! -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log "[DRY-RUN] would run compose against ${INSTALL_DIR}/${COMPOSE_FILE} after cloning the repository"
+      return 0
+    fi
+    die "Compose file not found at ${INSTALL_DIR}/${COMPOSE_FILE}"
+  fi
   local resolver_enabled
   local -a profile_args
-  resolver_enabled="$(env_get RESOLVER_ENABLED "1")"
+  resolver_enabled="$(env_get RESOLVER_ENABLED "0")"
   profile_args=()
   if [[ "$resolver_enabled" != "0" ]]; then
     profile_args=(--profile with-resolver)
@@ -314,14 +320,21 @@ wait_for_http() {
 configure_env() {
   local env_path="${INSTALL_DIR}/${ENV_FILE}"
   if [[ ! -f "$env_path" ]]; then
-    [[ -f "${INSTALL_DIR}/.env.example" ]] || die "Missing .env.example in repository."
-    run cp "${INSTALL_DIR}/.env.example" "$env_path"
-    log "Created ${env_path} from .env.example"
+    if [[ ! -f "${INSTALL_DIR}/.env.example" ]]; then
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        log "[DRY-RUN] would initialize ${env_path} from ${INSTALL_DIR}/.env.example after cloning the repository"
+      else
+        die "Missing .env.example in repository."
+      fi
+    else
+      run cp "${INSTALL_DIR}/.env.example" "$env_path"
+      log "Created ${env_path} from .env.example"
+    fi
   fi
 
   local ui_port paste_image api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
   ui_port="$(prompt "UI port to expose" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
-  paste_image="$(prompt "Rustypaste image (includes /api + /auth)" "$(env_get PASTE_API_IMAGE "orhunp/rustypaste:latest")")"
+  paste_image="$(prompt "Rustypaste image/tag" "$(env_get PASTE_API_IMAGE "ghcr.io/replace-me/rustypaste:latest")")"
   api_base="$(prompt "Frontend paste API base (path or URL)" "$(env_get VITE_PASTE_API "/api")")"
   auth_base="$(prompt "Frontend auth API base (path or URL)" "$(env_get VITE_AUTH_API "/auth")")"
   sharex_enabled="$(prompt "Enable ShareX config in UI? (1=yes,0=no)" "$(env_get VITE_ENABLE_SHAREX "0")")"
@@ -330,10 +343,10 @@ configure_env() {
   turnstile_secret="$(prompt "Turnstile secret key (leave empty to disable)" "$(env_get TURNSTILE_SECRET_KEY "")")"
   jwt_secret="$(prompt "JWT signing secret (leave empty to auto-generate)" "$(env_get JWT_SECRET "")")"
   passkeys_enabled="$(prompt "Enable passkeys in Rust backend? (1=yes,0=no)" "$(env_get PASSKEYS_ENABLED "0")")"
-  passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
+  passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "rustypaste-ui")")"
   passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
   passkey_origins="$(prompt "Passkey allowed origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
-  resolver_enabled="$(prompt "Enable resolver service for public token links/bot embeds? (1=yes,0=no)" "$(env_get RESOLVER_ENABLED "1")")"
+  resolver_enabled="$(prompt "Enable resolver service for public token links/bot embeds? (1=yes,0=no)" "$(env_get RESOLVER_ENABLED "0")")"
   admin_base="$(prompt "Auth admin base URL" "$(env_get AUTH_ADMIN_BASE_URL "http://localhost:${ui_port}/auth/admin")")"
   bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
   token_create_path="$(prompt "Token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
@@ -357,14 +370,12 @@ configure_env() {
     warn "Invalid resolver toggle '${resolver_enabled}', defaulting to 1"
     resolver_enabled="1"
   fi
-  resolve_base="$(env_get VITE_FILE_RESOLVE_BASE "/resolve")"
+  resolve_base="$(env_get VITE_FILE_RESOLVE_BASE "/api/resolve")"
   if [[ "$resolver_enabled" == "0" ]]; then
-    if [[ "$resolve_base" == "/resolve" ]]; then
-      warn "Resolver disabled and VITE_FILE_RESOLVE_BASE is /resolve: clearing fallback path."
-      resolve_base=""
-    elif [[ -n "$resolve_base" ]]; then
-      log "Resolver disabled: keeping VITE_FILE_RESOLVE_BASE=${resolve_base} (custom backend resolver path)."
+    if [[ -z "$resolve_base" ]]; then
+      resolve_base="/api/resolve"
     fi
+    log "Resolver disabled: expecting compatible Rust backend routes at ${resolve_base}."
   elif [[ -z "$resolve_base" ]]; then
     resolve_base="/resolve"
   fi
@@ -382,6 +393,10 @@ configure_env() {
   if [[ -z "$jwt_secret" ]]; then
     jwt_secret="$(generate_secret)"
     log "Generated JWT secret automatically."
+  fi
+  if [[ "$auth_enabled" == "1" && "$paste_image" == "orhunp/rustypaste:latest" ]]; then
+    warn "The stock orhunp/rustypaste:latest image does not provide the auth routes this UI expects."
+    warn "Use a compatible custom Rust image or disable auth mode."
   fi
 
   upsert_env UI_PORT "$ui_port"
@@ -590,7 +605,7 @@ Repository: ${REPO_URL} (${BRANCH})
 
 1) Install / Update full stack
 2) Create initial user
-3) Create registration token
+3) Create auth token
 4) Revoke token
 5) Start services
 6) Stop services

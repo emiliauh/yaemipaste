@@ -7,7 +7,7 @@ import { promisify } from 'node:util'
 const PORT = Number.parseInt(process.env.RESOLVER_PORT ?? '3101', 10)
 const UPLOAD_DIR = process.env.RESOLVER_UPLOAD_DIR?.trim() || '/var/lib/rustypaste/upload'
 const USERS_DB_PATH = process.env.RESOLVER_USERS_DB_PATH?.trim() || '/var/lib/rustypaste/users.db'
-const PUBLIC_ORIGIN = (process.env.RESOLVER_PUBLIC_ORIGIN?.trim() || 'https://example.invalid').replace(/\/$/, '')
+const PUBLIC_ORIGIN = (process.env.RESOLVER_PUBLIC_ORIGIN?.trim() || 'http://localhost:8080').replace(/\/$/, '')
 const CACHE_TTL_MS = Number.parseInt(process.env.RESOLVER_CACHE_TTL_MS ?? '30000', 10)
 const execFileAsync = promisify(execFile)
 

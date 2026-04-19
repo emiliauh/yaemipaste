@@ -63,7 +63,7 @@ async function downloadShareX() {
     const a = document.createElement('a')
     const url = URL.createObjectURL(blob)
     a.href = url
-    a.download = 'yaemipaste.sxcu'
+    a.download = 'rustypaste-ui.sxcu'
     a.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (e: any) {
@@ -260,7 +260,7 @@ async function submitPasswordChange() {
     </div>
 
     <div style="margin-top:8px; color:var(--text3); font-size:10px; text-align:center">
-      ♥ yaemipaste + rustypaste
+      rustypaste-ui + rustypaste
     </div>
   </div>
 
