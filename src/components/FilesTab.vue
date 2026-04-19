@@ -26,6 +26,7 @@ const shareLinks = ref<ShareLinkItem[]>([])
 const uploadProgress = ref<UploadProgress | null>(null)
 const encryptMode = ref<'none' | 'encrypt' | 'password'>('none')
 const encryptPassword = ref('')
+const showEncryptPassword = ref(false)
 let shareLinkId = 0
 const notificationStore = useNotificationStore()
 
@@ -36,7 +37,11 @@ watch(keepFileName, (value) => {
 function cycleEncrypt() {
   if (encryptMode.value === 'none') encryptMode.value = 'encrypt'
   else if (encryptMode.value === 'encrypt') encryptMode.value = 'password'
-  else { encryptMode.value = 'none'; encryptPassword.value = '' }
+  else {
+    encryptMode.value = 'none'
+    encryptPassword.value = ''
+    showEncryptPassword.value = false
+  }
 }
 
 function setProgress(progress: UploadProgress) {
@@ -250,14 +255,33 @@ function onPasteAreaLongPressCancel() {
         <span>{{ encryptMode === 'none' ? 'encrypt?' : encryptMode === 'encrypt' ? 'Encrypt' : 'Password encrypt' }}</span>
       </button>
       <Transition name="pw-field">
-        <input
-          v-if="encryptMode === 'password'"
-          v-model="encryptPassword"
-          type="password"
-          class="pw-input"
-          placeholder="set password…"
-          autocomplete="new-password"
-        />
+        <div v-if="encryptMode === 'password'" class="password-wrap">
+          <input
+            v-model="encryptPassword"
+            :type="showEncryptPassword ? 'text' : 'password'"
+            class="pw-input"
+            placeholder="set password…"
+            autocomplete="new-password"
+          />
+          <button
+            type="button"
+            class="password-toggle"
+            :aria-label="showEncryptPassword ? 'Hide password' : 'Show password'"
+            :title="showEncryptPassword ? 'Hide password' : 'Show password'"
+            @click="showEncryptPassword = !showEncryptPassword"
+          >
+            <svg v-if="showEncryptPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 3l18 18"/>
+              <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+              <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
+              <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
+            </svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
       </Transition>
       <label class="encrypt-toggle" data-testid="keep-name-toggle">
         <input v-model="keepFileName" type="checkbox" />
@@ -440,6 +464,30 @@ function onPasteAreaLongPressCancel() {
    font-size: 12px;
    padding: 0 10px;
    box-sizing: border-box;
+}
+.password-wrap {
+  position: relative;
+}
+.password-wrap .pw-input {
+  padding-right: 36px;
+}
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--text3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.password-toggle:hover {
+  color: var(--text);
 }
 .pw-field-enter-active,
 .pw-field-leave-active {

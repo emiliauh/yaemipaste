@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, encodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, publicDownloadUrl, publicFileUrl, resolveFileName, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, effectivePublicMimeType, encodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, preferredPublicFileName, publicDownloadUrl, publicFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
@@ -10,6 +10,7 @@ const error = ref('')
 const textPreview = ref('')
 const meta = ref<PublicFileMeta | null>(null)
 const resolvedFileName = ref('')
+const resolvedOwner = ref('')
 const routeFileKey = computed(() => String(route.params.filekey ?? ''))
 
 const requestedFileName = computed(() => {
@@ -35,14 +36,18 @@ const downloadUrl = computed(() => {
   return resolvedFileName.value ? publicDownloadUrl(resolvedFileName.value) : ''
 })
 const mediaUrl = computed(() => rawUrl.value)
-const isImage = computed(() => meta.value?.mime_type.startsWith('image/') ?? false)
-const isVideo = computed(() => meta.value?.mime_type.startsWith('video/') ?? false)
-const isText = computed(() => meta.value?.mime_type.startsWith('text/') ?? false)
-const isPdf = computed(() => meta.value?.mime_type === 'application/pdf')
+const displayFileName = computed(() => preferredPublicFileName(meta.value, resolvedFileName.value || requestedFileName.value))
+const effectiveMimeType = computed(() => effectivePublicMimeType(meta.value, resolvedFileName.value || requestedFileName.value))
+const isImage = computed(() => effectiveMimeType.value.startsWith('image/'))
+const isVideo = computed(() => effectiveMimeType.value.startsWith('video/'))
+const isText = computed(() => effectiveMimeType.value.startsWith('text/'))
+const isPdf = computed(() => effectiveMimeType.value === 'application/pdf')
 const canPreviewInline = computed(() => isImage.value || isVideo.value || isText.value || isPdf.value)
 const resolvedUploader = computed(() => {
   const apiUploader = meta.value?.uploader?.trim() ?? ''
   if (apiUploader && apiUploader !== 'Unknown (token user)' && apiUploader !== 'Unknown') return apiUploader
+  const tokenOwner = resolvedOwner.value.trim()
+  if (tokenOwner && tokenOwner !== 'Unknown (token user)' && tokenOwner !== 'Unknown') return tokenOwner
   const localUser = getAuthUsername().trim()
   return localUser && localUser !== 'token-user' ? localUser : apiUploader || 'Unknown'
 })
@@ -100,6 +105,7 @@ async function load() {
   meta.value = null
   textPreview.value = ''
   resolvedFileName.value = ''
+  resolvedOwner.value = ''
   if (!requestedFileName.value) {
     error.value = 'Missing file name'
     loading.value = false
@@ -107,11 +113,13 @@ async function load() {
   }
 
   try {
-    const fileName = await resolveFileName(requestedFileName.value)
+    const resolved = await resolveFileLookup(requestedFileName.value)
+    const fileName = resolved.fileName
     if (fileName.toLowerCase().endsWith('.rpenc')) {
       throw new Error("This file is encrypted but the link doesn't include a decryption key. Ask whoever shared this file for the full link.")
     }
     resolvedFileName.value = fileName
+    resolvedOwner.value = resolved.uploader ?? ''
     meta.value = await getPublicFileMeta(fileName)
     await loadTextPreview()
   } catch (e: any) {
@@ -136,7 +144,7 @@ watch(requestedFileName, () => void load(), { immediate: true })
         <div class="meta-grid">
           <div>
             <span>File name</span>
-            <strong>{{ meta.display_name }}</strong>
+            <strong>{{ displayFileName }}</strong>
           </div>
           <div>
             <span>Upload date</span>
@@ -148,12 +156,12 @@ watch(requestedFileName, () => void load(), { immediate: true })
           </div>
           <div>
             <span>Type</span>
-            <strong>{{ meta.mime_type }} · {{ formatBytes(meta.file_size) }}</strong>
+            <strong>{{ effectiveMimeType }} · {{ formatBytes(meta.file_size) }}</strong>
           </div>
         </div>
 
         <div v-if="isImage" class="preview-frame">
-          <img :src="mediaUrl" :alt="meta.display_name" />
+          <img :src="mediaUrl" :alt="displayFileName" />
         </div>
         <div v-else-if="isVideo" class="preview-frame">
           <video :src="mediaUrl" controls />

@@ -179,9 +179,31 @@ async function refreshSilently() {
   }
 }
 
+function normalizeShareXField(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function isExplicitShareXUploader(value: string): boolean {
+  return value === 'sharex' || value.endsWith('(sharex)')
+}
+
+function isLegacyTokenMediaUpload(meta: PublicFileMeta): boolean {
+  const uploader = normalizeShareXField(meta.uploader)
+  if (uploader !== 'unknown (token user)') return false
+  const mime = normalizeShareXField(meta.mime_type)
+  if (!mime.startsWith('image/') && !mime.startsWith('video/')) return false
+  const displayName = normalizeShareXField(meta.display_name)
+  const fileName = normalizeShareXField(meta.file_name)
+  return !!displayName && displayName === fileName
+}
+
 function hasShareXBadge(fileName: string): boolean {
-  const uploader = fileMetaMap.value[fileName]?.uploader?.toLowerCase() ?? ''
-  return uploader.includes('sharex')
+  const meta = fileMetaMap.value[fileName]
+  if (!meta) return false
+  const source = normalizeShareXField(meta.source)
+  if (source) return source === 'sharex'
+  if (isExplicitShareXUploader(normalizeShareXField(meta.uploader))) return true
+  return isLegacyTokenMediaUpload(meta)
 }
 
 async function ensureVisibleMeta() {
@@ -1046,11 +1068,11 @@ onBeforeUnmount(() => {
   <div class="history-tab">
     <!-- Toolbar -->
     <div class="toolbar">
-      <button class="btn-red" style="padding:4px 12px;font-size:12px" :disabled="!files.length" @click="deleteAll">
+      <button class="btn-red toolbar-control toolbar-delete-all" :disabled="!files.length" @click="deleteAll">
         Delete All
       </button>
-      <div class="search-wrap">
-        <input v-model="search" type="text" placeholder="Search" style="width:180px" />
+      <div class="search-wrap toolbar-control">
+        <input v-model="search" type="text" placeholder="Search" />
         <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
@@ -1409,7 +1431,18 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 12px;
 }
-.toolbar { display: flex; align-items: center; gap: 8px; }
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar-control {
+  min-height: 34px;
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+.toolbar-delete-all {
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .bulk-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .select-all { display: inline-flex; align-items: center; gap: 6px; color: var(--text2); font-size: 12px; }
 .selection-count { color: var(--text3); font-size: 11px; }
@@ -1455,8 +1488,18 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 6px;
 }
-.search-wrap { position: relative; }
-.search-wrap input { padding-right: 28px; }
+.search-wrap {
+  position: relative;
+  width: min(100%, 220px);
+  display: inline-flex;
+  align-items: center;
+}
+.search-wrap input {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  padding-right: 28px;
+}
 .search-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text3); pointer-events: none; }
 .table-wrap { overflow-x: auto; }
 .pagination {
@@ -1581,6 +1624,13 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 600px) {
+  .toolbar {
+    align-items: stretch;
+  }
+  .toolbar-control,
+  .search-wrap {
+    width: 100%;
+  }
   .table-wrap { overflow-x: hidden; }
   .file-table { table-layout: fixed; width: 100%; }
   .file-table th:last-child,

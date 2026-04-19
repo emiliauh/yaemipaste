@@ -18,6 +18,7 @@ const DEFAULT_PASTE_API = normalizeApiBase(import.meta.env.VITE_PASTE_API ?? '/a
 const AUTH_API = (import.meta.env.VITE_AUTH_API ?? '/auth').replace(/\/$/, '')
 const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '0').trim() === '1'
 const PUBLIC_SITE_ORIGIN = (import.meta.env.VITE_PUBLIC_SITE_ORIGIN ?? '').trim().replace(/\/$/, '')
+const TOKEN_OWNER_PATH = (import.meta.env.VITE_TOKEN_OWNER_PATH ?? '/token-owner').trim()
 const FILE_RESOLVE_BASE = (() => {
   const configured = import.meta.env.VITE_FILE_RESOLVE_BASE
   if (typeof configured !== 'string') return '/resolve'
@@ -169,6 +170,18 @@ function clearAuthTokens() {
   }
 }
 
+function writeAuthUsername(username: string) {
+  const normalized = username.trim()
+  if (localStorage.getItem('rp_username') != null || localStorage.getItem('rp_token') != null || localStorage.getItem('rp_jwt') != null) {
+    if (normalized) localStorage.setItem('rp_username', normalized)
+    else localStorage.removeItem('rp_username')
+  }
+  if (sessionStorage.getItem('rp_username') != null || sessionStorage.getItem('rp_token') != null || sessionStorage.getItem('rp_jwt') != null) {
+    if (normalized) sessionStorage.setItem('rp_username', normalized)
+    else sessionStorage.removeItem('rp_username')
+  }
+}
+
 function readResolvedFileNames(): Record<string, string> {
   if (typeof localStorage === 'undefined') return {}
   try {
@@ -285,8 +298,93 @@ export async function authMe() {
   return readJson(r, 'Could not load account details')
 }
 
+function tokenOwnerUrl(origin = publicSiteOrigin()): string {
+  const base = TOKEN_OWNER_PATH.trim()
+  if (!base) throw new Error('Token owner lookup is disabled for this deployment')
+  if (/^https?:\/\//i.test(base)) return base
+  const normalizedPath = base.startsWith('/') ? base : `/${base}`
+  return `${publicSiteOrigin(origin)}${normalizedPath}`
+}
+
+export async function hydrateSessionIdentity(): Promise<string> {
+  if (!isAuthEnabled()) return ''
+  const current = getAuthUsername().trim()
+  if (current && current !== 'token-user') return current
+
+  const jwt = getJwt().trim()
+  if (jwt) {
+    try {
+      const me = await authMe() as { username?: unknown }
+      const username = typeof me.username === 'string' ? me.username.trim() : ''
+      if (username) {
+        writeAuthUsername(username)
+        return username
+      }
+    } catch {
+      // fall through to token lookup when JWT bootstrap fails
+    }
+  }
+
+  const token = getToken().trim()
+  if (!token) return current
+
+  try {
+    const r = await fetch(tokenOwnerUrl(), {
+      cache: 'no-store',
+      headers: { Authorization: token },
+    })
+    if (!r.ok) return current
+    const data = await readJson<{ username?: unknown }>(r, 'Could not resolve token owner')
+    const username = typeof data.username === 'string' ? data.username.trim() : ''
+    if (!username) return current
+    writeAuthUsername(username)
+    return username
+  } catch {
+    return current
+  }
+}
+
 export function authLogout() {
   clearAuthTokens()
+}
+
+export async function authChangePassword(currentPassword: string, nextPassword: string) {
+  requireAuthEnabled()
+  const payload = {
+    old_password: currentPassword,
+    new_password: nextPassword,
+  }
+  const endpoints = [`${AUTH_API}/password/change`, `${AUTH_API}/change-password`]
+  for (const endpoint of endpoints) {
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        ...jwtBearerHeader(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+    if (r.status === 404) continue
+    if (!r.ok) throw new Error(await responseDetail(r, 'Could not change password'))
+    return
+  }
+  throw new Error('Password change endpoint is not available on this server')
+}
+
+export async function authLogoutAllDevices() {
+  requireAuthEnabled()
+  const endpoints = [`${AUTH_API}/logout-all-devices`, `${AUTH_API}/sessions/logout-all`]
+  for (const endpoint of endpoints) {
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: jwtBearerHeader(),
+    })
+    if (r.status === 404) continue
+    if (!r.ok) throw new Error(await responseDetail(r, 'Could not log out all devices'))
+    clearAuthTokens()
+    return
+  }
+  throw new Error('Global logout endpoint is not available on this server')
 }
 
 export interface PasskeySummary {
@@ -364,8 +462,8 @@ export async function authPasskeyLoginFinish(username: string, credential: unkno
   return data
 }
 
-function uploaderIdentity(): string {
-  const username = getAuthUsername().trim()
+async function uploaderIdentity(): Promise<string> {
+  const username = (await hydrateSessionIdentity()).trim() || getAuthUsername().trim()
   if (username && username !== 'token-user') return username
   return 'Unknown (token user)'
 }
@@ -415,7 +513,7 @@ export async function getShareXConfig(): Promise<Blob> {
   // [.] = literal dot, [A-Za-z0-9]+ = extension chars, [^A-Za-z0-9]*$ = strip trailing junk.
   parsed.URL = `${publicSiteOrigin()}/file/{regex:([A-Za-z0-9_-]+)(?:[.][A-Za-z0-9]+)?[^A-Za-z0-9]*$|1}/preview`
 
-  const uploaderLabel = uploaderIdentity() === 'Unknown (token user)' ? 'ShareX' : `${uploaderIdentity()} (ShareX)`
+  const uploaderLabel = `${await uploaderIdentity()} (ShareX)`
   const replaceUploaderSyntax = (value: string): string => value
     .replace(/\$uploader[^$]*\$/gi, uploaderLabel)
     .replace(/%uploader%/gi, uploaderLabel)
@@ -433,28 +531,28 @@ export async function getShareXConfig(): Promise<Blob> {
     return value
   }
 
-  const hasArguments = parsed.Arguments && typeof parsed.Arguments === 'object' && !Array.isArray(parsed.Arguments)
-  if (hasArguments) {
-    const args = { ...(parsed.Arguments as Record<string, unknown>) }
-    let metaPayload: Record<string, unknown> = {}
-    if (typeof args.meta === 'string') {
-      try {
-        const decoded = JSON.parse(args.meta) as unknown
-        if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) {
-          metaPayload = decoded as Record<string, unknown>
-        }
-      } catch {}
-    }
-    metaPayload = sanitizeUploaderSyntax(metaPayload) as Record<string, unknown>
-    metaPayload.uploader = uploaderLabel
-    args.meta = JSON.stringify(metaPayload)
-    delete args.uploader
-    for (const [key, value] of Object.entries(args)) {
-      if (key.toLowerCase() === 'uploader') continue
-      args[key] = sanitizeUploaderSyntax(value)
-    }
-    parsed.Arguments = args
+  const args = parsed.Arguments && typeof parsed.Arguments === 'object' && !Array.isArray(parsed.Arguments)
+    ? { ...(parsed.Arguments as Record<string, unknown>) }
+    : {}
+  let metaPayload: Record<string, unknown> = {}
+  if (typeof args.meta === 'string') {
+    try {
+      const decoded = JSON.parse(args.meta) as unknown
+      if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) {
+        metaPayload = decoded as Record<string, unknown>
+      }
+    } catch {}
   }
+  metaPayload = sanitizeUploaderSyntax(metaPayload) as Record<string, unknown>
+  metaPayload.uploader = uploaderLabel
+  metaPayload.source = 'ShareX'
+  args.meta = JSON.stringify(metaPayload)
+  delete args.uploader
+  for (const [key, value] of Object.entries(args)) {
+    if (key.toLowerCase() === 'uploader') continue
+    args[key] = sanitizeUploaderSyntax(value)
+  }
+  parsed.Arguments = args
 
   return new Blob([JSON.stringify(parsed, null, 2)], { type: 'application/json' })
 }
@@ -513,6 +611,7 @@ interface UploadMeta {
   keepFileName: boolean
   originalName: string
   uploader: string
+  source: string
 }
 
 function extractUploadTargetFromJson(value: unknown): string | null {
@@ -593,14 +692,15 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
   let encryptedKey: string | null = null
   let encryptedSalt: string | null = null
   let encryptedMetadata: EncryptedMetadata | null = null
+  const resolvedUploader = await uploaderIdentity()
   onProgress?.({ phase: isAnyEncrypt ? 'encrypting' : 'uploading', percent: isAnyEncrypt ? 0 : 1 })
   if (shouldEncryptWithPassword) {
-    const encrypted = await encryptFileWithPassword(file, password, uploaderIdentity())
+    const encrypted = await encryptFileWithPassword(file, password, resolvedUploader)
     uploadFileValue = new File([encrypted.blob], `${file.name}.rpenc`, { type: 'application/octet-stream' })
     encryptedSalt = encrypted.salt
     encryptedMetadata = encrypted.metadata
   } else if (shouldEncrypt) {
-    const encrypted = await encryptFile(file, uploaderIdentity())
+    const encrypted = await encryptFile(file, resolvedUploader)
     uploadFileValue = new File([encrypted.blob], `${file.name}.rpenc`, { type: 'application/octet-stream' })
     encryptedKey = encrypted.key
     encryptedMetadata = encrypted.metadata
@@ -609,7 +709,8 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
   const uploadMeta: UploadMeta = {
     keepFileName: shouldKeepFileName,
     originalName: file.name,
-    uploader: uploaderIdentity(),
+    uploader: resolvedUploader,
+    source: 'WebUI',
   }
   form.append('meta', JSON.stringify(uploadMeta))
   form.append('file', uploadFileValue)
@@ -679,14 +780,116 @@ export interface PublicFileMeta {
   file_name: string
   display_name: string
   uploader: string
+  source?: string | null
   upload_date_utc: string | null
   download_name: string
   file_size: number
   mime_type: string
 }
 
+const GENERIC_PUBLIC_MIME_TYPES = new Set([
+  '',
+  'application/octet-stream',
+  'binary/octet-stream',
+  'application/force-download',
+])
+
+function isNumericExtensionSegment(value: string): boolean {
+  return /^\d{6,}$/.test(value)
+}
+
+function knownMimeFromExtension(value: string): string {
+  const ext = value.toLowerCase()
+  if (['jpg', 'jpeg'].includes(ext)) return 'image/jpeg'
+  if (ext === 'png') return 'image/png'
+  if (ext === 'gif') return 'image/gif'
+  if (ext === 'webp') return 'image/webp'
+  if (ext === 'avif') return 'image/avif'
+  if (ext === 'svg') return 'image/svg+xml'
+  if (ext === 'bmp') return 'image/bmp'
+  if (['tif', 'tiff'].includes(ext)) return 'image/tiff'
+  if (ext === 'ico') return 'image/x-icon'
+  if (ext === 'mp4') return 'video/mp4'
+  if (ext === 'webm') return 'video/webm'
+  if (ext === 'mov') return 'video/quicktime'
+  if (ext === 'avi') return 'video/x-msvideo'
+  if (ext === 'mkv') return 'video/x-matroska'
+  if (ext === 'ogv') return 'video/ogg'
+  if (ext === 'm4v') return 'video/x-m4v'
+  if (ext === '3gp') return 'video/3gpp'
+  if (ext === 'pdf') return 'application/pdf'
+  if (['txt', 'log', 'md', 'markdown', 'csv', 'json', 'xml', 'yml', 'yaml', 'toml', 'ini', 'conf', 'cfg'].includes(ext)) return 'text/plain'
+  if (['js', 'ts', 'tsx', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cc', 'cpp', 'h', 'hpp', 'css', 'htm', 'html'].includes(ext)) return 'text/plain'
+  return ''
+}
+
+function cleanFileNameCandidate(value: string): string {
+  return value.replace(/^\/+/, '').trim()
+}
+
+function inferMimeTypeFromFileName(fileName: string): string {
+  const normalized = cleanFileNameCandidate(fileName)
+  if (!normalized) return ''
+  const lastSegment = normalized.split('/').pop() ?? normalized
+  const parts = lastSegment.split('.').filter(Boolean)
+  if (parts.length < 2) return ''
+  for (let index = parts.length - 1; index >= 1; index -= 1) {
+    const segment = parts[index].toLowerCase()
+    if (isNumericExtensionSegment(segment)) continue
+    const mime = knownMimeFromExtension(segment)
+    if (mime) return mime
+  }
+  return ''
+}
+
+function stripGeneratedPreviewSuffix(fileName: string): string {
+  const normalized = cleanFileNameCandidate(fileName)
+  const lastSegment = normalized.split('/').pop() ?? normalized
+  const parts = lastSegment.split('.')
+  if (parts.length < 3) return normalized
+  const tail = parts[parts.length - 1]
+  const ext = parts[parts.length - 2]
+  if (!isNumericExtensionSegment(tail) || !knownMimeFromExtension(ext)) return normalized
+  return parts.slice(0, -1).join('.')
+}
+
+export function preferredPublicFileName(meta: PublicFileMeta | null | undefined, fallback = ''): string {
+  const candidates = [
+    meta?.download_name,
+    meta?.display_name,
+    fallback,
+    meta?.file_name,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue
+    const normalized = cleanFileNameCandidate(candidate)
+    if (!normalized) continue
+    return stripGeneratedPreviewSuffix(normalized)
+  }
+  return ''
+}
+
+export function effectivePublicMimeType(meta: PublicFileMeta | null | undefined, fallback = ''): string {
+  const reported = (meta?.mime_type ?? '').trim().toLowerCase()
+  if (!GENERIC_PUBLIC_MIME_TYPES.has(reported)) return reported
+  const candidates = [
+    meta?.download_name,
+    meta?.display_name,
+    fallback,
+    meta?.file_name,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue
+    const inferred = inferMimeTypeFromFileName(candidate)
+    if (inferred) return inferred
+  }
+  return reported || 'application/octet-stream'
+}
+
 export async function getPublicFileMeta(fileName: string): Promise<PublicFileMeta> {
-  const r = await fetch(`${getPasteApiBase()}/meta/${encodeURIComponent(fileName)}`)
+  const r = await fetch(`${getPasteApiBase()}/meta/${encodeURIComponent(fileName)}`, {
+    headers: tokenHeader(),
+  })
   if (!r.ok) throw new Error(r.status === 404 ? 'File not found or expired' : await responseDetail(r, 'Could not load file metadata'))
   rememberResolvedFileName(fileName)
   return readJson(r, 'Could not load file metadata')
@@ -766,19 +969,32 @@ export function fileNameFromUrl(value: string): string {
   }
 }
 
+export interface ResolvedFileLookup {
+  fileName: string
+  uploader: string | null
+}
+
 function fileResolveUrl(token: string, origin = publicSiteOrigin()): string {
   if (!FILE_RESOLVE_BASE) throw new Error('Public file-token resolution is disabled for this deployment')
   const cleanToken = decodeFileToken(token)
-  if (/^https?:\/\//i.test(FILE_RESOLVE_BASE)) return `${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}`
-  return `${publicSiteOrigin(origin)}${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}`
+  const cacheBuster = `cb=${Date.now().toString(36)}`
+  if (/^https?:\/\//i.test(FILE_RESOLVE_BASE)) return `${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}?${cacheBuster}`
+  return `${publicSiteOrigin(origin)}${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}?${cacheBuster}`
 }
 
-export async function resolveFileName(tokenOrFileName: string, origin = publicSiteOrigin()): Promise<string> {
+function normalizeResolvedUploader(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.toLowerCase() === 'unknown (token user)' || trimmed.toLowerCase() === 'unknown') return null
+  return trimmed
+}
+
+export async function resolveFileLookup(tokenOrFileName: string, origin = publicSiteOrigin()): Promise<ResolvedFileLookup> {
   const decoded = decodeFileToken(tokenOrFileName)
   if (!decoded) throw new Error('Missing file name')
-  if (!tokenNeedsFileResolution(decoded)) return decoded
+  if (!tokenNeedsFileResolution(decoded)) return { fileName: decoded, uploader: null }
   const localMatch = readResolvedFileNames()[decoded]
-  if (localMatch) return localMatch
+  if (localMatch) return { fileName: localMatch, uploader: null }
   if (!FILE_RESOLVE_BASE) {
     throw new Error('This file link needs resolver support, but resolver fallback is disabled on this deployment')
   }
@@ -792,9 +1008,15 @@ export async function resolveFileName(tokenOrFileName: string, origin = publicSi
   if (!response.ok) {
     throw new Error(response.status === 404 ? 'File not found or expired' : await responseDetail(response, 'Could not resolve the file URL'))
   }
-  const payload = await readJson<{ file_name?: string }>(response, 'Could not resolve the file URL')
+  const payload = await readJson<{ file_name?: string; uploader?: unknown; owner?: unknown }>(response, 'Could not resolve the file URL')
   if (!payload.file_name || typeof payload.file_name !== 'string') throw new Error('Could not resolve the file URL')
-  return payload.file_name
+  const uploader = normalizeResolvedUploader(payload.uploader) ?? normalizeResolvedUploader(payload.owner)
+  return { fileName: payload.file_name, uploader }
+}
+
+export async function resolveFileName(tokenOrFileName: string, origin = publicSiteOrigin()): Promise<string> {
+  const resolved = await resolveFileLookup(tokenOrFileName, origin)
+  return resolved.fileName
 }
 
 export function formatBytes(bytes: number): string {

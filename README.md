@@ -78,15 +78,24 @@ The deployed stack is Rustypaste + Vite frontend + the bundled `resolver-server/
 
 ### Rust-native resolve path (migration mode)
 
-If your Rustypaste backend exposes `GET /resolve/{token}`:
+If your Rustypaste backend exposes both:
+- `GET /resolve/{token}`
+- `GET /file/{token}/{preview|raw|download}` for crawler/bot redirects
+
+then:
 - set `VITE_FILE_RESOLVE_BASE=/api/resolve`
 - set `RESOLVER_ENABLED=0`
 - keep `VITE_PASTE_API=/api`
 
 This repository includes a minimal upstream patch template at
-`patches/rustypaste-resolve-endpoint.patch` to add that endpoint in Rustypaste.
+`patches/rustypaste-resolve-endpoint.patch` to add those routes in Rustypaste.
 Apply it in a rustypaste checkout, then build/publish your own backend image and
 set `PASTE_API_IMAGE` accordingly.
+
+The patch template mirrors the bundled Node resolver’s important behavior:
+- token lookup accepts either full filenames or id-only tokens
+- immediate upload subdirectories are scanned, skipping special non-file buckets
+- `/file/{token}/{mode}` returns `302` + `Cache-Control: no-store` to the public raw bytes path for embed parity
 
 ---
 
@@ -112,6 +121,7 @@ Commonly tuned values:
 | `VITE_PASTE_API` | Frontend paste API base | `/api` |
 | `VITE_AUTH_API` | Frontend auth API base | `/auth` |
 | `VITE_FILE_RESOLVE_BASE` | Public resolver path for extension-free file links | `/resolve` |
+| `VITE_TOKEN_OWNER_PATH` | Token-owner endpoint used to prefill uploader metadata for token-auth uploads | `/token-owner` |
 | `VITE_ENABLE_AUTH` | Enable login/account flows | `1` |
 | `VITE_ENABLE_SHAREX` | Show ShareX config controls | `0` |
 | `VITE_TURNSTILE_SITE_KEY` | Turnstile in login UI | empty |

@@ -1,5 +1,5 @@
 const MAGIC = 'RPENC1\n'
-import { encodeFileTokenFromName } from './fileTokens'
+import { encodeFileTokenFromName, fileIdFromFileName } from './fileTokens'
 
 const MAGIC_BYTES = new TextEncoder().encode(MAGIC)
 const MAX_HEADER_BYTES = 16 * 1024
@@ -349,6 +349,11 @@ function keyLookupCandidates(fileName: string): string[] {
   const candidates = new Set<string>([cleaned])
   if (cleaned.toLowerCase().endsWith('.rpenc')) candidates.add(cleaned.slice(0, -6))
   else candidates.add(`${cleaned}.rpenc`)
+  const fileId = fileIdFromFileName(cleaned)
+  if (fileId) {
+    candidates.add(fileId)
+    candidates.add(`${fileId}.rpenc`)
+  }
   return [...candidates].filter(isSafeStorageKey)
 }
 

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import {
+  authChangePassword,
   authLogout,
+  authLogoutAllDevices,
   authPasskeyDelete,
   authPasskeyRegisterBegin,
   authPasskeyRegisterFinish,
@@ -35,6 +37,13 @@ const passkeys = ref<PasskeySummary[]>([])
 const passkeyBusy = ref(false)
 const passkeyLoading = ref(false)
 const passkeyError = ref('')
+const passwordModalOpen = ref(false)
+const passwordBusy = ref(false)
+const passwordError = ref('')
+const currentPassword = ref('')
+const nextPassword = ref('')
+const confirmPassword = ref('')
+const logoutAllAfterPasswordChange = ref(false)
 
 function save() {
   try {
@@ -132,6 +141,70 @@ function logout() {
   emit('logout')
 }
 
+function openPasswordModal() {
+  passwordModalOpen.value = true
+  passwordError.value = ''
+  currentPassword.value = ''
+  nextPassword.value = ''
+  confirmPassword.value = ''
+  logoutAllAfterPasswordChange.value = false
+}
+
+function closePasswordModal(force = false) {
+  if (passwordBusy.value && !force) return
+  passwordModalOpen.value = false
+  passwordError.value = ''
+}
+
+async function submitPasswordChange() {
+  if (passwordBusy.value) return
+  passwordError.value = ''
+  const current = currentPassword.value.trim()
+  const next = nextPassword.value.trim()
+  const confirm = confirmPassword.value.trim()
+  if (!current || !next || !confirm) {
+    passwordError.value = 'All password fields are required.'
+    return
+  }
+  if (next.length < 8) {
+    passwordError.value = 'New password must be at least 8 characters.'
+    return
+  }
+  if (next !== confirm) {
+    passwordError.value = 'New passwords do not match.'
+    return
+  }
+  if (next === current) {
+    passwordError.value = 'New password must be different from current password.'
+    return
+  }
+  passwordBusy.value = true
+  try {
+    await authChangePassword(current, next)
+    if (logoutAllAfterPasswordChange.value) {
+      try {
+        await authLogoutAllDevices()
+        notificationStore.push('Password changed. All devices were logged out.')
+        emit('logout')
+        return
+      } catch (e: any) {
+        notificationStore.push(
+          e?.message
+            ? `Password changed, but logging out other devices failed: ${e.message}`
+            : 'Password changed, but logging out other devices failed.',
+          'error',
+        )
+      }
+    }
+    notificationStore.push('Password changed')
+    closePasswordModal(true)
+  } catch (e: any) {
+    passwordError.value = e.message ?? 'Could not change password'
+  } finally {
+    passwordBusy.value = false
+  }
+}
+
 </script>
 
 <template>
@@ -173,7 +246,18 @@ function logout() {
 
     <div class="settings-divider"></div>
 
-    <button v-if="authEnabled" class="btn-red logout-btn" type="button" @click="logout">Logout</button>
+    <div v-if="authEnabled" class="account-action-row">
+      <button class="btn-red logout-btn" type="button" @click="logout">Logout</button>
+      <button
+        v-if="hasAccount"
+        class="btn-primary change-password-btn"
+        type="button"
+        data-testid="open-change-password"
+        @click="openPasswordModal"
+      >
+        Change Password
+      </button>
+    </div>
 
     <div style="margin-top:8px; color:var(--text3); font-size:10px; text-align:center">
       ♥ yaemipaste + rustypaste
@@ -208,6 +292,42 @@ function logout() {
       <div v-if="passkeyError" class="passkey-error">{{ passkeyError }}</div>
     </div>
   </div>
+
+  <div
+    v-if="passwordModalOpen"
+    class="passkey-backdrop"
+    data-testid="password-backdrop"
+    @click.self="closePasswordModal()"
+  >
+    <div class="passkey-modal" data-testid="password-modal">
+      <div class="passkey-header">
+        <h3>Change Password</h3>
+        <button class="btn-ghost" type="button" :disabled="passwordBusy" @click="closePasswordModal()">Close</button>
+      </div>
+      <p class="passkey-copy">Update your account password. You can also sign out every device after changing it.</p>
+
+      <div class="field">
+        <label for="current-password">Current Password</label>
+        <input id="current-password" v-model="currentPassword" type="password" autocomplete="current-password" />
+      </div>
+      <div class="field">
+        <label for="new-password">New Password</label>
+        <input id="new-password" v-model="nextPassword" type="password" autocomplete="new-password" />
+      </div>
+      <div class="field">
+        <label for="confirm-password">Confirm New Password</label>
+        <input id="confirm-password" v-model="confirmPassword" type="password" autocomplete="new-password" />
+      </div>
+      <label class="password-checkbox">
+        <input v-model="logoutAllAfterPasswordChange" type="checkbox" :disabled="passwordBusy" />
+        Logout all devices after password change
+      </label>
+      <button class="btn-primary passkey-add-btn" type="button" :disabled="passwordBusy" @click="submitPasswordChange">
+        {{ passwordBusy ? 'Updating…' : 'Update Password' }}
+      </button>
+      <div v-if="passwordError" class="passkey-error" data-testid="password-error">{{ passwordError }}</div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -218,13 +338,23 @@ function logout() {
 .field-hint { color: var(--text3); font-size: 11px; margin-bottom: 6px; }
 .row { display: flex; gap: 8px; justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: 12px 0; }
+.account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .logout-btn { width: 100%; font-size: 11px; }
+.change-password-btn { width: 100%; font-size: 11px; }
 .passkey-open-btn {
   width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+.password-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text2);
+  font-size: 11px;
+  margin-bottom: 12px;
 }
 .passkey-backdrop {
   position: fixed;

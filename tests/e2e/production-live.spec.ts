@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
 
 function tokenFromPreviewHref(href: string): string {
-  const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview$/)
+  const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview(?:\?.*)?$/)
   return match ? decodeURIComponent(match[1]) : ''
 }
 

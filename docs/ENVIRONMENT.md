@@ -27,6 +27,7 @@ This page explains every variable in `.env.example`, what it controls, and when 
 | `VITE_PASTE_API` | Frontend base path for rustypaste API calls. | Change only if you route paste API under a different path/domain. | `/api` |
 | `VITE_AUTH_API` | Frontend base path for auth API calls. | Change only if auth is exposed under a different path/domain. | `/auth` |
 | `VITE_FILE_RESOLVE_BASE` | Frontend path or absolute URL used to resolve `/file/<id>/...` tokens back to full filenames. Empty disables resolver fallback for token links (local cache still works). | Change if resolver is exposed somewhere other than `/resolve` (for Rust-native endpoint use `/api/resolve`), or set empty to disable fallback. | `/resolve` |
+| `VITE_TOKEN_OWNER_PATH` | Frontend token-owner lookup endpoint used before upload to hydrate `meta.uploader` for token-auth sessions. Must return `{"username":"..."}` for `Authorization: <paste-token>`. Empty disables this hydration call. | Change when your token-owner route is not exposed at `/token-owner`, or set empty to disable token-owner prefill. | `/token-owner` |
 | `VITE_PUBLIC_SITE_ORIGIN` | Explicit public site origin used for generated preview/share links. | Set when frontend is behind a different public hostname than current origin. | empty |
 | `VITE_HISTORY_WS` | Optional history websocket endpoint override. | Set if your history WS endpoint differs from default derived URL. | empty |
 | `VITE_TURNSTILE_SITE_KEY` | Enables Cloudflare Turnstile challenge in login flow. | Set when you want Turnstile protection; leave empty otherwise. | empty |
@@ -82,7 +83,11 @@ Security notes:
 
 ### Resolver-free mode with Rust backend endpoint
 
-Use this when your Rustypaste build provides `GET /resolve/{token}`:
+Use this when your Rustypaste build provides:
+- `GET /resolve/{token}`
+- `GET /file/{token}/{preview|raw|download}` for bot/crawler redirect parity
+
+Set:
 - `VITE_FILE_RESOLVE_BASE=/api/resolve`
 - `RESOLVER_ENABLED=0`
 - `PASTE_API_IMAGE=<your rustypaste image with /resolve endpoint>`
@@ -123,7 +128,7 @@ your-domain.example {
     reverse_proxy 127.0.0.1:3101
   }
 
-  # tokenized preview/raw/download routes are SPA routes
+  # browsers keep tokenized preview/raw/download routes on the SPA shell
   @fileRoutes path_regexp fileRoutes ^/file/[^/]+/(preview|raw|download)$
   handle @fileRoutes {
     rewrite * /index.html
@@ -148,6 +153,7 @@ your-domain.example {
     file_server
   }
 
+  # bots/crawlers must bypass the SPA and hit resolver/native redirect routes
   @embedResolver {
     path_regexp embedResolver ^/file/[^/]+/(preview|raw|download)$
     header_regexp User-Agent (?i)(discordbot|telegrambot|facebookexternalhit|twitterbot|whatsapp|linkedinbot|slackbot|iframely)
@@ -163,9 +169,10 @@ your-domain.example {
 }
 ```
 
-Adapt the matchers to your exact Caddy version. Keep the invariant:
-tokenized `/file/*/(preview|raw|download)` remains SPA, while short raw paths
-`/<id>/file(.ext)` resolve to rustypaste file bytes.
+Adapt the matchers to your exact Caddy version. Keep these invariants:
+- normal browser navigation for tokenized `/file/*/(preview|raw|download)` stays on the SPA shell
+- crawler traffic for the same tokenized routes bypasses the SPA and reaches either the Node resolver or Rust-native redirect endpoint
+- short raw paths `/<id>/file(.ext)` resolve to rustypaste file bytes
 
 If you use the bundled `docker-compose.yml`, the resolver is intentionally bound to
 `127.0.0.1:${RESOLVER_PORT}` only. Expose it through your reverse proxy rather than
@@ -174,6 +181,14 @@ opening it directly on all interfaces.
 The bundled compose file makes resolver optional via the `with-resolver` profile:
 - With resolver (current default behavior): `docker compose --profile with-resolver up --build -d`
 - Without resolver: `docker compose up --build -d`
+
+## Focused routing regressions
+
+When changing preview routing, resolver behavior, or reverse-proxy rules, re-run at least these checks:
+- Browser flow: open `/file/<token>/preview?v=<current-version>` in a normal browser UA and confirm the SPA renders `File preview`.
+- Crawler redirect flow: `curl -I -A 'Discordbot/2.0' https://<host>/file/<token>/preview?v=<current-version>` should return `302`, `Cache-Control: no-store`, and `Location: https://<host>/<id>/file.<ext>` or `/file`.
+- Resolver lookup flow: `curl -s https://<host>/resolve/<token>?cb=test` should return the canonical `file_name` and `raw_path`.
+- Nested storage parity: verify the tested token came from the real upload storage layout; if uploads are sharded into immediate subdirectories, resolver/native lookup must still find exactly one match.
 
 ## Non-interactive automation
 

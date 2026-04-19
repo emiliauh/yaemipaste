@@ -5,7 +5,7 @@ const liveBaseUrl = process.env.PLAYWRIGHT_LIVE_BASE_URL?.replace(/\/$/, '') ?? 
 const liveApiBaseUrl = process.env.PLAYWRIGHT_LIVE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 
 function tokenFromPreviewHref(href: string): string {
-  const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview$/)
+  const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview(?:\?.*)?$/)
   return match ? decodeURIComponent(match[1]) : ''
 }
 
