@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { publicFileUrl, publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
+import { publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
 import ExpirySelector from './ExpirySelector.vue'
 import { defaultExpiryValue, isValidExpiryValue, type ExpiryValue } from '../lib/expiry'
 import { useNotificationStore } from '../stores/notifications'
@@ -21,8 +21,6 @@ interface ShareLinkItem {
   id: number
   name: string
   previewUrl: string
-  embedUrl: string | null
-  showingEmbed: boolean
 }
 const shareLinks = ref<ShareLinkItem[]>([])
 const uploadProgress = ref<UploadProgress | null>(null)
@@ -62,37 +60,15 @@ function clearNotifications() {
   notificationStore.clear()
 }
 
-function isEmbeddableFileName(name: string): boolean {
-  return /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico|mp4|webm|mov|m4v|ogv)$/i.test(name)
-}
-
 function absolutePublicUrl(value: string): string {
   return new URL(value, publicSiteOrigin()).toString()
 }
 
-function currentShareUrl(share: ShareLinkItem): string {
-  if (share.showingEmbed && share.embedUrl) return share.embedUrl
-  return share.previewUrl
-}
-
-function toggleShareLinkMode(shareId: number) {
-  shareLinks.value = shareLinks.value.map((item) => {
-    if (item.id !== shareId || !item.embedUrl) return item
-    return { ...item, showingEmbed: !item.showingEmbed }
-  })
-}
-
-function pushShareLink(name: string, previewUrl: string, fileName: string) {
-  const isEncrypted = fileName.toLowerCase().endsWith('.rpenc')
-  const embedUrl = !isEncrypted && isEmbeddableFileName(fileName)
-    ? absolutePublicUrl(publicFileUrl(fileName))
-    : null
+function pushShareLink(name: string, previewUrl: string, _fileName: string) {
   const entry: ShareLinkItem = {
     id: ++shareLinkId,
     name,
     previewUrl: absolutePublicUrl(previewUrl),
-    embedUrl,
-    showingEmbed: false,
   }
   shareLinks.value = [
     entry,
@@ -362,20 +338,10 @@ function onPasteAreaLongPressCancel() {
       <div v-for="share in shareLinks" :key="share.id" class="share-row" data-testid="share-row">
         <div class="share-link-block">
           <span class="share-file">{{ share.name }}</span>
-          <span v-if="share.embedUrl" class="share-mode" data-testid="share-link-mode">{{ share.showingEmbed ? 'Raw media URL' : 'Preview URL' }}</span>
-          <a :href="currentShareUrl(share)" target="_blank" rel="noopener">{{ currentShareUrl(share) }}</a>
+          <a :href="share.previewUrl" target="_blank" rel="noopener">{{ share.previewUrl }}</a>
         </div>
         <div class="share-actions">
-          <button
-            v-if="share.embedUrl"
-            class="btn-ghost"
-            type="button"
-            data-testid="share-link-mode-toggle"
-            @click="toggleShareLinkMode(share.id)"
-          >
-            {{ share.showingEmbed ? 'Show preview URL' : 'Show raw media URL' }}
-          </button>
-          <button class="btn-ghost" type="button" @click="copyShareUrl(currentShareUrl(share)).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
+          <button class="btn-ghost" type="button" @click="copyShareUrl(share.previewUrl).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
             Copy
           </button>
         </div>

@@ -15,7 +15,6 @@ const emit = defineEmits<{ close: []; download: [file: PasteFile] }>()
 const notificationStore = useNotificationStore()
 
 const url = computed(() => props.sourceUrl ?? publicFileUrl(props.file.file_name))
-const embedUrl = computed(() => new URL(publicFileUrl(props.file.file_name), window.location.origin).toString())
 const storedEncrypted = computed(() => getStoredEncryptedFile(props.file.file_name))
 function isRpencFileName(value: string): boolean {
   return /\.rpenc(?:$|[?#])/i.test(value.trim())
@@ -122,15 +121,7 @@ async function copyToClipboard(value: string, label: string) {
         <div class="footer-actions">
           <a v-if="!isFallbackPreview" :href="url" target="_blank" rel="noopener" class="link">Open in tab</a>
           <button class="btn-ghost" style="padding:4px 10px;font-size:12px" @click="copyToClipboard(copyUrl, 'URL')">
-            Copy URL
-          </button>
-          <button
-            v-if="!isEncrypted"
-            class="btn-ghost"
-            style="padding:4px 10px;font-size:12px"
-            @click="copyToClipboard(embedUrl, 'raw media URL')"
-          >
-            Copy raw media URL
+            Copy
           </button>
         </div>
       </div>

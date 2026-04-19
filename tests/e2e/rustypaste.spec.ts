@@ -270,7 +270,7 @@ test('upload accepts server short-path responses without surfacing an error', as
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/[A-Za-z0-9_-]+\/preview/)
 })
 
-test('latest share link toggles between preview and raw media URL for uploaded images', async ({ page }) => {
+test('latest share link shows preview URL and copy button for uploaded images', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
   const uploadedName = 'toggle-image.png'
@@ -294,20 +294,14 @@ test('latest share link toggles between preview and raw media URL for uploaded i
   })
 
   const shareRow = page.getByTestId('share-row').first()
-  await expect(shareRow).toContainText('/file/')
-  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Preview URL')
-  await expect(page.locator('.share-result img, .share-result video')).toHaveCount(0)
-
-  await shareRow.getByTestId('share-link-mode-toggle').click()
-  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Raw media URL')
-  await expect(shareRow.locator('a')).toContainText('/toggle-image/file.png')
-
-  await shareRow.getByTestId('share-link-mode-toggle').click()
-  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Preview URL')
   await expect(shareRow.locator('a')).toContainText('/file/')
+  await expect(shareRow.getByTestId('share-link-mode-toggle')).toHaveCount(0)
+  await expect(page.locator('.share-result img, .share-result video')).toHaveCount(0)
+  await shareRow.getByRole('button', { name: 'Copy' }).click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/file/')
 })
 
-test('latest share link toggles between preview and raw media URL for uploaded videos', async ({ page }) => {
+test('latest share link shows preview URL and copy button for uploaded videos', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
   const uploadedName = 'toggle-video.mp4'
@@ -328,10 +322,8 @@ test('latest share link toggles between preview and raw media URL for uploaded v
   })
 
   const shareRow = page.getByTestId('share-row').first()
-  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Preview URL')
-  await shareRow.getByTestId('share-link-mode-toggle').click()
-  await expect(shareRow.getByTestId('share-link-mode')).toHaveText('Raw media URL')
-  await expect(shareRow.locator('a')).toContainText('/toggle-video/file.mp4')
+  await expect(shareRow.locator('a')).toContainText('/file/')
+  await expect(shareRow.getByTestId('share-link-mode-toggle')).toHaveCount(0)
 })
 
 test('upload shows a clear error when API returns JSON instead of a file URL', async ({ page }) => {
@@ -1300,8 +1292,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
   const modal = page.locator('.modal')
   await expect(modal).toBeVisible()
   await expect(modal.getByText('Size: 345 B', { exact: true })).toBeVisible()
-  await expect(modal.getByRole('button', { name: 'Copy raw media URL' })).toHaveCount(0)
-  await modal.getByRole('button', { name: 'Copy URL' }).click()
+  await modal.getByRole('button', { name: 'Copy' }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`+${decryptKey}/preview`)
 })
 
@@ -1329,7 +1320,6 @@ test('history marks rpenc files as encrypted and explains locked preview', async
   await expect(modal).toBeVisible()
   await expect(modal.getByText('No inline preview available')).toBeVisible()
   await expect(modal.getByText('This is an encrypted file. Add the decryption key/password to preview it.')).toBeVisible()
-  await expect(modal.getByRole('button', { name: 'Copy raw media URL' })).toHaveCount(0)
 })
 
 test('history decrypts rpenc previews when legacy key entries omit origin', async ({ page }) => {
@@ -1791,7 +1781,7 @@ test('history falls back to ShareX badge for randomized screenshot names', async
   await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
 })
 
-test('history preview modal provides copy URL and copy raw media URL actions', async ({ page }) => {
+test('history preview modal provides copy action that copies preview URL', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
 
@@ -1825,17 +1815,12 @@ test('history preview modal provides copy URL and copy raw media URL actions', a
   await expect(modal).toBeVisible()
   await expect(modal.getByText('Size: 68 B')).toBeVisible()
 
-  await modal.getByRole('button', { name: 'Copy URL' }).click()
+  await modal.getByRole('button', { name: 'Copy' }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(
     /\/file\/[A-Za-z0-9_-]+\/preview$/,
   )
   await expect(page.getByTestId('notification-row').filter({ hasText: 'Copied URL' })).toHaveCount(1)
-
-  await modal.getByRole('button', { name: 'Copy raw media URL' }).click()
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(
-    /\/history-modal\/file\.png$/,
-  )
-  await expect(page.getByTestId('notification-row').filter({ hasText: 'Copied raw media URL' })).toHaveCount(1)
+  await expect(modal.getByRole('button', { name: 'Copy raw media URL' })).toHaveCount(0)
 })
 
 test('history non-image preview shows size and download button', async ({ page }) => {
