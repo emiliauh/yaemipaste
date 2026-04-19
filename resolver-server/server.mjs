@@ -68,8 +68,58 @@ function fileIdFromName(fileName) {
   return dot === -1 ? fileName : fileName.slice(0, dot)
 }
 
+const GENERATED_SUFFIX_EXTENSIONS = new Set([
+  'mp4',
+  'webm',
+  'mov',
+  'avi',
+  'mkv',
+  'm4v',
+  'mp3',
+  'wav',
+  'ogg',
+  'flac',
+  'm4a',
+  'aac',
+  'opus',
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'avif',
+  'bmp',
+  'svg',
+  'txt',
+  'md',
+  'json',
+  'csv',
+  'log',
+  'xml',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+  'js',
+  'ts',
+  'css',
+  'html',
+  'pdf',
+])
+
+function stripGeneratedSuffix(fileName) {
+  const parts = fileName.split('.')
+  if (parts.length < 3) return fileName
+  const trailing = parts[parts.length - 1]
+  const extension = parts[parts.length - 2].toLowerCase()
+  if (!/^\d{6,}$/.test(trailing)) return fileName
+  if (!GENERATED_SUFFIX_EXTENSIONS.has(extension)) return fileName
+  return parts.slice(0, -1).join('.')
+}
+
 function publicPathFromFileName(fileName) {
-  const [id = '', ...rest] = fileName.split('.')
+  const cleanedName = stripGeneratedSuffix(fileName)
+  const [id = '', ...rest] = cleanedName.split('.')
   const suffix = rest.join('.')
   return suffix ? `/${encodeURIComponent(id)}/file.${encodeURIComponent(suffix)}` : `/${encodeURIComponent(id)}/file`
 }
