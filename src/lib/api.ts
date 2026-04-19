@@ -301,9 +301,12 @@ export async function authMe() {
 function tokenOwnerUrl(origin = publicSiteOrigin()): string {
   const base = TOKEN_OWNER_PATH.trim()
   if (!base) throw new Error('Token owner lookup is disabled for this deployment')
-  if (/^https?:\/\//i.test(base)) return base
+  const cacheBuster = `cb=${Date.now().toString(36)}`
+  if (/^https?:\/\//i.test(base)) {
+    return `${base}${base.includes('?') ? '&' : '?'}${cacheBuster}`
+  }
   const normalizedPath = base.startsWith('/') ? base : `/${base}`
-  return `${publicSiteOrigin(origin)}${normalizedPath}`
+  return `${publicSiteOrigin(origin)}${normalizedPath}?${cacheBuster}`
 }
 
 export async function hydrateSessionIdentity(): Promise<string> {
