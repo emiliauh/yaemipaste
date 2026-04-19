@@ -891,6 +891,36 @@ test('sharex config sanitizes unsupported uploader syntax placeholders', async (
   expect(parsed.Headers['X-Upload-Client']).toBe('ShareX')
 })
 
+test('sharex config trims trailing newlines from upload response filenames', async ({ page }) => {
+  await signInWithAccount(page)
+  await page.goto('/#/files')
+  const sharexEnabled = await page.evaluate(async () => {
+    const mod = await import('/src/lib/api.ts')
+    return mod.isShareXEnabled()
+  })
+  test.skip(!sharexEnabled, 'ShareX integration disabled in this build')
+  await page.route('**/auth/sharex', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        RequestMethod: 'POST',
+        URL: 'https://api.example.invalid/',
+        Headers: { Authorization: '$jwt$' },
+      }),
+    })
+  })
+
+  const generated = await page.evaluate(async () => {
+    const mod = await import('/src/lib/api.ts')
+    const blob = await mod.getShareXConfig()
+    return await blob.text()
+  })
+  const parsed = JSON.parse(generated) as Record<string, any>
+  expect(parsed.URL).toBe('http://127.0.0.1:4173/file/{regex:^\\s*.+/([^/\\r\\n\\s]+)\\s*$|1}/preview')
+  expect(parsed.URL).not.toContain('[^/]+')
+})
+
 test('executable preview does not auto-fetch raw content and shows no-preview state', async ({ page }) => {
   let rawRequested = false
   await page.route('**/api/meta/setup.exe', async (route) => {

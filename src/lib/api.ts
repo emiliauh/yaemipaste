@@ -406,9 +406,9 @@ export async function getShareXConfig(): Promise<Blob> {
   parsed.Headers = headers
 
   // Override URL to return the frontend preview link instead of the raw API URL.
-  // ShareX regex extracts the filename from the Rustypaste response URL, then
-  // builds example.invalid/file/{name}/preview which Discord/bots can embed.
-  parsed.URL = `${publicSiteOrigin()}/file/{regex:^.+/([^/]+)$|1}/preview`
+  // ShareX regex extracts the filename from the Rustypaste response URL, trims any
+  // trailing line breaks, then builds example.invalid/file/{name}/preview.
+  parsed.URL = `${publicSiteOrigin()}/file/{regex:^\\s*.+/([^/\\r\\n\\s]+)\\s*$|1}/preview`
 
   const uploaderLabel = uploaderIdentity() === 'Unknown (token user)' ? 'ShareX' : `${uploaderIdentity()} (ShareX)`
   const replaceUploaderSyntax = (value: string): string => value
