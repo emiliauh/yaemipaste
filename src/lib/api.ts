@@ -589,27 +589,19 @@ export async function getShareXConfig(): Promise<Blob> {
     return value
   }
 
-  const args = parsed.Arguments && typeof parsed.Arguments === 'object' && !Array.isArray(parsed.Arguments)
+  const rawArgs = parsed.Arguments && typeof parsed.Arguments === 'object' && !Array.isArray(parsed.Arguments)
     ? { ...(parsed.Arguments as Record<string, unknown>) }
     : {}
-  let metaPayload: Record<string, unknown> = {}
-  if (typeof args.meta === 'string') {
-    try {
-      const decoded = JSON.parse(args.meta) as unknown
-      if (decoded && typeof decoded === 'object' && !Array.isArray(decoded)) {
-        metaPayload = decoded as Record<string, unknown>
-      }
-    } catch {}
-  }
-  metaPayload = sanitizeUploaderSyntax(metaPayload) as Record<string, unknown>
-  metaPayload.uploader = uploaderLabel
-  metaPayload.source = 'ShareX'
-  args.meta = JSON.stringify(metaPayload)
-  delete args.uploader
-  for (const [key, value] of Object.entries(args)) {
-    if (key.toLowerCase() === 'uploader') continue
+  const args: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(rawArgs)) {
+    const normalizedKey = key.toLowerCase()
+    if (normalizedKey === 'uploader' || normalizedKey === 'meta' || normalizedKey === 'source') continue
     args[key] = sanitizeUploaderSyntax(value)
   }
+  // ShareX parses argument values through its own placeholder engine before upload.
+  // Keep uploader/source as flat multipart fields instead of embedding JSON in `meta`.
+  args.uploader = uploaderLabel
+  args.source = 'ShareX'
   parsed.Arguments = args
 
   return new Blob([JSON.stringify(parsed, null, 2)], { type: 'application/json' })

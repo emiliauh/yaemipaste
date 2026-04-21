@@ -8,7 +8,7 @@ use crate::util::{self, safe_path_join, token_to_dir_name};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use actix_files::NamedFile;
-use actix_multipart::Multipart;
+use actix_multipart::{Field, Multipart};
 use actix_web::http::header::{
     ContentDisposition as ActixContentDisposition, DispositionParam, DispositionType,
     AUTHORIZATION, ACCEPT,
@@ -113,19 +113,22 @@ struct UploadMetaField {
     keep_file_name: bool,
     original_name: String,
     uploader: String,
+    source: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 struct StoredUploadMeta {
     display_name: Option<String>,
     uploader: Option<String>,
+    source: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PublicFileMeta {
     file_name: String,
     display_name: String,
     uploader: String,
+    source: Option<String>,
     upload_date_utc: Option<String>,
     download_name: String,
     file_size: u64,
@@ -313,6 +316,14 @@ fn metadata_file_path(upload_path: &Path, file_name: &str) -> PathBuf {
         .join(format!("{safe_name}.json"))
 }
 
+async fn read_multipart_field_bytes(field: &mut Field) -> Result<Vec<u8>, Error> {
+    let mut bytes = Vec::<u8>::new();
+    while let Some(chunk) = field.next().await {
+        bytes.append(&mut chunk?.to_vec());
+    }
+    Ok(bytes)
+}
+
 fn persist_upload_metadata(
     upload_path: &Path,
     file_name: &str,
@@ -333,6 +344,11 @@ fn persist_upload_metadata(
             None
         } else {
             Some(meta.uploader.trim().to_string())
+        },
+        source: if meta.source.trim().is_empty() {
+            None
+        } else {
+            Some(meta.source.trim().to_string())
         },
     };
     fs::write(
@@ -534,6 +550,7 @@ async fn public_meta(
             .as_ref()
             .and_then(|v| v.uploader.clone())
             .unwrap_or_else(|| "Unknown (token user)".to_string()),
+        source: meta.as_ref().and_then(|v| v.source.clone()),
         upload_date_utc,
         download_name: meta
             .and_then(|v| v.display_name)
@@ -709,16 +726,47 @@ async fn upload(
                 .clone(),
         );
         if content.has_form_field("meta") {
-            let mut bytes = Vec::<u8>::new();
-            while let Some(chunk) = field.next().await {
-                bytes.append(&mut chunk?.to_vec());
-            }
+            let bytes = read_multipart_field_bytes(&mut field).await?;
             if !bytes.is_empty() {
                 match serde_json::from_slice::<UploadMetaField>(&bytes) {
                     Ok(value) => upload_meta = value,
                     Err(e) => warn!("{} sent invalid upload metadata: {}", host, e),
                 }
             }
+            continue;
+        }
+        if content.has_form_field("uploader") {
+            let value = String::from_utf8_lossy(&read_multipart_field_bytes(&mut field).await?)
+                .trim()
+                .to_string();
+            if !value.is_empty() {
+                upload_meta.uploader = value;
+            }
+            continue;
+        }
+        if content.has_form_field("source") {
+            let value = String::from_utf8_lossy(&read_multipart_field_bytes(&mut field).await?)
+                .trim()
+                .to_string();
+            if !value.is_empty() {
+                upload_meta.source = value;
+            }
+            continue;
+        }
+        if content.has_form_field("originalName") || content.has_form_field("original_name") {
+            let value = String::from_utf8_lossy(&read_multipart_field_bytes(&mut field).await?)
+                .trim()
+                .to_string();
+            if !value.is_empty() {
+                upload_meta.original_name = value;
+            }
+            continue;
+        }
+        if content.has_form_field("keepFileName") || content.has_form_field("keep_file_name") {
+            let value = String::from_utf8_lossy(&read_multipart_field_bytes(&mut field).await?)
+                .trim()
+                .to_ascii_lowercase();
+            upload_meta.keep_file_name = matches!(value.as_str(), "1" | "true" | "yes" | "on");
             continue;
         }
         if let Ok(paste_type) = PasteType::try_from(&content) {
@@ -997,6 +1045,45 @@ mod tests {
             .insert_header((
                 header::CONTENT_LENGTH,
                 header::HeaderValue::from_str(&data.len().to_string())
+                    .expect("cannot create header value"),
+            ))
+            .set_payload(multipart_data)
+    }
+
+    fn get_multipart_request_with_fields(
+        data: &str,
+        name: &str,
+        filename: &str,
+        fields: &[(&str, &str)],
+    ) -> TestRequest {
+        let mut multipart_data = String::from("\r\n");
+        for (field_name, field_value) in fields {
+            multipart_data.push_str(&format!(
+                "--multipart_bound\r\n\
+                 Content-Disposition: form-data; name=\"{}\"\r\n\r\n\
+                 {}\r\n",
+                field_name, field_value
+            ));
+        }
+        multipart_data.push_str(&format!(
+            "--multipart_bound\r\n\
+             Content-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\n\
+             Content-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\n\r\n\
+             {}\r\n\
+             --multipart_bound--\r\n",
+            name,
+            filename,
+            data.len(),
+            data,
+        ));
+        TestRequest::post()
+            .insert_header((
+                header::CONTENT_TYPE,
+                header::HeaderValue::from_static("multipart/mixed; boundary=\"multipart_bound\""),
+            ))
+            .insert_header((
+                header::CONTENT_LENGTH,
+                header::HeaderValue::from_str(&multipart_data.len().to_string())
                     .expect("cannot create header value"),
             ))
             .set_payload(multipart_data)
@@ -1603,7 +1690,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/{file_name}\n"),
+            &format!("http://localhost:8080{}\n", public_path_from_file_name(&file_name)),
         )
         .await?;
 
@@ -1620,6 +1707,59 @@ mod tests {
             .to_request();
         let response = test::call_service(&app, serve_request).await;
         assert_eq!(StatusCode::NOT_FOUND, response.status());
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_upload_file_accepts_flat_sharex_metadata_fields() -> Result<(), Error> {
+        let mut config = Config::default();
+        config.server.upload_path = env::current_dir()?;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(config.clone())))
+                .app_data(Data::new(Client::default()))
+                .configure(configure_routes),
+        )
+        .await;
+
+        let timestamp = util::get_system_time()?.as_secs().to_string();
+        let file_name = format!("sharex-flat-{timestamp}.txt");
+        let response = test::call_service(
+            &app,
+            get_multipart_request_with_fields(
+                &timestamp,
+                "file",
+                &file_name,
+                &[("uploader", "test-user (ShareX)"), ("source", "ShareX")],
+            )
+            .to_request(),
+        )
+        .await;
+        assert_eq!(StatusCode::OK, response.status());
+        assert_body(
+            response.into_body(),
+            &format!("http://localhost:8080{}\n", public_path_from_file_name(&file_name)),
+        )
+        .await?;
+
+        let meta_request = TestRequest::get()
+            .uri(&format!("/meta/{file_name}"))
+            .to_request();
+        let meta: PublicFileMeta = test::call_and_read_body_json(&app, meta_request).await;
+        assert_eq!(meta.uploader, "test-user (ShareX)");
+        assert_eq!(meta.source.as_deref(), Some("ShareX"));
+
+        let metadata_path = metadata_file_path(&config.server.upload_path, &file_name);
+        if metadata_path.exists() {
+            fs::remove_file(metadata_path)?;
+        }
+        if let Ok(path) = fs::canonicalize(&file_name) {
+            let _ = fs::remove_file(path);
+        } else if PathBuf::from(&file_name).exists() {
+            fs::remove_file(&file_name)?;
+        }
 
         Ok(())
     }

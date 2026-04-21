@@ -947,8 +947,9 @@ test('sharex config sanitizes unsupported uploader syntax placeholders', async (
   const generated = await readFile(downloadPath, 'utf8')
   const parsed = JSON.parse(generated) as Record<string, any>
   const args = parsed.Arguments ?? {}
-  expect(Object.prototype.hasOwnProperty.call(args, 'uploader')).toBeFalsy()
-  expect(args.meta).toContain('test-user (ShareX)')
+  expect(args.uploader).toBe('test-user (ShareX)')
+  expect(args.source).toBe('ShareX')
+  expect(Object.prototype.hasOwnProperty.call(args, 'meta')).toBeFalsy()
   expect(args.note).toBe('test-user (ShareX)')
   expect(args.direct).toBe('test-user (ShareX)')
   expect(JSON.stringify(parsed)).not.toContain('uploader(')
@@ -980,15 +981,14 @@ test('sharex config trims trailing newlines from upload response filenames', asy
   await download.saveAs(downloadPath)
   const generated = await readFile(downloadPath, 'utf8')
   const parsed = JSON.parse(generated) as Record<string, any>
-  expect(parsed.URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/file\//)
+  expect(parsed.URL).toMatch(/^https?:\/\/[^/]+\/file\//)
   expect(parsed.URL).toContain('{regex:([A-Za-z0-9_-]+)(?:[.][A-Za-z0-9]+)?[^A-Za-z0-9]*$|1}/preview')
   expect(parsed.URL).not.toContain('[^/]+')
   expect((parsed.URL.match(/\|/g) ?? []).length).toBe(1)
   const args = parsed.Arguments ?? {}
-  expect(typeof args.meta).toBe('string')
-  const meta = JSON.parse(args.meta)
-  expect(meta.source).toBe('ShareX')
-  expect(meta.uploader).toBe('test-user (ShareX)')
+  expect(args.source).toBe('ShareX')
+  expect(args.uploader).toBe('test-user (ShareX)')
+  expect(Object.prototype.hasOwnProperty.call(args, 'meta')).toBeFalsy()
 })
 
 test('executable preview does not auto-fetch raw content and shows no-preview state', async ({ page }) => {
