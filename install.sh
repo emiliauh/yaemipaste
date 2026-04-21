@@ -20,16 +20,19 @@ COMPOSE_CMD=()
 HTTP_STATUS=""
 HTTP_BODY=""
 UI_COLOR=0
+UI_MOTION=0
 UI_RESET=""
 UI_DIM=""
 UI_ACCENT=""
 UI_GOOD=""
 UI_WARN=""
 UI_BAD=""
+UI_RULE_WIDTH=58
 
 setup_ui() {
   if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
     UI_COLOR=1
+    UI_MOTION=1
     UI_RESET=$'\033[0m'
     UI_DIM=$'\033[2m'
     UI_ACCENT=$'\033[1;38;5;213m'
@@ -49,17 +52,55 @@ style() {
   fi
 }
 
+repeat_char() {
+  local char="$1"
+  local count="$2"
+  local out=""
+  while (( ${#out} < count )); do
+    out+="$char"
+  done
+  printf '%s' "${out:0:count}"
+}
+
+rule() {
+  printf '%s' "$(repeat_char "-" "$UI_RULE_WIDTH")"
+}
+
+box_row() {
+  local text="$1"
+  local width="$UI_RULE_WIDTH"
+  local padded
+  printf -v padded '%-*.*s' "$width" "$width" "$text"
+  printf '| %s |\n' "$padded"
+}
+
+ui_pause() {
+  [[ "$UI_MOTION" -eq 1 && "$YES" -eq 0 ]] || return 0
+  sleep "${1:-0.05}"
+}
+
+print_box_line() {
+  local text="$1"
+  printf '%s\n' "$text"
+  ui_pause 0.03
+}
+
 print_banner() {
-  cat <<EOF
-
-$(style "$UI_ACCENT" "yaemipaste")
-$(style "$UI_DIM" "installer + runtime manager")
-
-EOF
+  local top bottom
+  top="$(style "$UI_DIM" "+$(repeat_char "=" "$((UI_RULE_WIDTH + 2))")+")"
+  bottom="$(style "$UI_DIM" "+$(repeat_char "=" "$((UI_RULE_WIDTH + 2))")+")"
+  printf '\n'
+  print_box_line "$top"
+  print_box_line "$(style "$UI_ACCENT" "$(box_row "yaemipaste")")"
+  print_box_line "$(style "$UI_DIM" "$(box_row "install script + runtime manager")")"
+  print_box_line "$(style "$UI_DIM" "$(box_row "working, but still evolving")")"
+  print_box_line "$bottom"
+  printf '\n'
 }
 
 section() {
-  printf '\n%s\n' "$(style "$UI_ACCENT" "== $* ==")"
+  printf '\n%s\n' "$(style "$UI_DIM" "$(rule)")"
+  printf '%s\n' "$(style "$UI_ACCENT" "$*")"
 }
 
 step() {
@@ -782,22 +823,24 @@ stack_uninstall() {
 }
 
 print_menu() {
+  local frame
+  frame="$(style "$UI_DIM" "+$(repeat_char "-" "$((UI_RULE_WIDTH + 2))")+")"
+  printf '\n%s\n' "$frame"
+  printf '%s\n' "$(style "$UI_ACCENT" "$(box_row "Control Center")")"
+  printf '%s\n' "$(style "$UI_DIM" "$(box_row "Install dir: ${INSTALL_DIR}")")"
+  printf '%s\n' "$(style "$UI_DIM" "$(box_row "Source: ${REPO_URL} (${BRANCH})")")"
+  printf '%s\n' "$frame"
   cat <<EOF
-
-Yaemipaste control center
-Install directory: ${INSTALL_DIR}
-Repository: ${REPO_URL} (${BRANCH})
-
-1) Install / Update full stack
-2) Create initial user
-3) Create auth token
-4) Revoke token
-5) Start services
-6) Stop services
-7) Restart services
-8) Service status
-9) Uninstall / cleanup
-0) Exit
+  1. Install / Update full stack
+  2. Create initial user
+  3. Create auth token
+  4. Revoke token
+  5. Start services
+  6. Stop services
+  7. Restart services
+  8. Service status
+  9. Uninstall / cleanup
+  0. Exit
 EOF
 }
 
