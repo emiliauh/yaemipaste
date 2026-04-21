@@ -1,6 +1,8 @@
 # yaemipaste
 
-yaemipaste is a self-hosted paste and file sharing app.
+yaemipaste is working, but it may not be 100% finished yet.
+
+It is a self-hosted paste and file sharing app.
 
 It includes:
 - a Vue + Vite frontend
@@ -61,7 +63,7 @@ The most important values are:
 | `PASSKEYS_ENABLED` | Enables passkey routes in the backend |
 
 Full environment reference:
-[docs/ENVIRONMENT.md](/path/to/repo/docs/ENVIRONMENT.md)
+`docs/ENVIRONMENT.md`
 
 Do not commit your real `.env` file or any live secrets.
 
