@@ -226,7 +226,7 @@ async function submitPasswordChange() {
     <div v-if="hasAccount" class="field">
       <label>ShareX Config</label>
       <p class="field-hint">
-        {{ sharexEnabled ? 'Download pre-configured .sxcu for your account.' : 'Enable VITE_ENABLE_SHAREX=1 at build time to offer account configs.' }}
+        {{ sharexEnabled ? 'Download pre-configured .sxcu for your account.' : 'ShareX account configs are unavailable on this deployment.' }}
       </p>
       <button class="btn-primary" style="font-size:11px; width:100%" :disabled="downloading || !sharexEnabled" @click="downloadShareX">
         {{ downloading ? 'Generating…' : 'Download .sxcu' }}
