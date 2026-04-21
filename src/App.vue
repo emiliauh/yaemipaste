@@ -1,7 +1,20 @@
 <script setup lang="ts">
 import NotificationStack from './components/NotificationStack.vue'
 
-const repoUrl = (import.meta.env.VITE_REPOSITORY_URL ?? 'https://github.com/emiliauh/rustypaste-ui').trim()
+function sanitizeRepoUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  try {
+    const parsed = new URL(trimmed)
+    if (!['http:', 'https:'].includes(parsed.protocol)) return ''
+    if (parsed.username || parsed.password) return ''
+    return parsed.toString()
+  } catch {
+    return ''
+  }
+}
+
+const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://github.com/emiliauh/yaemipaste')
 </script>
 
 <template>

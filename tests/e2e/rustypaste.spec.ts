@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { encryptFileWithPassword } from '../../src/lib/e2ee'
 
+const APP_ORIGIN = (process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173').replace(/\/$/, '')
 const PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\/preview$/
 const ENCRYPTED_PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\+(?:pw:)?[A-Za-z0-9_-]+\/preview$/
 const PUBLIC_ORIGIN = 'https://paste.example.test'
@@ -26,6 +28,11 @@ async function signInWithAccount(page: Page) {
     localStorage.setItem('rp_username', 'test-user')
     localStorage.setItem('rp_jwt', 'test-jwt')
   })
+}
+
+async function openSettings(page: Page) {
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.locator('.settings-panel')).toBeVisible()
 }
 
 async function mockClipboard(page: Page, readValue = '') {
@@ -171,7 +178,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/${encryptedName}`,
+      body: `${APP_ORIGIN}/${encryptedName}`,
     })
   })
 
@@ -239,7 +246,7 @@ test('upload shows progress and leaves a share link', async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/progress-check.bin',
+      body: `${APP_ORIGIN}/progress-check.bin`,
     })
   })
 
@@ -265,7 +272,7 @@ test('upload accepts server short-path responses without surfacing an error', as
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/server-id/file.txt',
+      body: `${APP_ORIGIN}/server-id/file.txt`,
     })
   })
 
@@ -292,7 +299,7 @@ test('latest share link shows preview URL and copy button for uploaded images', 
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/file/${token}/preview`,
+      body: `${APP_ORIGIN}/file/${token}/preview`,
     })
   })
 
@@ -323,7 +330,7 @@ test('latest share link shows preview URL and copy button for uploaded videos', 
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/file/${token}/preview`,
+      body: `${APP_ORIGIN}/file/${token}/preview`,
     })
   })
 
@@ -370,7 +377,7 @@ test('upload success stays successful when clipboard copy is blocked', async ({ 
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/copy-blocked.txt',
+      body: `${APP_ORIGIN}/copy-blocked.txt`,
     })
   })
 
@@ -397,7 +404,7 @@ test('mobile upload feedback stays inside the viewport and away from bottom cont
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/mobile-feedback-check.txt',
+      body: `${APP_ORIGIN}/mobile-feedback-check.txt`,
     })
   })
 
@@ -535,7 +542,7 @@ test('multi-file upload keeps encryption state per action and does not overwrite
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/${fileId}.txt.rpenc`,
+      body: `${APP_ORIGIN}/${fileId}.txt.rpenc`,
     })
   })
 
@@ -583,7 +590,7 @@ test('keep file name toggle randomizes encrypted URL while keeping original decr
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/9q2f77m.rpenc',
+      body: `${APP_ORIGIN}/9q2f77m.rpenc`,
     })
   })
 
@@ -631,7 +638,7 @@ test('encrypted decrypt success uses auto-clearing notification on mobile', asyn
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/mobile-decrypt.txt.rpenc',
+      body: `${APP_ORIGIN}/mobile-decrypt.txt.rpenc`,
     })
   })
 
@@ -771,7 +778,7 @@ test('token-auth upload hydrates owner name before sending metadata', async ({ p
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/resolved-owner-check.txt',
+      body: `${APP_ORIGIN}/resolved-owner-check.txt`,
     })
   })
 
@@ -799,7 +806,7 @@ test('upload preview download and delete work as one public-file flow', async ({
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ url: 'http://127.0.0.1:5173/flow-e2e/file.txt' }),
+      body: JSON.stringify({ url: `${APP_ORIGIN}/flow-e2e/file.txt` }),
     })
   })
   await page.route(`**/api/meta/${fileName}`, async (route) => {
@@ -885,10 +892,10 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
       contentType: 'application/json',
       body: JSON.stringify({
         file_name: 'sharex-config.sxcu',
-        display_name: 'rustypaste-ui.sxcu',
+        display_name: 'yaemipaste.sxcu',
         uploader: 'test-user',
         upload_date_utc: '2026-04-17T01:00:00Z',
-        download_name: 'rustypaste-ui.sxcu',
+        download_name: 'yaemipaste.sxcu',
         file_size: 1200,
         mime_type: 'application/json',
       }),
@@ -911,11 +918,9 @@ test('preview open action prefers app-open download for sxcu files', async ({ pa
 test('sharex config sanitizes unsupported uploader syntax placeholders', async ({ page }) => {
   await signInWithAccount(page)
   await page.goto('/#/files')
-  const sharexEnabled = await page.evaluate(async () => {
-    const mod = await import('/src/lib/api.ts')
-    return mod.isShareXEnabled()
-  })
-  test.skip(!sharexEnabled, 'ShareX integration disabled in this build')
+  await openSettings(page)
+  const sharexButton = page.getByRole('button', { name: 'Download .sxcu' })
+  test.skip(await sharexButton.count() === 0 || await sharexButton.isDisabled(), 'ShareX integration disabled in this build')
   await page.route('**/auth/sharex', async (route) => {
     await route.fulfill({
       status: 200,
@@ -934,11 +939,12 @@ test('sharex config sanitizes unsupported uploader syntax placeholders', async (
     })
   })
 
-  const generated = await page.evaluate(async () => {
-    const mod = await import('/src/lib/api.ts')
-    const blob = await mod.getShareXConfig()
-    return await blob.text()
-  })
+  const downloadPromise = page.waitForEvent('download')
+  await sharexButton.click()
+  const download = await downloadPromise
+  const downloadPath = test.info().outputPath('sharex-config.sxcu')
+  await download.saveAs(downloadPath)
+  const generated = await readFile(downloadPath, 'utf8')
   const parsed = JSON.parse(generated) as Record<string, any>
   const args = parsed.Arguments ?? {}
   expect(Object.prototype.hasOwnProperty.call(args, 'uploader')).toBeFalsy()
@@ -952,11 +958,9 @@ test('sharex config sanitizes unsupported uploader syntax placeholders', async (
 test('sharex config trims trailing newlines from upload response filenames', async ({ page }) => {
   await signInWithAccount(page)
   await page.goto('/#/files')
-  const sharexEnabled = await page.evaluate(async () => {
-    const mod = await import('/src/lib/api.ts')
-    return mod.isShareXEnabled()
-  })
-  test.skip(!sharexEnabled, 'ShareX integration disabled in this build')
+  await openSettings(page)
+  const sharexButton = page.getByRole('button', { name: 'Download .sxcu' })
+  test.skip(await sharexButton.count() === 0 || await sharexButton.isDisabled(), 'ShareX integration disabled in this build')
   await page.route('**/auth/sharex', async (route) => {
     await route.fulfill({
       status: 200,
@@ -969,11 +973,12 @@ test('sharex config trims trailing newlines from upload response filenames', asy
     })
   })
 
-  const generated = await page.evaluate(async () => {
-    const mod = await import('/src/lib/api.ts')
-    const blob = await mod.getShareXConfig()
-    return await blob.text()
-  })
+  const downloadPromise = page.waitForEvent('download')
+  await sharexButton.click()
+  const download = await downloadPromise
+  const downloadPath = test.info().outputPath('sharex-config-trimmed.sxcu')
+  await download.saveAs(downloadPath)
+  const generated = await readFile(downloadPath, 'utf8')
   const parsed = JSON.parse(generated) as Record<string, any>
   expect(parsed.URL).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/file\//)
   expect(parsed.URL).toContain('{regex:([A-Za-z0-9_-]+)(?:[.][A-Za-z0-9]+)?[^A-Za-z0-9]*$|1}/preview')
@@ -1123,7 +1128,7 @@ test('notifications are row-stacked, capped at five, and clearable', async ({ pa
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/notify-${uploadCount}.txt`,
+      body: `${APP_ORIGIN}/notify-${uploadCount}.txt`,
     })
   })
 
@@ -1436,7 +1441,7 @@ test('history decrypts rpenc previews when legacy key entries omit origin', asyn
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/${encryptedName}`,
+      body: `${APP_ORIGIN}/${encryptedName}`,
     })
   })
   await page.route('**/api/list', async (route) => {
@@ -1511,7 +1516,7 @@ test('history decrypts and previews inline text for encrypted text files', async
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/${encryptedName}`,
+      body: `${APP_ORIGIN}/${encryptedName}`,
     })
   })
   await page.route('**/api/list', async (route) => {
@@ -1560,7 +1565,7 @@ test('encrypted upload keeps history key when server returns /file/<token>/previ
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/file/${token}/preview`,
+      body: `${APP_ORIGIN}/file/${token}/preview`,
     })
   })
   await page.route('**/api/list', async (route) => {
@@ -1599,7 +1604,7 @@ test('encrypted upload keeps history key when server returns /file/<id>/preview 
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: `http://127.0.0.1:5173/file/${fileId}/preview`,
+      body: `${APP_ORIGIN}/file/${fileId}/preview`,
     })
   })
   await page.route('**/api/list', async (route) => {
@@ -1765,14 +1770,14 @@ test('history password change closes modal and keeps success notification after 
       await route.fulfill({
         status: 200,
         contentType: 'text/plain',
-        body: 'http://127.0.0.1:5173/change-target.rpenc',
+        body: `${APP_ORIGIN}/change-target.rpenc`,
       })
       return
     }
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/change-target-rotated.rpenc',
+      body: `${APP_ORIGIN}/change-target-rotated.rpenc`,
     })
   })
   await page.route('**/api/list', async (route) => {
@@ -2514,7 +2519,7 @@ test('history downloads selected files as a zip archive', async ({ page }) => {
   await page.getByRole('button', { name: 'Download Selected' }).click()
   const download = await downloadPromise
 
-  expect(download.suggestedFilename()).toMatch(/^rustypaste-ui-history-\d+\.zip$/)
+  expect(download.suggestedFilename()).toMatch(/^yaemipaste-history-\d+\.zip$/)
   await expect.poll(() => firstRaw && secondRaw).toBeTruthy()
 })
 
@@ -2534,7 +2539,7 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'Settings' }).click()
-  await expect(page.getByText('rustypaste-ui + rustypaste')).toBeVisible()
+  await expect(page.getByText('yaemipaste + rustypaste')).toBeVisible()
   await expect(page.getByTestId('open-passkey-modal')).toBeVisible()
   await expect(page.getByTestId('open-change-password')).toBeVisible()
   await page.getByTestId('open-passkey-modal').click()
@@ -2629,7 +2634,7 @@ test('passkey registration accepts wrapped browser options', async ({ page }) =>
       body: JSON.stringify({
         publicKey: {
           challenge: base64Url([1, 2, 3, 4]),
-          rp: { name: 'rustypaste-ui' },
+          rp: { name: 'yaemipaste' },
           user: { id: base64Url([5, 6, 7]), name: 'test-user', displayName: 'test-user' },
           pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
           exclude_credentials: [{ type: 'public-key', id: base64Url([8, 9]), transports: ['internal'] }],
@@ -2746,7 +2751,7 @@ test('shift click reveals Forever expiry and omits expire header', async ({ page
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
-      body: 'http://127.0.0.1:5173/never-check.txt',
+      body: `${APP_ORIGIN}/never-check.txt`,
     })
   })
 

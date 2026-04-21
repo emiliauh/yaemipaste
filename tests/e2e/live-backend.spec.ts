@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
 const liveBaseUrl = process.env.PLAYWRIGHT_LIVE_BASE_URL?.replace(/\/$/, '') ?? ''
 const liveApiBaseUrl = process.env.PLAYWRIGHT_LIVE_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const liveResolveBaseUrl = process.env.PLAYWRIGHT_LIVE_RESOLVE_BASE_URL?.replace(/\/$/, '') ?? (liveBaseUrl ? `${liveBaseUrl}/api/resolve` : '')
 
 function tokenFromPreviewHref(href: string): string {
   const match = href.match(/\/file\/([^/+]+)(?:\+[^/]+)?\/preview(?:\?.*)?$/)
@@ -45,7 +46,7 @@ test.describe('live backend integration', () => {
     const href = await shareLink.getAttribute('href')
     expect(href ?? '').toMatch(/\/file\/[A-Za-z0-9_-]+\/preview$/)
     const token = tokenFromPreviewHref(href ?? '')
-    const resolveResponse = await request.get(`${liveBaseUrl}/resolve/${encodeURIComponent(token)}`)
+    const resolveResponse = await request.get(`${liveResolveBaseUrl}/${encodeURIComponent(token)}`)
     expect(resolveResponse.ok()).toBeTruthy()
     const resolvePayload = await resolveResponse.json() as { file_name?: string }
     const uploadedName = resolvePayload.file_name ?? ''

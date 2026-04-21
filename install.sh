@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_NAME="rustypaste-ui"
-DEFAULT_REPO_URL="https://github.com/emiliauh/rustypaste-ui.git"
+APP_NAME="yaemipaste"
+DEFAULT_REPO_URL="https://github.com/emiliauh/yaemipaste.git"
 DEFAULT_BRANCH="main"
-DEFAULT_INSTALL_DIR="/opt/rustypaste-ui"
+DEFAULT_INSTALL_DIR="/opt/yaemipaste"
 DEFAULT_UI_PORT="8080"
 COMPOSE_FILE="docker-compose.yml"
 ENV_FILE=".env"
@@ -343,7 +343,7 @@ configure_env() {
   turnstile_secret="$(prompt "Turnstile secret key (leave empty to disable)" "$(env_get TURNSTILE_SECRET_KEY "")")"
   jwt_secret="$(prompt "JWT signing secret (leave empty to auto-generate)" "$(env_get JWT_SECRET "")")"
   passkeys_enabled="$(prompt "Enable passkeys in Rust backend? (1=yes,0=no)" "$(env_get PASSKEYS_ENABLED "0")")"
-  passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "rustypaste-ui")")"
+  passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
   passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
   passkey_origins="$(prompt "Passkey allowed origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
   resolver_enabled="$(prompt "Enable resolver service for public token links/bot embeds? (1=yes,0=no)" "$(env_get RESOLVER_ENABLED "0")")"

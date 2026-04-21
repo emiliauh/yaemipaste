@@ -33,6 +33,13 @@ Route these paths:
 - resolver path, usually `/api/resolve/*`, to the backend resolver route
 - raw file paths such as `/<id>/file` and `/<id>/file.<ext>` to backend file bytes
 
+Recommended security headers for the frontend host:
+- `Content-Security-Policy` that restricts scripts, frames, and object embeds
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy` with unused browser features disabled
+- `Cache-Control: no-store` on the HTML shell when fast rollout of route fixes matters
+
 ## Container Deployment
 
 The bundled `docker-compose.yml` is for local or self-hosted deployments that want:

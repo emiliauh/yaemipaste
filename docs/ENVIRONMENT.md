@@ -35,7 +35,7 @@ docker compose --profile with-resolver up --build -d
 | `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key | empty |
 | `VITE_ENABLE_SHAREX` | Enable ShareX settings UI | `0` |
 | `VITE_ENABLE_AUTH` | Enable login/register/account UI | `1` |
-| `VITE_REPOSITORY_URL` | Footer repository link | `https://github.com/emiliauh/rustypaste-ui` |
+| `VITE_REPOSITORY_URL` | Footer repository link | `https://github.com/emiliauh/yaemipaste` |
 | `VITE_MAX_EXPIRY_DAYS` | Max expiry day option shown in UI | `14` |
 
 ## Backend Variables
@@ -48,7 +48,7 @@ docker compose --profile with-resolver up --build -d
 | `TURNSTILE_SECRET_KEY` | Server-side Turnstile secret | empty |
 | `PASTE_PUBLIC_API` | Absolute API URL written into generated ShareX configs | `http://localhost:8080/api` |
 | `PASSKEYS_ENABLED` | Enable backend passkey routes | `0` |
-| `PASSKEY_RP_NAME` | Passkey display name | `rustypaste-ui` |
+| `PASSKEY_RP_NAME` | Passkey display name | `yaemipaste` |
 | `PASSKEY_RP_ID` | Passkey RP ID override | empty |
 | `PASSKEY_ORIGINS` | Allowed passkey origins CSV | empty |
 

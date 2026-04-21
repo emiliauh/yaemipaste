@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173'
 const disableWebServer = process.env.PLAYWRIGHT_DISABLE_WEBSERVER === '1'
+const webServerCommand = process.env.PLAYWRIGHT_SERVER_COMMAND || 'npm run dev -- --host 127.0.0.1'
+const webServerUrl = process.env.PLAYWRIGHT_SERVER_URL || baseURL
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -14,8 +16,8 @@ export default defineConfig({
   webServer: disableWebServer
     ? undefined
     : {
-        command: 'npm run dev -- --host 127.0.0.1',
-        url: 'http://127.0.0.1:5173',
+        command: webServerCommand,
+        url: webServerUrl,
         reuseExistingServer: !process.env.CI,
       },
   projects: [

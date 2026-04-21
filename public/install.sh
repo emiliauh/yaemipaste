@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Bootstrap installer endpoint for curl|bash usage.
 # This script intentionally downloads the latest full installer from the public repo.
-SCRIPT_URL="https://raw.githubusercontent.com/emiliauh/rustypaste-ui/main/install.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/emiliauh/yaemipaste/main/install.sh"
 TMP_SCRIPT="$(mktemp)"
 
 cleanup() {

@@ -691,7 +691,7 @@ async function downloadSelectedAsZip() {
     const archiveBytes = Uint8Array.from(archive)
     triggerDownload(
       new Blob([archiveBytes], { type: 'application/zip' }),
-      `rustypaste-ui-history-${Date.now()}.zip`,
+      `yaemipaste-history-${Date.now()}.zip`,
     )
     if (failed.length) showToast(`Downloaded ${archiveEntries.length} file(s), ${failed.length} failed`, 'error')
     else showToast(`Downloaded ${archiveEntries.length} file(s)`)
