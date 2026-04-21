@@ -4,8 +4,29 @@ use actix_web::http::header::AUTHORIZATION;
 use actix_web::http::Method;
 use actix_web::middleware::ErrorHandlerResponse;
 use actix_web::{error, web, Error, HttpRequest};
+use rusqlite::Connection;
 use std::collections::HashSet;
+use std::env;
 use std::sync::RwLock;
+
+fn auth_db_path() -> String {
+    env::var("DB_PATH").unwrap_or_else(|_| "/var/lib/rustypaste-auth/users.db".to_string())
+}
+
+fn account_token_exists(token: &str) -> bool {
+    if token.trim().is_empty() {
+        return false;
+    }
+    let Ok(connection) = Connection::open(auth_db_path()) else {
+        return false;
+    };
+    connection
+        .query_row("SELECT 1 FROM users WHERE token=?1 LIMIT 1", [token], |_row| {
+            Ok(true)
+        })
+        .ok()
+        .unwrap_or(false)
+}
 
 /// Extracts the raw auth token from a request's Authorization header.
 ///
@@ -23,6 +44,9 @@ pub fn get_auth_token(request: &HttpRequest, config: &Config) -> Option<String> 
         if configured_tokens.contains(auth_header) {
             return Some(auth_header.to_string());
         }
+    }
+    if account_token_exists(auth_header) {
+        return Some(auth_header.to_string());
     }
     None
 }
@@ -44,13 +68,18 @@ pub(crate) async fn extract_tokens(req: &ServiceRequest) -> Result<HashSet<Token
         .get(AUTHORIZATION)
         .map(|v| v.to_str().unwrap_or_default())
         .map(|v| v.split_whitespace().last().unwrap_or_default());
+    let db_token_valid = auth_header.is_some_and(account_token_exists);
 
     for token_type in [TokenType::Auth, TokenType::Delete] {
         let maybe_tokens = config.get_tokens(token_type);
         if let Some(configured_tokens) = maybe_tokens {
             if configured_tokens.contains(auth_header.unwrap_or_default()) {
                 user_tokens.insert(token_type);
+                continue;
             }
+        }
+        if db_token_valid {
+            user_tokens.insert(token_type);
         } else if token_type == TokenType::Auth {
             // not configured `auth_tokens` means that the user is allowed to access the endpoints
             user_tokens.insert(token_type);

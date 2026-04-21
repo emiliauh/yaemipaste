@@ -19,17 +19,67 @@ DRY_RUN=0
 COMPOSE_CMD=()
 HTTP_STATUS=""
 HTTP_BODY=""
+UI_COLOR=0
+UI_RESET=""
+UI_DIM=""
+UI_ACCENT=""
+UI_GOOD=""
+UI_WARN=""
+UI_BAD=""
+
+setup_ui() {
+  if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
+    UI_COLOR=1
+    UI_RESET=$'\033[0m'
+    UI_DIM=$'\033[2m'
+    UI_ACCENT=$'\033[1;38;5;213m'
+    UI_GOOD=$'\033[1;38;5;114m'
+    UI_WARN=$'\033[1;38;5;221m'
+    UI_BAD=$'\033[1;38;5;203m'
+  fi
+}
+
+style() {
+  local color="$1"
+  shift
+  if [[ "$UI_COLOR" -eq 1 ]]; then
+    printf '%s%s%s' "$color" "$*" "$UI_RESET"
+  else
+    printf '%s' "$*"
+  fi
+}
+
+print_banner() {
+  cat <<EOF
+
+$(style "$UI_ACCENT" "yaemipaste")
+$(style "$UI_DIM" "installer + runtime manager")
+
+EOF
+}
+
+section() {
+  printf '\n%s\n' "$(style "$UI_ACCENT" "== $* ==")"
+}
+
+step() {
+  printf '%s %s\n' "$(style "$UI_DIM" "[..]")" "$*"
+}
+
+success() {
+  printf '%s %s\n' "$(style "$UI_GOOD" "[ok]")" "$*"
+}
 
 log() {
-  printf '[INFO] %s\n' "$*"
+  printf '%s %s\n' "$(style "$UI_DIM" "[info]")" "$*"
 }
 
 warn() {
-  printf '[WARN] %s\n' "$*" >&2
+  printf '%s %s\n' "$(style "$UI_WARN" "[warn]")" "$*" >&2
 }
 
 error() {
-  printf '[ERROR] %s\n' "$*" >&2
+  printf '%s %s\n' "$(style "$UI_BAD" "[error]")" "$*" >&2
 }
 
 die() {
@@ -63,12 +113,82 @@ require_command() {
   command_exists "$cmd" || die "Required command not found: ${cmd}"
 }
 
+apt_install_packages() {
+  local packages=("$@")
+  [[ ${#packages[@]} -gt 0 ]] || return 0
+  run apt-get update
+  run env DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+}
+
+ensure_docker_runtime() {
+  if command_exists docker && docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+  if command_exists docker-compose; then
+    return 0
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    warn "Docker Compose not found; continuing because --dry-run is enabled."
+    return 0
+  fi
+
+  if command_exists apt-get; then
+    log "Docker/Compose not found. Installing runtime prerequisites via apt..."
+    apt_install_packages ca-certificates gnupg docker.io docker-compose-v2
+    if command_exists systemctl; then
+      run systemctl enable --now docker
+    fi
+    return 0
+  fi
+
+  die "Docker Compose not found and automatic installation is unsupported on this OS."
+}
+
+maybe_use_local_checkout_as_repo() {
+  if [[ "$REPO_URL" != "$DEFAULT_REPO_URL" ]]; then
+    return 0
+  fi
+  local script_dir top_level current_branch
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  top_level="$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -z "$top_level" ]] && [[ -f "$script_dir/install.sh" && -f "$script_dir/${COMPOSE_FILE}" ]]; then
+    top_level="$script_dir"
+  fi
+  if [[ -n "$top_level" && -f "$top_level/install.sh" && -f "$top_level/${COMPOSE_FILE}" ]]; then
+    REPO_URL="$top_level"
+    current_branch="$(git -C "$top_level" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ "$BRANCH" == "$DEFAULT_BRANCH" && -n "$current_branch" && "$current_branch" != "HEAD" ]]; then
+      BRANCH="$current_branch"
+    fi
+    log "Using local checkout as install source: ${REPO_URL}"
+  fi
+}
+
 generate_secret() {
   if command_exists openssl; then
     openssl rand -hex 32
     return 0
   fi
   date +%s%N | sha256sum | awk '{print $1}'
+}
+
+detect_host_address() {
+  local value=""
+  if command_exists ip; then
+    value="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i += 1) if ($i == "src") { print $(i + 1); exit }}')"
+  fi
+  if [[ -z "$value" ]] && command_exists hostname; then
+    value="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  if [[ -z "$value" ]]; then
+    value="localhost"
+  fi
+  printf '%s' "$value"
+}
+
+default_public_url() {
+  local port="$1"
+  printf 'http://%s:%s' "$(detect_host_address)" "$port"
 }
 
 prompt() {
@@ -80,11 +200,11 @@ prompt() {
     return 0
   fi
   if [[ -n "$default" ]]; then
-    read -r -p "${message} [${default}]: " value || true
+    read -r -p "$(printf '%s %s [%s]: ' "$(style "$UI_ACCENT" ">")" "$message" "$default")" value || true
     printf '%s' "${value:-$default}"
     return 0
   fi
-  read -r -p "${message}: " value || true
+  read -r -p "$(printf '%s %s: ' "$(style "$UI_ACCENT" ">")" "$message")" value || true
   printf '%s' "$value"
 }
 
@@ -95,7 +215,7 @@ prompt_secret() {
     printf ''
     return 0
   fi
-  read -r -s -p "${message}: " value || true
+  read -r -s -p "$(printf '%s %s: ' "$(style "$UI_ACCENT" ">")" "$message")" value || true
   printf '\n' >&2
   printf '%s' "$value"
 }
@@ -113,7 +233,7 @@ confirm() {
     fallback="y"
   fi
   local answer=""
-  read -r -p "${message} ${suffix} " answer || true
+  read -r -p "$(printf '%s %s %s ' "$(style "$UI_ACCENT" "?")" "$message" "$suffix")" answer || true
   answer="${answer:-$fallback}"
   case "$answer" in
     y|Y|yes|YES) return 0 ;;
@@ -161,6 +281,7 @@ safe_install_path() {
 }
 
 detect_compose_cmd() {
+  ensure_docker_runtime
   if command_exists docker && docker compose version >/dev/null 2>&1; then
     COMPOSE_CMD=(docker compose)
     return 0
@@ -197,10 +318,25 @@ compose() {
 }
 
 ensure_repo_present() {
-  [[ -d "${INSTALL_DIR}/.git" ]] || die "No git repository at ${INSTALL_DIR}. Run install first."
+  if [[ -d "${INSTALL_DIR}/.git" || -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
+    return 0
+  fi
+  die "No installed stack found at ${INSTALL_DIR}. Run install first."
 }
 
 ensure_runtime_prereqs() {
+  if ! command_exists git && command_exists apt-get && [[ "$DRY_RUN" -eq 0 ]]; then
+    log "Installing missing prerequisite: git"
+    apt_install_packages git
+  fi
+  if ! command_exists curl && command_exists apt-get && [[ "$DRY_RUN" -eq 0 ]]; then
+    log "Installing missing prerequisite: curl"
+    apt_install_packages curl
+  fi
+  if ! command_exists awk && command_exists apt-get && [[ "$DRY_RUN" -eq 0 ]]; then
+    log "Installing missing prerequisite: gawk"
+    apt_install_packages gawk
+  fi
   require_command git
   require_command curl
   require_command sed
@@ -223,6 +359,18 @@ env_get() {
     return 0
   fi
   printf '%s' "${line#*=}"
+}
+
+env_get_nonempty() {
+  local key="$1"
+  local default="${2:-}"
+  local value
+  value="$(env_get "$key" "")"
+  if [[ -n "$value" ]]; then
+    printf '%s' "$value"
+    return 0
+  fi
+  printf '%s' "$default"
 }
 
 upsert_env() {
@@ -297,17 +445,21 @@ extract_token_from_json() {
 wait_for_http() {
   local url="$1"
   local label="$2"
-  local attempts="${3:-30}"
-  local delay="${4:-2}"
+  local expected_pattern='^2[0-9][0-9]$'
+  local attempts="${4:-30}"
+  local delay="${5:-2}"
   local code=""
   local i
+  if [[ $# -ge 3 && -n "$3" ]]; then
+    expected_pattern="$3"
+  fi
   for ((i = 1; i <= attempts; i += 1)); do
     if [[ "$DRY_RUN" -eq 1 ]]; then
       log "[DRY-RUN] would probe ${label} (${url})"
       return 0
     fi
     code="$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)"
-    if [[ "$code" =~ ^[1-4][0-9][0-9]$ ]]; then
+    if [[ "$code" =~ $expected_pattern ]]; then
       log "${label} is responding (HTTP ${code})"
       return 0
     fi
@@ -318,6 +470,7 @@ wait_for_http() {
 }
 
 configure_env() {
+  section "Install Configuration"
   local env_path="${INSTALL_DIR}/${ENV_FILE}"
   if [[ ! -f "$env_path" ]]; then
     if [[ ! -f "${INSTALL_DIR}/.env.example" ]]; then
@@ -328,31 +481,31 @@ configure_env() {
       fi
     else
       run cp "${INSTALL_DIR}/.env.example" "$env_path"
-      log "Created ${env_path} from .env.example"
+      success "Created ${env_path} from .env.example"
     fi
   fi
 
   local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
-  ui_port="$(prompt "UI port to expose" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
-  public_url="$(prompt "Public site URL used by the bundled backend" "$(env_get PASTE_URL "http://localhost:${ui_port}")")"
-  api_base="$(prompt "Frontend paste API base (path or URL)" "$(env_get VITE_PASTE_API "/api")")"
-  auth_base="$(prompt "Frontend auth API base (path or URL)" "$(env_get VITE_AUTH_API "/auth")")"
-  sharex_enabled="$(prompt "Enable ShareX config in UI? (1=yes,0=no)" "$(env_get VITE_ENABLE_SHAREX "0")")"
-  auth_enabled="$(prompt "Enable login/accounts in UI? (1=yes,0=no anonymous mode)" "$(env_get VITE_ENABLE_AUTH "1")")"
-  turnstile_key="$(prompt "Turnstile site key (leave empty to disable)" "$(env_get VITE_TURNSTILE_SITE_KEY "")")"
-  turnstile_secret="$(prompt "Turnstile secret key (leave empty to disable)" "$(env_get TURNSTILE_SECRET_KEY "")")"
-  jwt_secret="$(prompt "JWT signing secret (leave empty to auto-generate)" "$(env_get JWT_SECRET "")")"
-  passkeys_enabled="$(prompt "Enable passkeys in Rust backend? (1=yes,0=no)" "$(env_get PASSKEYS_ENABLED "0")")"
-  passkey_rp_name="$(prompt "Passkey RP display name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
+  ui_port="$(prompt "UI port" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
+  public_url="$(prompt "Public site URL" "$(env_get_nonempty PASTE_URL "$(default_public_url "$ui_port")")")"
+  api_base="$(prompt "Paste API base" "$(env_get VITE_PASTE_API "/api")")"
+  auth_base="$(prompt "Auth API base" "$(env_get VITE_AUTH_API "/auth")")"
+  sharex_enabled="$(prompt "Enable ShareX UI (1=yes, 0=no)" "$(env_get VITE_ENABLE_SHAREX "1")")"
+  auth_enabled="$(prompt "Enable account UI (1=yes, 0=no)" "$(env_get VITE_ENABLE_AUTH "1")")"
+  turnstile_key="$(prompt "Turnstile site key" "$(env_get VITE_TURNSTILE_SITE_KEY "")")"
+  turnstile_secret="$(prompt "Turnstile secret key" "$(env_get TURNSTILE_SECRET_KEY "")")"
+  jwt_secret="$(prompt "JWT secret (leave empty to auto-generate)" "$(env_get JWT_SECRET "")")"
+  passkeys_enabled="$(prompt "Enable passkeys (1=yes, 0=no)" "$(env_get PASSKEYS_ENABLED "0")")"
+  passkey_rp_name="$(prompt "Passkey RP name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
   passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
-  passkey_origins="$(prompt "Passkey allowed origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
-  resolver_enabled="$(prompt "Enable resolver service for public token links/bot embeds? (1=yes,0=no)" "$(env_get RESOLVER_ENABLED "0")")"
-  admin_base="$(prompt "Auth admin base URL" "$(env_get AUTH_ADMIN_BASE_URL "http://localhost:${ui_port}/auth/admin")")"
+  passkey_origins="$(prompt "Passkey origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
+  resolver_enabled="$(prompt "Enable compatibility resolver (1=yes, 0=no)" "$(env_get RESOLVER_ENABLED "0")")"
+  admin_base="$(prompt "Auth admin base URL" "$(env_get_nonempty AUTH_ADMIN_BASE_URL "${public_url%/}/auth/admin")")"
   bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
-  token_create_path="$(prompt "Token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
-  token_revoke_path="$(prompt "Token revoke path (use %s placeholder for token)" "$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")")"
-  register_url="$(prompt "Register endpoint URL" "$(env_get AUTH_REGISTER_URL "http://localhost:${ui_port}/auth/register")")"
-  admin_bearer="$(prompt "Admin bearer token for /auth/admin (required for bootstrap/token actions)" "$(env_get AUTH_ADMIN_BEARER "")")"
+  token_create_path="$(prompt "Auth token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
+  token_revoke_path="$(prompt "Auth token revoke path" "$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")")"
+  register_url="$(prompt "Register endpoint URL" "$(env_get_nonempty AUTH_REGISTER_URL "${public_url%/}/auth/register")")"
+  admin_bearer="$(prompt "Admin bearer token" "$(env_get_nonempty AUTH_ADMIN_BEARER "")")"
 
   if [[ ! "$sharex_enabled" =~ ^[01]$ ]]; then
     warn "Invalid ShareX toggle '${sharex_enabled}', defaulting to 0"
@@ -387,16 +540,20 @@ configure_env() {
     turnstile_secret=""
     passkeys_enabled="0"
   fi
+  if [[ "$auth_enabled" == "1" && -z "$admin_bearer" ]]; then
+    admin_bearer="$(generate_secret)"
+    success "Generated admin bearer automatically."
+  fi
   if [[ -n "$turnstile_key" && -z "$turnstile_secret" ]]; then
     warn "Turnstile site key set but TURNSTILE_SECRET_KEY is empty; login challenges will fail."
   fi
   if [[ -z "$jwt_secret" ]]; then
     jwt_secret="$(generate_secret)"
-    log "Generated JWT secret automatically."
+    success "Generated JWT secret automatically."
   fi
   upsert_env UI_PORT "$ui_port"
   upsert_env PASTE_URL "$public_url"
-  upsert_env PASTE_PUBLIC_API "$(env_get PASTE_PUBLIC_API "${public_url%/}/api")"
+  upsert_env PASTE_PUBLIC_API "$(env_get_nonempty PASTE_PUBLIC_API "${public_url%/}/api")"
   upsert_env VITE_PASTE_API "$api_base"
   upsert_env VITE_AUTH_API "$auth_base"
   upsert_env VITE_FILE_RESOLVE_BASE "$resolve_base"
@@ -420,6 +577,16 @@ configure_env() {
 }
 
 clone_or_update_repo() {
+  if [[ "$REPO_URL" == /* && -d "$REPO_URL" ]]; then
+    log "Syncing local source from ${REPO_URL}"
+    if [[ -d "$INSTALL_DIR" ]] && [[ -n "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | head -n 1)" ]] && [[ ! -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
+      die "Install directory is not empty: ${INSTALL_DIR}"
+    fi
+    run mkdir -p "$INSTALL_DIR"
+    run rsync -a --delete --exclude '.git' "${REPO_URL}/" "${INSTALL_DIR}/"
+    return 0
+  fi
+
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
     log "Updating existing repository at ${INSTALL_DIR}"
     run git -C "$INSTALL_DIR" fetch --prune origin
@@ -437,52 +604,68 @@ clone_or_update_repo() {
 }
 
 stack_install_or_update() {
+  section "Yaemipaste Install"
   ensure_runtime_prereqs
   safe_install_path "$INSTALL_DIR" || die "Refusing unsafe install path: ${INSTALL_DIR}"
+  maybe_use_local_checkout_as_repo
+  step "Syncing repository"
   clone_or_update_repo
   configure_env
-  log "Starting full stack..."
+  section "Starting Stack"
   compose pull || warn "Compose pull failed; continuing with local build"
   compose up -d --build
-  local ui_port
+  local ui_port probe_host
   ui_port="$(env_get UI_PORT "$DEFAULT_UI_PORT")"
-  wait_for_http "http://localhost:${ui_port}/" "UI endpoint" || true
-  wait_for_http "http://localhost:${ui_port}/auth/" "Auth endpoint" || true
-  wait_for_http "http://localhost:${ui_port}/api/" "Paste endpoint" || true
-  log "Install/update completed."
+  probe_host="127.0.0.1"
+  wait_for_http "http://${probe_host}:${ui_port}/" "UI endpoint" '^200$' 60 2 || die "UI endpoint failed readiness check."
+  wait_for_http "http://${probe_host}:${ui_port}/auth/sharex" "Auth endpoint" '^(200|401)$' 30 2 || die "Auth endpoint failed readiness check."
+  wait_for_http "http://${probe_host}:${ui_port}/api/" "Paste endpoint" '^(200|400|401|405)$' 30 2 || die "Paste endpoint failed readiness check."
+  success "Yaemipaste install/update completed."
 }
 
 stack_start() {
+  section "Service Control"
   ensure_runtime_prereqs
   ensure_repo_present
+  step "Starting Yaemipaste services"
   compose up -d
+  success "Services started."
 }
 
 stack_stop() {
+  section "Service Control"
   ensure_runtime_prereqs
   ensure_repo_present
+  step "Stopping Yaemipaste services"
   compose stop
+  success "Services stopped."
 }
 
 stack_restart() {
+  section "Service Control"
   ensure_runtime_prereqs
   ensure_repo_present
+  step "Restarting Yaemipaste services"
   compose restart
+  success "Services restarted."
 }
 
 stack_status() {
+  section "Service Control"
   ensure_runtime_prereqs
   ensure_repo_present
   compose ps
 }
 
 read_auth_settings() {
-  AUTH_ADMIN_BASE_URL_VALUE="$(env_get AUTH_ADMIN_BASE_URL "http://localhost:8080/auth/admin")"
+  local inferred_public_url
+  inferred_public_url="$(env_get_nonempty PASTE_URL "$(default_public_url "$(env_get UI_PORT "$DEFAULT_UI_PORT")")")"
+  AUTH_ADMIN_BASE_URL_VALUE="$(env_get_nonempty AUTH_ADMIN_BASE_URL "${inferred_public_url%/}/auth/admin")"
   AUTH_BOOTSTRAP_PATH_VALUE="$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")"
   AUTH_TOKEN_CREATE_PATH_VALUE="$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")"
   AUTH_TOKEN_REVOKE_PATH_VALUE="$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")"
-  AUTH_REGISTER_URL_VALUE="$(env_get AUTH_REGISTER_URL "http://localhost:8080/auth/register")"
-  AUTH_ADMIN_BEARER_VALUE="$(env_get AUTH_ADMIN_BEARER "")"
+  AUTH_REGISTER_URL_VALUE="$(env_get_nonempty AUTH_REGISTER_URL "${inferred_public_url%/}/auth/register")"
+  AUTH_ADMIN_BEARER_VALUE="$(env_get_nonempty AUTH_ADMIN_BEARER "")"
 }
 
 read_admin_bearer() {
@@ -492,6 +675,7 @@ read_admin_bearer() {
 }
 
 create_initial_user() {
+  section "Auth Bootstrap"
   ensure_repo_present
   read_auth_settings
   local username password register_token
@@ -499,7 +683,7 @@ create_initial_user() {
   [[ -n "$username" ]] || die "Username is required."
   password="$(prompt_secret "Initial password")"
   [[ -n "$password" ]] || die "Password is required."
-  register_token="$(prompt "Registration token (leave empty to use bootstrap endpoint)" "")"
+  register_token="$(prompt "Registration token (optional)" "")"
 
   local payload
   payload="{\"username\":\"$(json_escape "$username")\",\"password\":\"$(json_escape "$password")\""
@@ -507,7 +691,7 @@ create_initial_user() {
     payload+=",\"token\":\"$(json_escape "$register_token")\"}"
     http_json POST "$AUTH_REGISTER_URL_VALUE" "$payload"
     expect_2xx || die "Failed to create user using register endpoint."
-    log "Initial user created via register endpoint."
+    success "Initial user created via register endpoint."
     return 0
   fi
   payload+="}"
@@ -516,10 +700,11 @@ create_initial_user() {
   local bootstrap_url="${AUTH_ADMIN_BASE_URL_VALUE%/}/${AUTH_BOOTSTRAP_PATH_VALUE#/}"
   http_json POST "$bootstrap_url" "$payload" "$admin_bearer"
   expect_2xx || die "Bootstrap user creation failed. Provide a registration token or verify auth admin endpoint settings."
-  log "Initial user created via admin bootstrap endpoint."
+  success "Initial user created via admin bootstrap endpoint."
 }
 
 create_token() {
+  section "Token Management"
   ensure_repo_present
   read_auth_settings
   local label ttl payload
@@ -540,6 +725,7 @@ create_token() {
   created="$(extract_token_from_json "$HTTP_BODY")"
   if [[ -n "$created" ]]; then
     printf '\nNew token:\n%s\n\n' "$created"
+    success "Token created."
   else
     warn "Token endpoint did not return a recognizable token field."
     printf '%s\n' "$HTTP_BODY"
@@ -547,6 +733,7 @@ create_token() {
 }
 
 revoke_token() {
+  section "Token Management"
   ensure_repo_present
   read_auth_settings
   local token
@@ -564,10 +751,11 @@ revoke_token() {
   admin_bearer="$(read_admin_bearer)"
   http_json DELETE "$revoke_url" "" "$admin_bearer"
   expect_2xx || die "Token revocation failed."
-  log "Token revoked."
+  success "Token revoked."
 }
 
 stack_uninstall() {
+  section "Uninstall"
   ensure_runtime_prereqs
   safe_install_path "$INSTALL_DIR" || die "Refusing unsafe uninstall path: ${INSTALL_DIR}"
   if ! confirm "This will stop ${APP_NAME} services. Continue?" n; then
@@ -586,7 +774,7 @@ stack_uninstall() {
     check="$(prompt "Type DELETE to confirm directory removal" "")"
     if [[ "$check" == "DELETE" ]]; then
       run rm -rf "$INSTALL_DIR"
-      log "Removed ${INSTALL_DIR}"
+      success "Removed ${INSTALL_DIR}"
     else
       warn "Confirmation phrase mismatch. Directory was not removed."
     fi
@@ -596,7 +784,7 @@ stack_uninstall() {
 print_menu() {
   cat <<EOF
 
-${APP_NAME} install manager
+Yaemipaste control center
 Install directory: ${INSTALL_DIR}
 Repository: ${REPO_URL} (${BRANCH})
 
@@ -652,6 +840,8 @@ run_action() {
 
 usage() {
   cat <<EOF
+Yaemipaste installer + runtime manager
+
 Usage: $0 [options]
 
 Options:
@@ -712,7 +902,11 @@ parse_args() {
 }
 
 main() {
+  setup_ui
   parse_args "$@"
+  if [[ "$YES" -eq 0 ]]; then
+    print_banner
+  fi
   run_action "$ACTION"
 }
 

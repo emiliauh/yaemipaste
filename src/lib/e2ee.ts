@@ -37,6 +37,15 @@ export interface DecryptionResult {
   metadata: EncryptedMetadata
 }
 
+export function supportsBrowserEncryption(): boolean {
+  return typeof window !== 'undefined' && window.isSecureContext && !!window.crypto?.subtle
+}
+
+function requireBrowserEncryption(): void {
+  if (supportsBrowserEncryption()) return
+  throw new Error('Browser encryption requires HTTPS or localhost.')
+}
+
 function hasMagicBytes(payload: Uint8Array): boolean {
   if (payload.byteLength < MAGIC_BYTES.byteLength) return false
   for (let i = 0; i < MAGIC_BYTES.byteLength; i += 1) {
@@ -68,6 +77,7 @@ function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 async function importAesKey(rawKey: string): Promise<CryptoKey> {
+  requireBrowserEncryption()
   const normalized = normalizeToBase64Url(rawKey)
   if (!normalized) throw new Error('Invalid decryption key')
   const keyBytes = base64UrlToBytes(normalized)
@@ -186,6 +196,7 @@ function encodePath(fileName: string): string {
 }
 
 export async function encryptFile(file: File, uploader: string): Promise<EncryptionResult> {
+  requireBrowserEncryption()
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
   const rawKey = bytesToBase64Url(new Uint8Array(await crypto.subtle.exportKey('raw', key)))
   const iv = crypto.getRandomValues(new Uint8Array(12))
@@ -215,6 +226,7 @@ export async function encryptFile(file: File, uploader: string): Promise<Encrypt
 }
 
 async function decryptBlobWithKey(blob: Blob, key: CryptoKey): Promise<DecryptionResult> {
+  requireBrowserEncryption()
   const payload = new Uint8Array(await blob.arrayBuffer())
   if (!hasMagicBytes(payload)) {
     throw new Error('This file is not a rustypaste encrypted file')
@@ -268,6 +280,7 @@ export async function decryptEncryptedBlob(blob: Blob, rawKey: string): Promise<
 }
 
 async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  requireBrowserEncryption()
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
@@ -291,6 +304,7 @@ export interface PasswordEncryptionResult {
 }
 
 export async function encryptFileWithPassword(file: File, password: string, uploader: string): Promise<PasswordEncryptionResult> {
+  requireBrowserEncryption()
   const salt = crypto.getRandomValues(new Uint8Array(16))
   const saltStr = bytesToBase64Url(salt)
   const key = await deriveKeyFromPassword(password, salt)
@@ -320,6 +334,7 @@ export async function encryptFileWithPassword(file: File, password: string, uplo
 }
 
 export async function decryptBlobWithPassword(blob: Blob, password: string, salt: string): Promise<DecryptionResult> {
+  requireBrowserEncryption()
   const saltBytes = base64UrlToBytes(salt)
   const key = await deriveKeyFromPassword(password, saltBytes)
   return decryptBlobWithKey(blob, key)

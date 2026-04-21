@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
+import { supportsBrowserEncryption } from '../lib/e2ee'
 import ExpirySelector from './ExpirySelector.vue'
 import { defaultExpiryValue, isValidExpiryValue, type ExpiryValue } from '../lib/expiry'
 import { useNotificationStore } from '../stores/notifications'
@@ -27,6 +28,7 @@ const uploadProgress = ref<UploadProgress | null>(null)
 const encryptMode = ref<'none' | 'encrypt' | 'password'>('none')
 const encryptPassword = ref('')
 const showEncryptPassword = ref(false)
+const browserEncryptionReady = supportsBrowserEncryption()
 let shareLinkId = 0
 const notificationStore = useNotificationStore()
 
@@ -35,6 +37,10 @@ watch(keepFileName, (value) => {
 })
 
 function cycleEncrypt() {
+  if (!browserEncryptionReady) {
+    showToast('Browser encryption requires HTTPS or localhost.', 'error')
+    return
+  }
   if (encryptMode.value === 'none') encryptMode.value = 'encrypt'
   else if (encryptMode.value === 'encrypt') encryptMode.value = 'password'
   else {
@@ -234,7 +240,8 @@ function onPasteAreaLongPressCancel() {
       <div>
         <div class="security-title">Upload security</div>
         <div class="security-copy">
-          <template v-if="encryptMode === 'password'">Password mode: only someone with the password can view this file.</template>
+          <template v-if="!browserEncryptionReady">Browser encryption is unavailable here. Use HTTPS or localhost to enable encrypted uploads.</template>
+          <template v-else-if="encryptMode === 'password'">Password mode: only someone with the password can view this file.</template>
           <template v-else-if="encryptMode === 'encrypt'">Strong mode: encrypted in your browser before upload.</template>
           <template v-else>Default mode: fast upload with clean short links.</template>
         </div>
@@ -246,6 +253,8 @@ function onPasteAreaLongPressCancel() {
         class="encrypt-toggle encrypt-btn"
         :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
         data-testid="encrypt-toggle"
+        :disabled="!browserEncryptionReady"
+        :title="browserEncryptionReady ? 'Cycle encryption mode' : 'Browser encryption requires HTTPS or localhost.'"
         @click="cycleEncrypt"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -423,6 +432,10 @@ function onPasteAreaLongPressCancel() {
 .encrypt-btn {
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.encrypt-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 .encrypt-btn:hover { border-color: var(--text3); }
 .encrypt-btn.active-encrypt {

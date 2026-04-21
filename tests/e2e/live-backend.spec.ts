@@ -52,7 +52,7 @@ test.describe('live backend integration', () => {
     const uploadedName = resolvePayload.file_name ?? ''
     expect(uploadedName).toBeTruthy()
     const apiBase = liveApiBaseUrl || `${liveBaseUrl}/api`
-    const rawPublicUrl = `${liveBaseUrl}${publicPathFromFileName(uploadedName)}`
+    const rawPublicUrl = `${liveBaseUrl}${publicPathFromFileName(uploadedName)}?raw=1`
 
     await page.goto(href ?? `${liveBaseUrl}/`)
     await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()

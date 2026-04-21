@@ -746,13 +746,15 @@ async fn upload(
                 if let Some(file) =
                     Directory::try_from(token_upload_path.as_path())?.get_file(bytes_checksum)
                 {
+                    let duplicate_name = file
+                        .path
+                        .file_name()
+                        .map(|v| v.to_string_lossy().to_string())
+                        .unwrap_or_default();
                     urls.push(format!(
-                        "{}/{}\n",
+                        "{}{}\n",
                         server_url,
-                        file.path
-                            .file_name()
-                            .map(|v| v.to_string_lossy())
-                            .unwrap_or_default()
+                        public_path_from_file_name(&duplicate_name)
                     ));
                     continue;
                 }
@@ -821,7 +823,11 @@ async fn upload(
                     warn!("cannot store upload metadata for {}: {}", file_name, e);
                 }
             }
-            urls.push(format!("{server_url}/{file_name}\n"));
+            urls.push(format!(
+                "{}{}\n",
+                server_url,
+                public_path_from_file_name(&file_name)
+            ));
         } else {
             warn!("{} sent an invalid form field", host);
             return Err(error::ErrorBadRequest("invalid form field"));
