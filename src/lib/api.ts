@@ -93,6 +93,31 @@ function sanitizePublicOrigin(origin: string): string | null {
   }
 }
 
+function getRuntimeOrigin(): string | null {
+  if (typeof window === 'undefined') return sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
+  return sanitizePublicOrigin(window.location.origin) ?? sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
+}
+
+function shouldIgnoreStoredApiBase(value: string): boolean {
+  if (!value.trim() || value.startsWith('/')) return false
+  if (!DEFAULT_PASTE_API.startsWith('/')) return false
+  const runtimeOrigin = getRuntimeOrigin()
+  if (!runtimeOrigin) return false
+  try {
+    return new URL(value).origin !== runtimeOrigin
+  } catch {
+    return false
+  }
+}
+
+function pruneStoredApiBase() {
+  if (typeof localStorage === 'undefined') return
+  const configured = localStorage.getItem(API_BASE_KEY)
+  if (configured && shouldIgnoreStoredApiBase(configured)) localStorage.removeItem(API_BASE_KEY)
+}
+
+pruneStoredApiBase()
+
 export function getDefaultPasteApiBase(): string {
   return DEFAULT_PASTE_API
 }
@@ -101,6 +126,10 @@ export function getPasteApiBase(): string {
   if (typeof localStorage === 'undefined') return DEFAULT_PASTE_API
   const configured = localStorage.getItem(API_BASE_KEY)
   if (!configured) return DEFAULT_PASTE_API
+  if (shouldIgnoreStoredApiBase(configured)) {
+    localStorage.removeItem(API_BASE_KEY)
+    return DEFAULT_PASTE_API
+  }
   return isSafeApiBase(configured) ? normalizeApiBase(configured) : DEFAULT_PASTE_API
 }
 

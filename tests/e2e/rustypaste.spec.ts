@@ -1289,6 +1289,19 @@ test('history actions and settings buttons work', async ({ page }) => {
   await expect(page.locator('.settings-panel')).toBeHidden()
 })
 
+test('production resets stale absolute API override back to the deployment default', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('rp_token', 'demo-token')
+    localStorage.setItem('rp_api_base', 'https://papi.example.test')
+  })
+
+  await page.goto('/#/files')
+
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('rp_api_base')))
+    .toBeNull()
+})
+
 test('history copy includes decryption key for encrypted files', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
