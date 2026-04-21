@@ -17,6 +17,14 @@ backend/rustypaste/target
 .env
 .env.*
 !.env.example
+/.claude/
+/.codex/
+/skills/
+/AGENT.md
+/AGENTS.md
+/AGENTS.template.md
+/GLOBALAGENTS.md
+/docs/KNOWLEDGEBASE.md
 
 # Stray local archives
 *.7z

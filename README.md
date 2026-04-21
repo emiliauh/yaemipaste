@@ -1,115 +1,143 @@
 # yaemipaste
 
-`yaemipaste` ships the full app stack:
-- a Vite + Vue frontend
-- the modified Rust backend this UI depends on
+yaemipaste is a self-hosted paste and file sharing app.
 
-It gives you a web UI for:
+It includes:
+- a Vue + Vite frontend
+- the modified Rust backend it depends on
+- an install script that sets up the full stack for you
+
+You can use it for:
 - file uploads
 - text pastes
 - public preview, raw, and download links
-- history and deletion
-- optional auth, passkeys, ShareX config, and client-side encryption
+- upload history and deletion
+- optional accounts, passkeys, ShareX, and client-side encryption
+
+## What You Need
+
+For the normal install path:
+- a Linux machine
+- Docker with Compose support
+- `git` and `curl`
+
+If Docker or other basic packages are missing on a Debian/Ubuntu machine, the installer can bootstrap them.
 
 ## Install
 
-Fast path:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/emiliauh/yaemipaste/main/public/install.sh | bash
-```
-
-Manual path:
+Clone the repo and run the installer:
 
 ```bash
 git clone https://github.com/emiliauh/yaemipaste.git
 cd yaemipaste
-cp .env.example .env
+./install.sh
 ```
 
-Then edit `.env` and start the stack:
+The installer is interactive. It will walk you through the main settings and then build and start the stack.
+
+If you want to accept defaults without prompts:
 
 ```bash
+./install.sh --action install --yes
+```
+
+## Configure
+
+The installer writes your runtime settings to `.env`.
+
+The most important values are:
+
+| Variable | What it does |
+| --- | --- |
+| `PASTE_URL` | Public URL your users will open |
+| `PASTE_PUBLIC_API` | Public API URL used for backend-generated links and ShareX |
+| `VITE_PASTE_API` | Frontend file API path or URL |
+| `VITE_AUTH_API` | Frontend auth API path or URL |
+| `VITE_FILE_RESOLVE_BASE` | Resolver path for `/file/<token>/...` links |
+| `VITE_ENABLE_AUTH` | Enables login/register/account UI |
+| `VITE_ENABLE_SHAREX` | Enables ShareX download/setup UI |
+| `JWT_SECRET` | Session signing secret |
+| `AUTH_ADMIN_BEARER` | Admin bearer used by the installer for bootstrap/token actions |
+| `PASSKEYS_ENABLED` | Enables passkey routes in the backend |
+
+Full environment reference:
+[docs/ENVIRONMENT.md](/path/to/repo/docs/ENVIRONMENT.md)
+
+Do not commit your real `.env` file or any live secrets.
+
+## Run
+
+After install, the stack is managed through Docker Compose.
+
+Start:
+
+```bash
+./install.sh --action start
+```
+
+Stop:
+
+```bash
+./install.sh --action stop
+```
+
+Restart:
+
+```bash
+./install.sh --action restart
+```
+
+Status:
+
+```bash
+./install.sh --action status
+```
+
+Create the first user:
+
+```bash
+./install.sh --action init-user
+```
+
+## Manual Docker Run
+
+If you do not want to use the installer, you can still run the app manually:
+
+```bash
+cp .env.example .env
 docker compose up --build -d
 ```
 
-If you are migrating an older external backend and still need the legacy compatibility resolver:
+If you are running an older compatibility setup that still needs the bundled Node resolver:
 
 ```bash
 docker compose --profile with-resolver up --build -d
 ```
 
-## Configure
+## Development
 
-The most important variables are:
-
-| Variable | What it controls | Typical value |
-| --- | --- | --- |
-| `VITE_PASTE_API` | Frontend path or URL for file APIs | `/api` |
-| `VITE_AUTH_API` | Frontend path or URL for auth APIs | `/auth` |
-| `VITE_FILE_RESOLVE_BASE` | Token resolver path for `/file/<token>/...` links | `/api/resolve` |
-| `VITE_TOKEN_OWNER_PATH` | Token-owner lookup before upload | `/api/token-owner` |
-| `VITE_ENABLE_AUTH` | Login/register/account UI | `1` |
-| `VITE_ENABLE_SHAREX` | ShareX config download UI | `0` or `1` |
-| `PASTE_URL` | Public site URL advertised by the Rust backend | `http://localhost:8080` |
-| `JWT_SECRET` | Session signing secret | random 32+ byte secret |
-| `PASSKEYS_ENABLED` | Passkey backend routes | `0` or `1` |
-| `AUTH_ADMIN_BEARER` | Installer admin bearer | strong random string |
-
-Full reference: [docs/ENVIRONMENT.md](/path/to/repo/docs/ENVIRONMENT.md)
-
-Shipped backend paths:
-- `/api/*` for upload/list/delete/meta
-- `/auth/*` for register/login/me/admin token flows
-- `/api/resolve/*` for extension-free public token links
-- `/api/token-owner` for token-auth upload ownership hydration
-
-## Run
-
-For local development:
+Frontend development:
 
 ```bash
 npm ci
 npm run dev
 ```
 
-For a production build:
+Production build:
 
 ```bash
-npm ci
 npm run build
 ```
 
-For release validation:
+Release-style validation:
 
 ```bash
 npm run validate:release
 ```
 
-That runs the production build and then exercises the Playwright suite against `vite preview`, not the dev server.
+## Notes
 
-## Deploy
-
-The deployment flow is:
-
-`source repo -> build -> validate -> deploy`
-
-In practice:
-
-```bash
-npm ci
-npm run validate:release
-rsync -avz --delete dist/ user@host:/path/to/static-root/
-ssh user@host 'sudo systemctl reload your-web-server'
-```
-
-Route these paths on your reverse proxy:
-- `/api/*` to the Rust backend
-- `/auth/*` to the Rust backend auth routes
-- `/<id>/file` and `/<id>/file.<ext>` to raw file bytes
-
-## Security Notes
-
-- Keep instance-specific values out of git. Use `.env`, CI secrets, or your deployment system.
-- The bundled nginx config ships with `nosniff`, `Referrer-Policy`, `Permissions-Policy`, and a restrictive CSP.
-- If you enable uploads publicly, follow normal backend hygiene too: file size limits, filename normalization, malware scanning where appropriate, and storage outside direct webroot.
+- New installs should use the built-in Rust resolver path at `/api/resolve`.
+- Client-side encryption requires a secure browser context, which means `https://...` or `http://localhost`.
+- Public file links are path-based. Users should see links like `/file/<token>/preview` or `/<id>/file.txt`, not raw API URLs.
+- Keep instance-specific hostnames, secrets, and deployment commands out of git.
