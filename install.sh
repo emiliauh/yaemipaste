@@ -332,9 +332,9 @@ configure_env() {
     fi
   fi
 
-  local ui_port paste_image api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
+  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
   ui_port="$(prompt "UI port to expose" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
-  paste_image="$(prompt "Rustypaste image/tag" "$(env_get PASTE_API_IMAGE "ghcr.io/replace-me/rustypaste:latest")")"
+  public_url="$(prompt "Public site URL used by the bundled backend" "$(env_get PASTE_URL "http://localhost:${ui_port}")")"
   api_base="$(prompt "Frontend paste API base (path or URL)" "$(env_get VITE_PASTE_API "/api")")"
   auth_base="$(prompt "Frontend auth API base (path or URL)" "$(env_get VITE_AUTH_API "/auth")")"
   sharex_enabled="$(prompt "Enable ShareX config in UI? (1=yes,0=no)" "$(env_get VITE_ENABLE_SHAREX "0")")"
@@ -394,16 +394,13 @@ configure_env() {
     jwt_secret="$(generate_secret)"
     log "Generated JWT secret automatically."
   fi
-  if [[ "$auth_enabled" == "1" && "$paste_image" == "orhunp/rustypaste:latest" ]]; then
-    warn "The stock orhunp/rustypaste:latest image does not provide the auth routes this UI expects."
-    warn "Use a compatible custom Rust image or disable auth mode."
-  fi
-
   upsert_env UI_PORT "$ui_port"
-  upsert_env PASTE_API_IMAGE "$paste_image"
+  upsert_env PASTE_URL "$public_url"
+  upsert_env PASTE_PUBLIC_API "$(env_get PASTE_PUBLIC_API "${public_url%/}/api")"
   upsert_env VITE_PASTE_API "$api_base"
   upsert_env VITE_AUTH_API "$auth_base"
   upsert_env VITE_FILE_RESOLVE_BASE "$resolve_base"
+  upsert_env VITE_TOKEN_OWNER_PATH "$(env_get VITE_TOKEN_OWNER_PATH "/api/token-owner")"
   upsert_env VITE_ENABLE_SHAREX "$sharex_enabled"
   upsert_env VITE_ENABLE_AUTH "$auth_enabled"
   upsert_env VITE_TURNSTILE_SITE_KEY "$turnstile_key"

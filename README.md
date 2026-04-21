@@ -1,6 +1,8 @@
 # yaemipaste
 
-`yaemipaste` is a Vue 3 frontend for a compatible Rustypaste backend.
+`yaemipaste` ships the full app stack:
+- a Vite + Vue frontend
+- the modified Rust backend this UI depends on
 
 It gives you a web UI for:
 - file uploads
@@ -8,8 +10,6 @@ It gives you a web UI for:
 - public preview, raw, and download links
 - history and deletion
 - optional auth, passkeys, ShareX config, and client-side encryption
-
-This repo does not ship the Rust backend itself. You need a backend image or deployment that matches the routes you enable.
 
 ## Install
 
@@ -33,7 +33,7 @@ Then edit `.env` and start the stack:
 docker compose up --build -d
 ```
 
-If your backend does not expose a native resolve endpoint yet, enable the legacy compatibility resolver:
+If you are migrating an older external backend and still need the legacy compatibility resolver:
 
 ```bash
 docker compose --profile with-resolver up --build -d
@@ -48,22 +48,21 @@ The most important variables are:
 | `VITE_PASTE_API` | Frontend path or URL for file APIs | `/api` |
 | `VITE_AUTH_API` | Frontend path or URL for auth APIs | `/auth` |
 | `VITE_FILE_RESOLVE_BASE` | Token resolver path for `/file/<token>/...` links | `/api/resolve` |
-| `VITE_TOKEN_OWNER_PATH` | Optional token-owner lookup before upload | `/token-owner` |
+| `VITE_TOKEN_OWNER_PATH` | Token-owner lookup before upload | `/api/token-owner` |
 | `VITE_ENABLE_AUTH` | Login/register/account UI | `1` |
 | `VITE_ENABLE_SHAREX` | ShareX config download UI | `0` or `1` |
-| `PASTE_API_IMAGE` | Rust backend image | your compatible image |
+| `PASTE_URL` | Public site URL advertised by the Rust backend | `http://localhost:8080` |
 | `JWT_SECRET` | Session signing secret | random 32+ byte secret |
 | `PASSKEYS_ENABLED` | Passkey backend routes | `0` or `1` |
 | `AUTH_ADMIN_BEARER` | Installer admin bearer | strong random string |
 
 Full reference: [docs/ENVIRONMENT.md](/path/to/repo/docs/ENVIRONMENT.md)
 
-Backend expectations:
-- upload, list, delete, and metadata routes
-- `/auth/*` if auth is enabled
-- `/auth/passkeys/*` if passkeys are enabled
-- `/api/resolve/<token>` or equivalent if you want extension-free public token links
-- `/token-owner` if you want token-auth uploads to preserve account ownership metadata
+Shipped backend paths:
+- `/api/*` for upload/list/delete/meta
+- `/auth/*` for register/login/me/admin token flows
+- `/api/resolve/*` for extension-free public token links
+- `/api/token-owner` for token-auth upload ownership hydration
 
 ## Run
 
@@ -105,9 +104,8 @@ ssh user@host 'sudo systemctl reload your-web-server'
 ```
 
 Route these paths on your reverse proxy:
-- `/api/*` to the Rust backend file API
-- `/auth/*` to the auth API if enabled
-- `/api/resolve/*` to the resolver route if enabled
+- `/api/*` to the Rust backend
+- `/auth/*` to the Rust backend auth routes
 - `/<id>/file` and `/<id>/file.<ext>` to raw file bytes
 
 ## Security Notes
