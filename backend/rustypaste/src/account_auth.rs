@@ -527,10 +527,30 @@ fn passkeys_enabled() -> bool {
     parse_bool_env("PASSKEYS_ENABLED", false)
 }
 
+fn sharex_enabled() -> bool {
+    env::var("SHAREX_ENABLED")
+        .ok()
+        .or_else(|| env::var("VITE_ENABLE_SHAREX").ok())
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(true)
+}
+
 fn passkeys_disabled_response() -> HttpResponse {
     json_error(
         actix_web::http::StatusCode::BAD_REQUEST,
         "Passkeys are disabled",
+    )
+}
+
+fn sharex_disabled_response() -> HttpResponse {
+    json_error(
+        actix_web::http::StatusCode::BAD_REQUEST,
+        "ShareX support is disabled",
     )
 }
 
@@ -895,6 +915,9 @@ async fn me(request: HttpRequest) -> HttpResponse {
 
 #[get("/sharex")]
 async fn sharex(request: HttpRequest) -> HttpResponse {
+    if !sharex_enabled() {
+        return sharex_disabled_response();
+    }
     let auth_env = AuthEnv::from_env();
     let username = match current_user(&request, &auth_env.jwt_secret) {
         Ok(username) => username,
@@ -1717,6 +1740,7 @@ mod tests {
             env::set_var("AUTH_ADMIN_BEARER", "admin-token");
             env::set_var("TURNSTILE_SECRET_KEY", "");
             env::set_var("PASTE_API", "http://localhost:8080/api");
+            env::set_var("VITE_ENABLE_SHAREX", "1");
             env::set_var("PASSKEYS_ENABLED", "1");
             env::remove_var("PASSKEY_RP_ID");
             env::remove_var("PASSKEY_ORIGINS");
@@ -1730,6 +1754,7 @@ mod tests {
             env::remove_var("AUTH_ADMIN_BEARER");
             env::remove_var("TURNSTILE_SECRET_KEY");
             env::remove_var("PASTE_API");
+            env::remove_var("VITE_ENABLE_SHAREX");
             env::remove_var("PASSKEYS_ENABLED");
             env::remove_var("PASSKEY_RP_ID");
             env::remove_var("PASSKEY_ORIGINS");
@@ -1869,6 +1894,32 @@ mod tests {
         assert_eq!(StatusCode::BAD_REQUEST, begin_response.status());
         let body: Value = test::read_body_json(begin_response).await;
         assert_eq!(body["detail"], "Passkeys are disabled");
+
+        let _ = std::fs::remove_file(db_path);
+        clear_auth_test_env();
+    }
+
+    #[actix_web::test]
+    async fn sharex_route_can_be_disabled() {
+        let db_path = test_db_path("sharex-disabled");
+        set_auth_test_env(&db_path);
+        unsafe {
+            env::set_var("VITE_ENABLE_SHAREX", "0");
+        }
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config())))
+                .app_data(Data::new(Client::default()))
+                .service(web::scope("/auth").configure(configure_routes)),
+        )
+        .await;
+
+        let request = test::TestRequest::get().uri("/auth/sharex").to_request();
+        let response = test::call_service(&app, request).await;
+        assert_eq!(StatusCode::BAD_REQUEST, response.status());
+        let body: Value = test::read_body_json(response).await;
+        assert_eq!(body["detail"], "ShareX support is disabled");
 
         let _ = std::fs::remove_file(db_path);
         clear_auth_test_env();

@@ -16,7 +16,7 @@ import { isAuthEnabled } from './features'
 
 const DEFAULT_PASTE_API = normalizeApiBase(import.meta.env.VITE_PASTE_API ?? '/api')
 const AUTH_API = (import.meta.env.VITE_AUTH_API ?? '/auth').replace(/\/$/, '')
-const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '0').trim() === '1'
+const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '1').trim() === '1'
 const PUBLIC_SITE_ORIGIN = (import.meta.env.VITE_PUBLIC_SITE_ORIGIN ?? '').trim().replace(/\/$/, '')
 const TOKEN_OWNER_PATH = (import.meta.env.VITE_TOKEN_OWNER_PATH ?? '/api/token-owner').trim()
 const FILE_RESOLVE_BASE = (() => {

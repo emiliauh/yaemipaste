@@ -33,7 +33,7 @@ docker compose --profile with-resolver up --build -d
 | `VITE_FILE_RESOLVE_BASE` | Resolver path for `/file/<token>/...` links | `/api/resolve` |
 | `VITE_TOKEN_OWNER_PATH` | Optional token-owner lookup path | `/api/token-owner` |
 | `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key | empty |
-| `VITE_ENABLE_SHAREX` | Enable ShareX settings UI | `0` |
+| `VITE_ENABLE_SHAREX` | Enable ShareX settings UI and `/auth/sharex` config generation | `1` |
 | `VITE_ENABLE_AUTH` | Enable login/register/account UI | `1` |
 | `VITE_REPOSITORY_URL` | Footer repository link | `https://github.com/emiliauh/yaemipaste` |
 | `VITE_MAX_EXPIRY_DAYS` | Max expiry day option shown in UI | `14` |
