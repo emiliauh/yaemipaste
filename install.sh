@@ -618,7 +618,7 @@ stack_install_or_update() {
   ui_port="$(env_get UI_PORT "$DEFAULT_UI_PORT")"
   probe_host="127.0.0.1"
   wait_for_http "http://${probe_host}:${ui_port}/" "UI endpoint" '^200$' 60 2 || die "UI endpoint failed readiness check."
-  wait_for_http "http://${probe_host}:${ui_port}/auth/sharex" "Auth endpoint" '^(200|401)$' 30 2 || die "Auth endpoint failed readiness check."
+  wait_for_http "http://${probe_host}:${ui_port}/auth/sharex" "Auth endpoint" '^(200|400|401)$' 30 2 || die "Auth endpoint failed readiness check."
   wait_for_http "http://${probe_host}:${ui_port}/api/" "Paste endpoint" '^(200|400|401|405)$' 30 2 || die "Paste endpoint failed readiness check."
   success "Yaemipaste install/update completed."
 }
