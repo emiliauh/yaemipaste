@@ -100,11 +100,16 @@ function getRuntimeOrigin(): string | null {
 
 function shouldIgnoreStoredApiBase(value: string): boolean {
   if (!value.trim() || value.startsWith('/')) return false
-  if (!DEFAULT_PASTE_API.startsWith('/')) return false
   const runtimeOrigin = getRuntimeOrigin()
   if (!runtimeOrigin) return false
   try {
-    return new URL(value).origin !== runtimeOrigin
+    const configured = new URL(value)
+    const normalized = normalizeApiBase(configured.toString())
+    const sameOriginRoot = normalizeApiBase(configured.origin)
+    if (normalized === sameOriginRoot) return true
+    if (configured.origin === runtimeOrigin && /^\/auth\/?$/i.test(configured.pathname)) return true
+    if (!DEFAULT_PASTE_API.startsWith('/')) return false
+    return configured.origin !== runtimeOrigin
   } catch {
     return false
   }
@@ -144,6 +149,27 @@ export function setPasteApiBase(value: string) {
 export function resetPasteApiBase() {
   if (typeof localStorage === 'undefined') return
   localStorage.removeItem(API_BASE_KEY)
+}
+
+function currentStoredPasteApiBase(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  const configured = localStorage.getItem(API_BASE_KEY)?.trim() ?? ''
+  return configured || null
+}
+
+function shouldRetryUploadWithDefault(error: unknown): boolean {
+  const configured = currentStoredPasteApiBase()
+  if (!configured) return false
+  const normalized = normalizeApiBase(configured)
+  if (!normalized || normalized === DEFAULT_PASTE_API) return false
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('unexpected json')
+    || message.includes('upload failed')
+    || message.includes('invalid file url')
+    || message.includes('empty response')
+  )
 }
 
 interface AuthSessionResponse {
@@ -748,24 +774,36 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
   form.append('file', uploadFileValue)
   const headers: Record<string, string> = tokenHeader()
   if (expiry) headers.expire = expiry
-  const uploadTarget = extractUploadTarget(await uploadForm(form, headers, onProgress))
-  const fileName = fileNameFromUrl(uploadTarget)
-  if (!fileName || fileName.includes('{') || fileName.includes('}') || fileName.includes('"')) {
-    throw new Error('Upload endpoint returned an invalid file URL')
+  let retriedWithDefault = false
+  while (true) {
+    try {
+      const uploadTarget = extractUploadTarget(await uploadForm(form, headers, onProgress))
+      const fileName = fileNameFromUrl(uploadTarget)
+      if (!fileName || fileName.includes('{') || fileName.includes('}') || fileName.includes('"')) {
+        throw new Error('Upload endpoint returned an invalid file URL')
+      }
+      const origin = publicSiteOrigin(originFromUrl(uploadTarget))
+      rememberResolvedFileName(fileName)
+      if (encryptedSalt && encryptedMetadata) {
+        rememberEncryptedFile(fileName, `pw:${encryptedSalt}`, encryptedMetadata, origin)
+      } else if (encryptedKey && encryptedMetadata) {
+        rememberEncryptedFile(fileName, encryptedKey, encryptedMetadata, origin)
+      } else {
+        forgetEncryptedFile(fileName)
+      }
+      onProgress?.({ phase: 'complete', percent: 100 })
+      if (encryptedSalt) return { fileName, url: passwordEncryptedShareUrl(fileName, encryptedSalt, origin) }
+      if (encryptedKey) return { fileName, url: encryptedShareUrl(fileName, encryptedKey, origin) }
+      return { fileName, url: publicPreviewUrl(fileName, origin) }
+    } catch (error) {
+      if (!retriedWithDefault && shouldRetryUploadWithDefault(error)) {
+        resetPasteApiBase()
+        retriedWithDefault = true
+        continue
+      }
+      throw error
+    }
   }
-  const origin = publicSiteOrigin(originFromUrl(uploadTarget))
-  rememberResolvedFileName(fileName)
-  if (encryptedSalt && encryptedMetadata) {
-    rememberEncryptedFile(fileName, `pw:${encryptedSalt}`, encryptedMetadata, origin)
-  } else if (encryptedKey && encryptedMetadata) {
-    rememberEncryptedFile(fileName, encryptedKey, encryptedMetadata, origin)
-  } else {
-    forgetEncryptedFile(fileName)
-  }
-  onProgress?.({ phase: 'complete', percent: 100 })
-  if (encryptedSalt) return { fileName, url: passwordEncryptedShareUrl(fileName, encryptedSalt, origin) }
-  if (encryptedKey) return { fileName, url: encryptedShareUrl(fileName, encryptedKey, origin) }
-  return { fileName, url: publicPreviewUrl(fileName, origin) }
 }
 
 export async function uploadText(text: string, options: UploadOptions = {}): Promise<UploadResult> {

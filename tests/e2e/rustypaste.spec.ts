@@ -1302,6 +1302,41 @@ test('production resets stale absolute API override back to the deployment defau
     .toBeNull()
 })
 
+test('upload retries with deployment default after a bad relative API override', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('rp_token', 'demo-token')
+    localStorage.setItem('rp_api_base', '/api-bad')
+  })
+
+  await page.route('**/api-bad/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'ok', message: 'rustypaste api root' }),
+    })
+  })
+
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `${APP_ORIGIN}/file/retry-ok/preview`,
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'retry-upload.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('retry me'),
+  })
+
+  await expect(page.getByTestId('share-row')).toContainText('/file/retry-ok/preview')
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('rp_api_base')))
+    .toBeNull()
+})
+
 test('history copy includes decryption key for encrypted files', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
