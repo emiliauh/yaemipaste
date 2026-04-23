@@ -568,8 +568,12 @@ export async function getShareXConfig(): Promise<Blob> {
   // Override URL to return the frontend preview link instead of the raw API URL.
   // ShareX parser treats the first `|` as the regex capture delimiter, and strips
   // backslashes before passing to .NET — so use NO backslash sequences at all.
-  // [.] = literal dot, [A-Za-z0-9]+ = extension chars, [^A-Za-z0-9]*$ = strip trailing junk.
-  parsed.URL = `${publicSiteOrigin()}/file/{regex:([A-Za-z0-9_-]+)(?:[.][A-Za-z0-9]+)?[^A-Za-z0-9]*$|1}/preview`
+  // This pattern must handle:
+  // - legacy plain filenames / URLs: `hash.ext`, `hash.tar.gz`
+  // - short public paths: `hash/file.ext`, `hash/file.tar.gz`
+  // - already-public preview paths: `file/hash/preview`
+  // - optional query strings / fragments and trailing newlines
+  parsed.URL = `${publicSiteOrigin()}/file/{regex:^(?:https?://[^/]+)?/?(?:file/)?([A-Za-z0-9_-]+)(?:(?:/(?:preview|raw|download))|(?:/file(?:[.][A-Za-z0-9]+)*)|(?:[.][A-Za-z0-9]+)*)?(?:[?#].*)?[^A-Za-z0-9]*$|1}/preview`
 
   const uploaderLabel = `${await uploaderIdentity()} (ShareX)`
   const replaceUploaderSyntax = (value: string): string => value
