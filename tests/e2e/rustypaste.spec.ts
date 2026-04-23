@@ -981,10 +981,10 @@ test('sharex config extracts ids from newline-terminated public upload responses
   await download.saveAs(downloadPath)
   const generated = await readFile(downloadPath, 'utf8')
   const parsed = JSON.parse(generated) as Record<string, any>
-  const uploadResponseMatcher = /^(?:https?:\/\/[^/]+)?\/?(?:file\/)?([A-Za-z0-9_-]+)(?:(?:\/(?:preview|raw|download))|(?:\/file(?:[.][A-Za-z0-9]+)*)|(?:[.][A-Za-z0-9]+)*)?(?:[?#].*)?[^A-Za-z0-9]*$/
+  const uploadResponseMatcher = /^(?:https?:\/\/[^/]+\/)?(?:file\/)?([A-Za-z0-9_-]+)/
   expect(parsed.URL).toMatch(/^https?:\/\/[^/]+\/file\//)
-  expect(parsed.URL).toContain('{regex:^(?:https?://[^/]+)?/?(?:file/)?([A-Za-z0-9_-]+)')
-  expect(parsed.URL).toContain('|1}/preview')
+  expect(parsed.URL).toContain('{regex:^(?:https?://[^/]+/)?(?:file/)?([A-Za-z0-9_-]+)|1}/preview')
+  expect((parsed.URL.match(/\|/g) ?? []).length).toBe(1)
   expect('https://paste.yaemi.one/AbCd1234/file.png\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
   expect('https://paste.yaemi.one/AbCd1234/file.tar.gz\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
   expect('https://paste.yaemi.one/file/AbCd1234/preview?from=sharex\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
@@ -1021,10 +1021,10 @@ test('sharex config extracts the hash from short public file paths', async ({ pa
   const parsed = JSON.parse(generated) as Record<string, any>
   const template = parsed.URL as string
   const match = 'https://paste.yaemi.one/AbCd1234/file.png'.match(
-    /^(?:https?:\/\/[^/]+)?\/?(?:file\/)?([A-Za-z0-9_-]+)(?:(?:\/(?:preview|raw|download))|(?:\/file(?:[.][A-Za-z0-9]+)*)|(?:[.][A-Za-z0-9]+)*)?(?:[?#].*)?[^A-Za-z0-9]*$/,
+    /^(?:https?:\/\/[^/]+\/)?(?:file\/)?([A-Za-z0-9_-]+)/,
   )
   expect(match?.[1]).toBe('AbCd1234')
-  expect(template).toContain('{regex:^(?:https?://[^/]+)?/?(?:file/)?([A-Za-z0-9_-]+)')
+  expect(template).toContain('{regex:^(?:https?://[^/]+/)?(?:file/)?([A-Za-z0-9_-]+)|1}/preview')
 })
 
 test('executable preview does not auto-fetch raw content and shows no-preview state', async ({ page }) => {
