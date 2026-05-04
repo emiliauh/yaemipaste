@@ -449,14 +449,14 @@ for (const viewport of [
     await signInWithToken(page)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto('/#/files')
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('encrypt?')
-    await expect(page.getByTestId('keep-name-toggle')).toContainText('keep file name?')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encryption off')
+    await expect(page.getByTestId('keep-name-toggle')).toContainText('Keep original name')
     await page.getByTestId('encrypt-toggle').click()
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encrypt')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encrypted link')
     await page.getByTestId('encrypt-toggle').click()
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('Password encrypt')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Password protected')
     await page.getByTestId('encrypt-toggle').click()
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('encrypt?')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encryption off')
   })
 }
 
@@ -476,25 +476,163 @@ test('files password field toggles visibility in password-encrypt mode', async (
 
 test('theme controls persist explicit choices and system mode follows the OS preference', async ({ page }) => {
   await signInWithToken(page)
+  await page.setViewportSize({ width: 1280, height: 720 })
   await page.emulateMedia({ colorScheme: 'dark' })
 
   await page.goto('/#/files')
-  await expect(page.getByTestId('theme-system')).toHaveAttribute('aria-pressed', 'true')
+  const themeSystem = page.getByTestId('theme-system').filter({ visible: true })
+  const themeLight = page.getByTestId('theme-light').filter({ visible: true })
+  await expect(themeSystem).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
-  await page.getByTestId('theme-light').click()
+  await themeLight.click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_theme_mode'))).toBe('light')
 
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expect(page.getByTestId('theme-light')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByTestId('theme-light').filter({ visible: true })).toHaveAttribute('aria-pressed', 'true')
 
-  await page.getByTestId('theme-system').click()
+  await page.getByTestId('theme-system').filter({ visible: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_theme_mode'))).toBe('system')
+})
+
+test('mobile dashboard navigation keeps destinations and utilities unified', async ({ page }) => {
+  await signInWithToken(page)
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  })
+
+  await page.goto('/#/files')
+
+  const tabbarBox = await page.locator('.mobile-tabbar').boundingBox()
+  const tabbarMainBox = await page.locator('.mobile-tabbar-main').boundingBox()
+  const settingsBox = await page.getByTestId('mobile-nav-settings').boundingBox()
+  const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }))
+
+  await expect(page.locator('.mobile-shell')).toHaveCount(0)
+  await expect(page.getByTestId('theme-switch-mobile')).toHaveCount(0)
+  await expect(page.getByTestId('mobile-menu-toggle')).toHaveCount(0)
+  await expect(page.getByTestId('mobile-menu-layer')).toHaveCount(0)
+  expect(tabbarBox).not.toBeNull()
+  expect(tabbarMainBox).not.toBeNull()
+  expect(settingsBox).not.toBeNull()
+  if (!tabbarBox || !tabbarMainBox || !settingsBox) return
+
+  expect(tabbarBox.y).toBeGreaterThan(viewport.height - 90)
+  expect(tabbarBox.x).toBeGreaterThanOrEqual(10)
+  expect(tabbarBox.x + tabbarBox.width).toBeLessThanOrEqual(viewport.width - 10)
+  expect(settingsBox.x).toBeGreaterThanOrEqual(tabbarMainBox.x + tabbarMainBox.width + 8)
+
+  await page.getByTestId('mobile-nav-history').click()
+  await expect(page.getByTestId('mobile-nav-history')).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('.history-tab .state-msg')).toContainText('No files.')
+
+  await page.getByTestId('mobile-nav-files').click()
+  await expect(page.getByTestId('mobile-nav-files')).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('.files-tab')).toBeVisible()
+
+  await page.getByTestId('mobile-nav-settings').click()
+  await expect(page.getByTestId('settings-layer')).toBeVisible()
+  await expect(page.getByTestId('theme-switch-settings')).toBeVisible()
+  const panelBox = await page.locator('.settings-panel').boundingBox()
+  const openTabbarBox = await page.locator('.mobile-tabbar').boundingBox()
+  expect(panelBox).not.toBeNull()
+  expect(openTabbarBox).not.toBeNull()
+  if (panelBox && openTabbarBox) expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(openTabbarBox.y - 8)
+  await page.getByTestId('theme-light').filter({ visible: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+})
+
+for (const viewport of [
+  { name: 'desktop', width: 1280, height: 720 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'mobile', width: 390, height: 844 },
+]) {
+  test(`navigation and settings animation work on ${viewport.name}`, async ({ page }) => {
+    await signInWithToken(page)
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.route('**/api/list', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+    })
+
+    await page.goto('/#/files')
+
+    if (viewport.width <= 600) {
+      await expect(page.locator('.mobile-shell')).toHaveCount(0)
+      await expect(page.getByTestId('theme-switch-mobile')).toHaveCount(0)
+      await expect(page.getByTestId('mobile-menu-toggle')).toHaveCount(0)
+      await expect(page.getByTestId('mobile-menu-layer')).toHaveCount(0)
+      await page.getByTestId('mobile-nav-history').click()
+      await expect(page.getByTestId('mobile-nav-history')).toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('.history-tab')).toBeVisible()
+      await page.getByTestId('mobile-nav-files').click()
+      await expect(page.getByTestId('mobile-nav-files')).toHaveAttribute('aria-current', 'page')
+    } else {
+      await page.getByTestId('desktop-nav-history').click()
+      await expect(page.locator('.history-tab')).toBeVisible()
+      await page.getByTestId('desktop-nav-files').click()
+      await expect(page.locator('.files-tab')).toBeVisible()
+    }
+
+    if (viewport.width <= 600) await page.getByTestId('mobile-nav-settings').click()
+    else await page.getByTestId('desktop-settings-edge').click()
+    const layer = page.getByTestId('settings-layer')
+    await expect(layer).toBeVisible()
+    await expect(page.locator('.settings-panel')).toBeVisible()
+    await expect(page.locator('.settings-panel')).toHaveCSS('opacity', '1')
+    if (viewport.width <= 600) await expect(page.getByTestId('theme-switch-settings')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(layer).toBeHidden()
+  })
+}
+
+test('desktop sidebar collapses from the brand and keeps compact utilities available', async ({ page }) => {
+  await signInWithToken(page)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.route('**/api/list', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  })
+
+  await page.goto('/#/files')
+
+  const layout = page.locator('.layout')
+  await expect(layout).not.toHaveClass(/sidebar-collapsed/)
+  await expect(page.getByTestId('theme-switch')).toBeVisible()
+  const expandedSettingsBox = await page.getByTestId('desktop-settings-edge').boundingBox()
+  expect(expandedSettingsBox).not.toBeNull()
+  if (!expandedSettingsBox) return
+  expect(expandedSettingsBox.x).toBeGreaterThan(228)
+
+  await page.getByTestId('sidebar-brand-toggle').click()
+  await expect(layout).toHaveClass(/sidebar-collapsed/)
+  await expect(page.getByTestId('theme-switch')).toBeHidden()
+  await expect(page.getByTestId('collapsed-theme-toggle')).toBeVisible()
+  await expect(page.getByTestId('desktop-settings-edge')).toBeVisible()
+  await expect.poll(async () => (await page.getByTestId('desktop-settings-edge').boundingBox())?.x ?? 9999).toBeLessThan(expandedSettingsBox.x)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('yp_sidebar_collapsed'))).toBe('1')
+
+  await page.getByTestId('desktop-nav-history').click()
+  await expect(page.locator('.history-tab')).toBeVisible()
+  await page.getByTestId('collapsed-theme-toggle').click()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_theme_mode'))).toMatch(/^(light|dark)$/)
+  await page.getByTestId('desktop-settings-edge').click()
+  await expect(page.getByTestId('settings-layer')).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByTestId('settings-layer')).toBeHidden()
+  await page.reload()
+  await expect(layout).toHaveClass(/sidebar-collapsed/)
+
+  await page.getByTestId('sidebar-brand-toggle').click()
+  await expect(layout).not.toHaveClass(/sidebar-collapsed/)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('yp_sidebar_collapsed'))).toBe('0')
+  await page.reload()
+  await expect(layout).not.toHaveClass(/sidebar-collapsed/)
 })
 
 for (const viewport of [
@@ -727,6 +865,83 @@ test('public preview page shows metadata and download action', async ({ page }) 
     'href',
     /\/file\/[A-Za-z0-9_-]+\/download$/,
   )
+})
+
+test('public preview resolves token through compatibility resolver', async ({ page }) => {
+  const apiResolveRequests: string[] = []
+  const fallbackResolveRequests: string[] = []
+  await page.route('**/api/resolve/fallback-token**', async (route) => {
+    apiResolveRequests.push(route.request().url())
+    await route.fulfill({ status: 404, contentType: 'text/plain', body: 'file is not found or expired :(' })
+  })
+  await page.route('**/resolve/fallback-token**', async (route) => {
+    fallbackResolveRequests.push(route.request().url())
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ file_name: 'fallback-token.gif', raw_path: '/fallback-token/file.gif', uploader: 'resolved-owner' }),
+    })
+  })
+  await page.route('**/api/meta/fallback-token.gif', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'fallback-token.gif',
+        display_name: 'milan.gif',
+        uploader: 'resolved-owner',
+        upload_date_utc: '2026-04-25 01:19:58',
+        download_name: 'milan.gif',
+        file_size: 10038619,
+        mime_type: 'image/gif',
+      }),
+    })
+  })
+
+  await page.goto('/file/fallback-token/preview')
+  await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
+  await expect(page.getByText('milan.gif')).toBeVisible()
+  await expect(page.locator('.preview-frame img')).toBeVisible()
+  await expect(page.getByText('File not found or expired')).toHaveCount(0)
+  expect(fallbackResolveRequests).toHaveLength(1)
+  expect(new URL(fallbackResolveRequests[0]).searchParams.has('cb')).toBeTruthy()
+  expect(apiResolveRequests).toHaveLength(0)
+})
+
+test('public preview keeps not-found state when all resolvers miss', async ({ page }) => {
+  await page.route('**/api/resolve/deleted-token**', async (route) => {
+    await route.fulfill({ status: 404, contentType: 'text/plain', body: 'file is not found or expired :(' })
+  })
+  await page.route('**/resolve/deleted-token**', async (route) => {
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not_found' }) })
+  })
+
+  await page.goto('/file/deleted-token/preview')
+  await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
+  await expect(page.getByText('File not found or expired')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Download file' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'View raw' })).toHaveCount(0)
+})
+
+test('public preview does not fallback past resolver authorization failure', async ({ page }) => {
+  let fallbackRequested = false
+  await page.route('**/resolve/private-token**', async (route) => {
+    await route.fulfill({ status: 403, contentType: 'text/plain', body: 'Private file' })
+  })
+  await page.route('**/api/resolve/private-token**', async (route) => {
+    fallbackRequested = true
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ file_name: 'private-token.txt' }),
+    })
+  })
+
+  await page.goto('/file/private-token/preview')
+  await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
+  await expect(page.getByText('Private file')).toBeVisible()
+  await expect(page.getByText('File not found or expired')).toHaveCount(0)
+  expect(fallbackRequested).toBeFalsy()
 })
 
 test('public preview falls back owner to logged-in username when uploader is unknown token user', async ({ page }) => {
@@ -1341,6 +1556,7 @@ test('production resets stale absolute API override back to the deployment defau
 test('upload retries with deployment default after a bad relative API override', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('rp_token', 'demo-token')
+    localStorage.setItem('rp_username', 'demo-user')
     localStorage.setItem('rp_api_base', '/api-bad')
   })
 

@@ -21,7 +21,7 @@ const PUBLIC_SITE_ORIGIN = (import.meta.env.VITE_PUBLIC_SITE_ORIGIN ?? '').trim(
 const TOKEN_OWNER_PATH = (import.meta.env.VITE_TOKEN_OWNER_PATH ?? '/api/token-owner').trim()
 const FILE_RESOLVE_BASE = (() => {
   const configured = import.meta.env.VITE_FILE_RESOLVE_BASE
-  if (typeof configured !== 'string') return '/api/resolve'
+  if (typeof configured !== 'string') return '/resolve'
   return configured.trim().replace(/\/$/, '')
 })()
 const API_BASE_KEY = 'rp_api_base'
@@ -1039,12 +1039,19 @@ export interface ResolvedFileLookup {
   uploader: string | null
 }
 
-function fileResolveUrl(token: string, origin = publicSiteOrigin()): string {
-  if (!FILE_RESOLVE_BASE) throw new Error('Public file-token resolution is disabled for this deployment')
+function fileResolveUrls(token: string, origin = publicSiteOrigin()): string[] {
+  const bases = [
+    FILE_RESOLVE_BASE,
+    '/resolve',
+    '/api/resolve',
+  ].filter((base, index, all): base is string => !!base && all.indexOf(base) === index)
+  if (bases.length === 0) throw new Error('Public file-token resolution is disabled for this deployment')
   const cleanToken = decodeFileToken(token)
   const cacheBuster = `cb=${Date.now().toString(36)}`
-  if (/^https?:\/\//i.test(FILE_RESOLVE_BASE)) return `${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}?${cacheBuster}`
-  return `${publicSiteOrigin(origin)}${FILE_RESOLVE_BASE}/${encodeURIComponent(cleanToken)}?${cacheBuster}`
+  return bases.map((base) => {
+    if (/^https?:\/\//i.test(base)) return `${base}/${encodeURIComponent(cleanToken)}?${cacheBuster}`
+    return `${publicSiteOrigin(origin)}${base}/${encodeURIComponent(cleanToken)}?${cacheBuster}`
+  })
 }
 
 function normalizeResolvedUploader(value: unknown): string | null {
@@ -1064,19 +1071,32 @@ export async function resolveFileLookup(tokenOrFileName: string, origin = public
     throw new Error('This file link needs resolver support, but resolver fallback is disabled on this deployment')
   }
 
-  let response: Response
-  try {
-    response = await fetch(fileResolveUrl(decoded, origin), { cache: 'no-store' })
-  } catch {
-    throw new Error('Could not resolve the file URL')
+  let lastError = 'Could not resolve the file URL'
+  let sawNotFound = false
+  for (const url of fileResolveUrls(decoded, origin)) {
+    let response: Response
+    try {
+      response = await fetch(url, { cache: 'no-store' })
+    } catch {
+      continue
+    }
+    if (!response.ok) {
+      if (response.status === 404) {
+        sawNotFound = true
+        continue
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(await responseDetail(response, 'Could not resolve the file URL'))
+      }
+      lastError = await responseDetail(response, 'Could not resolve the file URL')
+      continue
+    }
+    const payload = await readJson<{ file_name?: string; uploader?: unknown; owner?: unknown }>(response, 'Could not resolve the file URL')
+    if (!payload.file_name || typeof payload.file_name !== 'string') throw new Error('Could not resolve the file URL')
+    const uploader = normalizeResolvedUploader(payload.uploader) ?? normalizeResolvedUploader(payload.owner)
+    return { fileName: payload.file_name, uploader }
   }
-  if (!response.ok) {
-    throw new Error(response.status === 404 ? 'File not found or expired' : await responseDetail(response, 'Could not resolve the file URL'))
-  }
-  const payload = await readJson<{ file_name?: string; uploader?: unknown; owner?: unknown }>(response, 'Could not resolve the file URL')
-  if (!payload.file_name || typeof payload.file_name !== 'string') throw new Error('Could not resolve the file URL')
-  const uploader = normalizeResolvedUploader(payload.uploader) ?? normalizeResolvedUploader(payload.owner)
-  return { fileName: payload.file_name, uploader }
+  throw new Error(sawNotFound ? 'File not found or expired' : lastError)
 }
 
 export async function resolveFileName(tokenOrFileName: string, origin = publicSiteOrigin()): Promise<string> {

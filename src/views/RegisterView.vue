@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { authRegister, authLogin } from '../lib/api'
+import { authRegister } from '../lib/api'
 import { isAuthEnabled } from '../lib/features'
 
 const router = useRouter()
@@ -45,10 +45,9 @@ async function submit() {
   }
   loading.value = true
   try {
-    await authRegister(username.value.trim(), password.value, token.value.trim())
-    // Auto-login after register
-    await authLogin(username.value.trim(), password.value)
-    router.push('/files')
+    const nextUsername = username.value.trim()
+    await authRegister(nextUsername, password.value, token.value.trim())
+    router.push({ path: '/login', query: { registered: '1', username: nextUsername } })
   } catch (e: any) {
     const message = e.message ?? 'Registration failed'
     if (message.toLowerCase().includes('token already')) {
@@ -67,7 +66,10 @@ async function submit() {
   <div class="page">
     <div class="center" data-testid="register-center">
       <div class="card register-card">
-        <h2 style="font-size:14px; font-weight:normal; margin-bottom:16px; color:var(--text)">Create Account</h2>
+        <div class="register-heading">
+          <p>yaemipaste</p>
+          <h1>Create account</h1>
+        </div>
 
         <form @submit.prevent="submit">
           <div class="field">
@@ -110,15 +112,14 @@ async function submit() {
 
 <style scoped>
 .page {
-  height: 100dvh;
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 26px 16px;
 }
 .center {
-  width: min(420px, 100%);
+  width: min(440px, 100%);
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -126,8 +127,23 @@ async function submit() {
 .register-card {
   width: 100%;
 }
-.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-.field label { color: var(--text); font-size: 12px; }
+.register-heading {
+  margin-bottom: 18px;
+}
+.register-heading p {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.register-heading h1 {
+  color: var(--text);
+  font-size: clamp(27px, 8vw, 36px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
+.field label { color: var(--text); font-size: 12px; font-weight: 600; }
 .field-hint { color: var(--text3); font-size: 11px; }
 .field input { width: 100%; }
 .form-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
@@ -152,7 +168,7 @@ async function submit() {
   border-color: var(--text3);
   color: var(--text);
 }
-.link { color: var(--text2); font-size: 12px; text-decoration: none; }
+.link { color: var(--text2); font-size: 12px; font-weight: 600; text-decoration: none; }
 .link:hover { color: var(--text); }
 
 @media (max-width: 420px) {

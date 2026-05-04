@@ -143,7 +143,7 @@ function dismiss(id: number) {
   .notification-stack {
     left: 10px;
     right: 10px;
-    bottom: 58px;
+    bottom: 128px;
   }
   .notification-stack-row {
     grid-template-columns: auto minmax(0, 1fr) auto;

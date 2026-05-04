@@ -232,71 +232,70 @@ function onPasteAreaLongPressCancel() {
   <div class="files-tab">
     <ExpirySelector :model-value="expiry" @update:model-value="setExpiry" />
 
-    <div class="security-strip">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <rect x="4" y="10" width="16" height="10" rx="2"/>
-        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
-      </svg>
-      <div>
-        <div class="security-title">Upload security</div>
-        <div class="security-copy">
-          <template v-if="!browserEncryptionReady">Browser encryption is unavailable here. Use HTTPS or localhost to enable encrypted uploads.</template>
-          <template v-else-if="encryptMode === 'password'">Password mode: only someone with the password can view this file.</template>
-          <template v-else-if="encryptMode === 'encrypt'">Strong mode: encrypted in your browser before upload.</template>
-          <template v-else>Default mode: fast upload with clean short links.</template>
+    <section class="upload-panel" aria-label="Upload controls">
+      <div class="upload-panel-head">
+        <div>
+          <h1>Share a file or paste</h1>
+          <p>
+            <template v-if="!browserEncryptionReady">Use HTTPS or localhost to enable browser encryption.</template>
+            <template v-else-if="encryptMode === 'password'">Password-protected before upload.</template>
+            <template v-else-if="encryptMode === 'encrypt'">Encrypted in this browser before upload.</template>
+            <template v-else>Public short link, ready to copy.</template>
+          </p>
         </div>
       </div>
-    </div>
-    <div class="upload-options">
-      <button
-        type="button"
-        class="encrypt-toggle encrypt-btn"
-        :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
-        data-testid="encrypt-toggle"
-        :disabled="!browserEncryptionReady"
-        :title="browserEncryptionReady ? 'Cycle encryption mode' : 'Browser encryption requires HTTPS or localhost.'"
-        @click="cycleEncrypt"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
-        <span>{{ encryptMode === 'none' ? 'encrypt?' : encryptMode === 'encrypt' ? 'Encrypt' : 'Password encrypt' }}</span>
-      </button>
-      <Transition name="pw-field">
-        <div v-if="encryptMode === 'password'" class="password-wrap">
-          <input
-            v-model="encryptPassword"
-            :type="showEncryptPassword ? 'text' : 'password'"
-            class="pw-input"
-            placeholder="set password…"
-            autocomplete="new-password"
-          />
-          <button
-            type="button"
-            class="password-toggle"
-            :aria-label="showEncryptPassword ? 'Hide password' : 'Show password'"
-            :title="showEncryptPassword ? 'Hide password' : 'Show password'"
-            @click="showEncryptPassword = !showEncryptPassword"
-          >
-            <svg v-if="showEncryptPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M3 3l18 18"/>
-              <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
-              <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
-              <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
-            </svg>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-        </div>
-      </Transition>
-      <label class="encrypt-toggle" data-testid="keep-name-toggle">
-        <input v-model="keepFileName" type="checkbox" />
-        <span>keep file name?</span>
-      </label>
-    </div>
+
+      <div class="upload-options">
+        <button
+          type="button"
+          class="encrypt-toggle encrypt-btn"
+          :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
+          data-testid="encrypt-toggle"
+          :disabled="!browserEncryptionReady"
+          :title="browserEncryptionReady ? 'Cycle encryption mode' : 'Browser encryption requires HTTPS or localhost.'"
+          @click="cycleEncrypt"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>{{ encryptMode === 'none' ? 'Encryption off' : encryptMode === 'encrypt' ? 'Encrypted link' : 'Password protected' }}</span>
+        </button>
+        <Transition name="pw-field">
+          <div v-if="encryptMode === 'password'" class="password-wrap">
+            <input
+              v-model="encryptPassword"
+              :type="showEncryptPassword ? 'text' : 'password'"
+              class="pw-input"
+              placeholder="Set password"
+              autocomplete="new-password"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              :aria-label="showEncryptPassword ? 'Hide password' : 'Show password'"
+              :title="showEncryptPassword ? 'Hide password' : 'Show password'"
+              @click="showEncryptPassword = !showEncryptPassword"
+            >
+              <svg v-if="showEncryptPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M3 3l18 18"/>
+                <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
+                <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
+              </svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </Transition>
+        <label class="name-toggle" data-testid="keep-name-toggle">
+          <input v-model="keepFileName" type="checkbox" />
+          <span>Keep original name</span>
+        </label>
+      </div>
+    </section>
 
     <!-- Drop zone -->
     <div
@@ -312,7 +311,8 @@ function onPasteAreaLongPressCancel() {
         <line x1="12" y1="12" x2="12" y2="21"/>
         <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
       </svg>
-      <div>drag &amp; drop or click to upload files</div>
+      <div class="upload-zone-title">Drop files here</div>
+      <p>or click to choose from your device</p>
       <input ref="fileInput" type="file" multiple style="display:none" @change="onFileChange" />
     </div>
 
@@ -327,18 +327,18 @@ function onPasteAreaLongPressCancel() {
       @pointerleave="onPasteAreaLongPressCancel"
       @contextmenu.prevent
     >
-      <span style="color:var(--text3); font-size:12px">{{ longPressing ? 'Release to paste' : 'Long-press here to paste' }}</span>
+      <span>{{ longPressing ? 'Release to paste' : 'Long-press to paste from clipboard' }}</span>
     </div>
 
-    <div class="divider">— or — paste text directly</div>
+    <div class="divider">Paste text directly</div>
 
     <!-- Text area -->
     <textarea
       v-model="textPaste"
       data-testid="text-paste"
       rows="6"
-      placeholder="Paste your text here..."
-      style="width:100%; resize:vertical"
+      placeholder="Paste text, logs, notes, or snippets..."
+      class="text-paste-input"
     />
 
     <div class="text-actions-row">
@@ -385,49 +385,95 @@ function onPasteAreaLongPressCancel() {
 </template>
 
 <style scoped>
-.files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 18px; }
-.security-strip {
+.files-tab {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding-bottom: 18px;
+}
+.files-tab > :first-child,
+.upload-panel,
+.upload-options,
+.upload-zone,
+.paste-area,
+.divider,
+textarea,
+.text-actions-row,
+.upload-progress,
+.share-result {
+  grid-column: 1 / -1;
+}
+.upload-panel {
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: linear-gradient(90deg, var(--bg1), var(--subtle-grad-end));
-  color: var(--text2);
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 97%, var(--accent-soft));
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  box-shadow:
+    0 16px 38px color-mix(in srgb, var(--shadow) 18%, transparent),
+    0 1px 0 color-mix(in srgb, var(--text) 7%, transparent) inset;
 }
-.security-strip svg {
-  color: var(--accent);
-  flex-shrink: 0;
-  margin-top: 2px;
+.upload-panel::after { display: none; }
+.upload-panel-head {
+  display: block;
+  max-width: 620px;
 }
-.security-title {
+.upload-panel h1 {
   color: var(--text);
-  font-size: 12px;
+  font-size: clamp(25px, 4vw, 34px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-wrap: balance;
 }
-.security-copy {
+.upload-panel p {
+  margin-top: 9px;
   color: var(--text3);
-  font-size: 11px;
+  font-size: 13px;
+  max-width: 54ch;
+}
+.name-toggle {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface2) 88%, transparent);
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+}
+.name-toggle:hover {
+  border-color: var(--border2);
+  color: var(--text);
 }
 .upload-options {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 .encrypt-toggle {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg1);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface2) 88%, transparent);
   display: inline-flex;
   align-items: center;
   gap: 9px;
-   min-height: 36px;
-   padding: 0 10px;
-   color: var(--text2);
-   font-size: 12px;
-   width: fit-content;
-   box-sizing: border-box;
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+  width: fit-content;
+  box-sizing: border-box;
 }
 .encrypt-btn {
   cursor: pointer;
@@ -437,7 +483,11 @@ function onPasteAreaLongPressCancel() {
   cursor: not-allowed;
   opacity: 0.6;
 }
-.encrypt-btn:hover { border-color: var(--text3); }
+.encrypt-btn:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border2));
+  color: var(--text);
+  transform: translateY(-1px);
+}
 .encrypt-btn.active-encrypt {
   border-color: var(--accent);
   color: var(--accent);
@@ -448,32 +498,10 @@ function onPasteAreaLongPressCancel() {
   color: var(--orange-h, #f0963a);
   background: color-mix(in srgb, var(--orange-h, #f0963a) 10%, transparent);
 }
-.encrypt-toggle input {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 1px solid var(--border2);
-  border-radius: 2px;
-  background: var(--bg);
-  display: inline-block;
-  flex-shrink: 0;
-  position: relative;
-}
-.encrypt-toggle input:checked {
-  border-color: var(--accent);
-  background: var(--checked-bg);
-}
-.encrypt-toggle input:checked::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  background: var(--accent);
-  border-radius: 1px;
-}
+.name-toggle input { margin-top: 1px; }
 .pw-input {
    width: 140px;
-   min-height: 36px;
+   min-height: 40px;
    font-size: 12px;
    padding: 0 10px;
    box-sizing: border-box;
@@ -515,23 +543,29 @@ function onPasteAreaLongPressCancel() {
 }
 .share-result {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg1);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 96%, var(--accent-soft));
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 14px;
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--shadow) 16%, transparent);
 }
 .share-label {
   color: var(--text3);
-  font-size: 10px;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
 }
 .share-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
+  padding: 10px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface2) 70%, transparent);
 }
 .share-link-block {
   min-width: 0;
@@ -541,6 +575,7 @@ function onPasteAreaLongPressCancel() {
   display: block;
   color: var(--text3);
   font-size: 11px;
+  font-weight: 600;
   margin-bottom: 3px;
 }
 .share-mode {
@@ -551,7 +586,7 @@ function onPasteAreaLongPressCancel() {
   margin-bottom: 3px;
 }
 .share-result a {
-  color: var(--accent-h);
+  color: var(--accent);
   font-size: 12px;
   overflow-wrap: anywhere;
   text-decoration: none;
@@ -565,14 +600,17 @@ function onPasteAreaLongPressCancel() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 10px;
+  margin-top: 4px;
   gap: 8px;
+}
+.text-actions-row button {
+  scroll-margin-bottom: 300px;
 }
 .upload-progress {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg1);
-  padding: 10px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  padding: 12px 14px;
 }
 .progress-row {
   display: flex;
@@ -582,7 +620,7 @@ function onPasteAreaLongPressCancel() {
   margin-bottom: 7px;
 }
 .progress-track {
-  height: 7px;
+  height: 9px;
   background: var(--bg);
   border: 1px solid var(--border2);
   border-radius: var(--radius);
@@ -591,13 +629,13 @@ function onPasteAreaLongPressCancel() {
 .progress-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, var(--accent), var(--accent-h));
+  background: var(--accent);
   transition: width 0.12s ease;
 }
 .paste-area {
   border: 1px dashed var(--border2);
-  border-radius: var(--radius);
-  padding: 12px 16px;
+  border-radius: 14px;
+  padding: 13px 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -606,23 +644,73 @@ function onPasteAreaLongPressCancel() {
   touch-action: manipulation;
   user-select: none;
   -webkit-touch-callout: none;
+  width: 100%;
+}
+.paste-area span {
+  color: var(--text3);
+  font-size: 12px;
 }
 .paste-area:hover { border-color: var(--text3); }
 .paste-area.pressing {
   border-color: var(--accent);
-  background: var(--bg1);
+  background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
 }
-.divider { text-align: center; color: var(--text3); font-size: 12px; }
+.divider {
+  text-align: left;
+  color: var(--text3);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+textarea[data-testid="text-paste"] {
+  min-height: 180px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border-radius: 14px;
+}
+.text-paste-input {
+  width: 100%;
+  resize: vertical;
+}
 @media (max-width: 600px) {
   .files-tab {
-    padding-bottom: 112px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding-bottom: 260px;
   }
   .text-actions-row {
     align-items: stretch;
     flex-direction: column-reverse;
   }
+  .upload-panel {
+    padding: 18px;
+  }
+  .upload-panel::after {
+    width: 66px;
+    height: 66px;
+    right: 12px;
+    top: 12px;
+  }
+  .upload-panel-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .name-toggle,
+  .encrypt-toggle,
+  .password-wrap,
+  .pw-input {
+    width: 100%;
+  }
+  .upload-options {
+    width: 100%;
+  }
   .text-actions-row button {
     width: 100%;
+  }
+  .text-actions-row button:last-child {
+    width: calc(100% - 96px);
+    margin-right: auto;
   }
   .share-row {
     grid-template-columns: minmax(0, 1fr);
@@ -634,6 +722,7 @@ function onPasteAreaLongPressCancel() {
   }
   .share-result {
     padding: 12px;
+    order: -1;
   }
 }
 </style>

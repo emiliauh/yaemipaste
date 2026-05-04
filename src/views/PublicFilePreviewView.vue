@@ -202,56 +202,68 @@ watch(requestedFileName, () => void load(), { immediate: true })
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 28px 16px;
 }
 
 .preview-card {
-  width: min(820px, 100%);
+  width: min(900px, 100%);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg1);
-  padding: 20px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 97%, var(--accent-soft));
+  padding: 22px;
+  box-shadow:
+    0 18px 44px color-mix(in srgb, var(--shadow) 24%, transparent),
+    0 1px 0 color-mix(in srgb, var(--text) 7%, transparent) inset;
 }
 
 h1 {
-  font-size: 16px;
+  font-size: clamp(24px, 4vw, 32px);
+  line-height: 1.08;
+  letter-spacing: 0;
   color: var(--text);
-  margin-bottom: 14px;
+  margin-bottom: 18px;
+  text-wrap: balance;
 }
 
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .meta-grid > div {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  padding: 9px 10px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  padding: 11px 12px;
 }
 
 .meta-grid span {
   display: block;
   color: var(--text3);
-  font-size: 10px;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
   margin-bottom: 4px;
 }
 
 .meta-grid strong {
   color: var(--text2);
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
 .preview-frame {
-  margin-top: 14px;
+  margin-top: 16px;
   display: flex;
   justify-content: center;
   max-height: 65vh;
+  border-radius: 14px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border: 1px solid var(--border);
 }
 
 .preview-frame img,
@@ -262,18 +274,18 @@ h1 {
 }
 
 .preview-pdf {
-  margin-top: 14px;
+  margin-top: 16px;
   width: 100%;
   min-height: 65vh;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 14px;
   background: var(--bg);
 }
 
 .no-preview {
-  margin-top: 14px;
+  margin-top: 16px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 14px;
   background: var(--bg);
   color: var(--text2);
   padding: 14px;
@@ -284,11 +296,11 @@ h1 {
 }
 
 .text-preview {
-  margin-top: 14px;
+  margin-top: 16px;
   max-height: 45vh;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 14px;
   background: var(--bg);
   color: var(--text2);
   padding: 12px;
@@ -311,18 +323,20 @@ h1 {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .btn-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 5px 12px;
+  min-height: 36px;
+  padding: 7px 13px;
   border-radius: var(--radius);
   font-size: 12px;
+  font-weight: 600;
   text-decoration: none;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 @media (max-width: 620px) {

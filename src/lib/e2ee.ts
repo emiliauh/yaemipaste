@@ -38,7 +38,9 @@ export interface DecryptionResult {
 }
 
 export function supportsBrowserEncryption(): boolean {
-  return typeof window !== 'undefined' && window.isSecureContext && !!window.crypto?.subtle
+  if (!globalThis.crypto?.subtle) return false
+  if (typeof window === 'undefined') return true
+  return window.isSecureContext
 }
 
 function requireBrowserEncryption(): void {

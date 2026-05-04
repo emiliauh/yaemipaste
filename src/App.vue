@@ -18,6 +18,7 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 </script>
 
 <template>
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <router-view />
   <a
     v-if="repoUrl"
@@ -41,28 +42,59 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 <style scoped>
 .github-link {
   position: fixed;
-  left: 14px;
-  bottom: 12px;
+  right: 14px;
+  bottom: 14px;
   width: 32px;
   height: 32px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--accent);
-  background: var(--bg1);
-  box-shadow: 0 2px 10px var(--shadow);
+  background: var(--surface);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow) 38%, transparent);
   z-index: 60;
+  transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
 }
 
 .github-link:hover {
   color: var(--accent-h);
   border-color: var(--accent);
+  background: var(--surface2);
+  transform: translateY(-1px);
 }
 
 .github-link svg {
   width: 16px;
   height: 16px;
+}
+
+@media (max-width: 600px) {
+  .github-link {
+    display: none;
+  }
+}
+
+.skip-link {
+  position: fixed;
+  left: 14px;
+  top: 12px;
+  z-index: 200;
+  transform: translateY(-150%);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 14px 36px var(--shadow);
+  transition: transform 0.2s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
 }
 </style>

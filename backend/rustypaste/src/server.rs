@@ -15,7 +15,7 @@ use actix_web::http::header::{
 };
 use actix_web::http::StatusCode;
 use actix_web::middleware::ErrorHandlers;
-use actix_web::{delete, error, get, post, web, Error, HttpRequest, HttpResponse};
+use actix_web::{delete, error, get, head, post, web, Error, HttpRequest, HttpResponse};
 use actix_web_grants::GrantsMiddleware;
 use awc::Client;
 use byte_unit::{Byte, UnitType};
@@ -493,12 +493,40 @@ async fn serve(
     serve_impl(request, file.to_string(), options, config).await
 }
 
+#[head("/{file}")]
+async fn serve_head(
+    request: HttpRequest,
+    file: web::Path<String>,
+    options: Option<web::Query<ServeOptions>>,
+    config: web::Data<RwLock<Config>>,
+) -> Result<HttpResponse, Error> {
+    serve_impl(request, file.to_string(), options, config).await
+}
+
 /// Serves a file from a short URL path (`/{id}/{name}`).
 ///
 /// The `{name}` segment is cosmetic and used only for extension retention in shared links.
 /// Actual storage continues to use rustypaste's flat file naming.
 #[get("/{id}/{name}")]
 async fn serve_short(
+    request: HttpRequest,
+    path: web::Path<(String, String)>,
+    options: Option<web::Query<ServeOptions>>,
+    config: web::Data<RwLock<Config>>,
+) -> Result<HttpResponse, Error> {
+    let (id, name) = path.into_inner();
+    let resolved_name = if let Some(ext) = name.strip_prefix("file.") {
+        format!("{id}.{ext}")
+    } else if name == "file" {
+        id
+    } else {
+        format!("{id}.{name}")
+    };
+    serve_impl(request, resolved_name, options, config).await
+}
+
+#[head("/{id}/{name}")]
+async fn serve_short_head(
     request: HttpRequest,
     path: web::Path<(String, String)>,
     options: Option<web::Query<ServeOptions>>,
@@ -603,7 +631,22 @@ async fn file_route_redirect(
     path: web::Path<(String, String)>,
     config: web::Data<RwLock<Config>>,
 ) -> Result<HttpResponse, Error> {
-    let (token, mode) = path.into_inner();
+    file_route_redirect_impl(path.into_inner(), config).await
+}
+
+#[head("/file/{token}/{mode}")]
+async fn file_route_redirect_head(
+    path: web::Path<(String, String)>,
+    config: web::Data<RwLock<Config>>,
+) -> Result<HttpResponse, Error> {
+    file_route_redirect_impl(path.into_inner(), config).await
+}
+
+async fn file_route_redirect_impl(
+    path: (String, String),
+    config: web::Data<RwLock<Config>>,
+) -> Result<HttpResponse, Error> {
+    let (token, mode) = path;
     if !matches!(mode.as_str(), "preview" | "raw" | "download") {
         return Err(error::ErrorNotFound("file is not found or expired :(\n"));
     }
@@ -989,8 +1032,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .service(list)
             .service(public_meta)
             .service(file_route_redirect)
+            .service(file_route_redirect_head)
             .service(serve_short)
+            .service(serve_short_head)
             .service(serve)
+            .service(serve_head)
             .service(upload)
             .service(delete)
             .route("", web::head().to(HttpResponse::MethodNotAllowed))
@@ -1701,6 +1747,28 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(response.into_body(), &timestamp).await?;
 
+        let short_head_request = TestRequest::default()
+            .method(actix_web::http::Method::HEAD)
+            .uri("/test_file/file.txt")
+            .to_request();
+        let response = test::call_service(&app, short_head_request).await;
+        assert_eq!(StatusCode::OK, response.status());
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()),
+            Some("text/plain; charset=utf-8"),
+        );
+
+        let token_head_request = TestRequest::default()
+            .method(actix_web::http::Method::HEAD)
+            .uri("/file/test_file/raw")
+            .to_request();
+        let response = test::call_service(&app, token_head_request).await;
+        assert_eq!(StatusCode::FOUND, response.status());
+        assert_eq!(
+            response.headers().get(header::LOCATION).and_then(|v| v.to_str().ok()),
+            Some("/test_file/file.txt"),
+        );
+
         fs::remove_file(file_name)?;
         let serve_request = TestRequest::get()
             .uri(&format!("/{file_name}"))
@@ -1779,6 +1847,7 @@ mod tests {
 
         let file_name = "test_file.txt";
         let header_filename = "fn_from_header.txt";
+        let _ = fs::remove_file(header_filename);
         let timestamp = util::get_system_time()?.as_secs().to_string();
         let response = test::call_service(
             &app,
@@ -1793,7 +1862,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/{header_filename}\n"),
+            &format!("http://localhost:8080{}\n", public_path_from_file_name(header_filename)),
         )
         .await?;
 

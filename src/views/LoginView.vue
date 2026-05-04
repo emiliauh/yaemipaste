@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   authLogin,
   authPasskeyLoginBegin,
@@ -14,6 +14,7 @@ import { credentialToJson, isPasskeySupported, toRequestOptions } from '../lib/p
 import { isAuthEnabled } from '../lib/features'
 
 const router = useRouter()
+const route = useRoute()
 const TURNSTILE_SITE_KEY = (
   import.meta.env.VITE_TURNSTILE_SITE_KEY
   ?? ''
@@ -26,6 +27,7 @@ const username = ref('')
 const password = ref('')
 const token = ref('')
 const error = ref('')
+const status = ref('')
 const loading = ref(false)
 const passkeyLoading = ref(false)
 const rememberMe = ref(getRememberPreference())
@@ -58,6 +60,7 @@ watch(mode, () => {
 
 function setError(message: string, usedToken = false) {
   error.value = message
+  status.value = ''
   tokenUsed.value = usedToken
 }
 
@@ -127,6 +130,12 @@ onMounted(() => {
   restoreHtmlOverflow = document.documentElement.style.overflow
   document.body.style.overflow = 'hidden'
   document.documentElement.style.overflow = 'hidden'
+  if (route.query.registered === '1') {
+    mode.value = 'account'
+    const registeredUsername = typeof route.query.username === 'string' ? route.query.username : ''
+    if (registeredUsername) username.value = registeredUsername
+    status.value = 'Account created. Complete the security check to log in.'
+  }
   void mountTurnstile().catch((e: any) => {
     setError(e?.message ?? 'Security check failed to load')
   })
@@ -139,6 +148,7 @@ onBeforeUnmount(() => {
 
 async function submit() {
   setError('')
+  status.value = ''
   loading.value = true
   try {
     if (mode.value === 'account') {
@@ -199,10 +209,23 @@ async function loginWithPasskey() {
 <template>
   <div class="page">
     <div class="center" data-testid="login-center">
+      <div class="auth-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32">
+            <path d="M8 9.5h16"/>
+            <path d="M8 16h16"/>
+            <path d="M8 22.5h10"/>
+          </svg>
+        </span>
+        <div>
+          <p>yaemipaste</p>
+          <h1>Sign in to your paste workspace</h1>
+        </div>
+      </div>
       <div class="info-box login-info">
         <span class="icon">ⓘ</span>
         <span>
-          Authentication Required<br>
+          Authentication required<br>
           <span style="color:var(--text3)">Sign in with your account, or enter a token directly.</span>
         </span>
       </div>
@@ -266,6 +289,8 @@ async function loginWithPasskey() {
 
           <div v-if="TURNSTILE_SITE_KEY" ref="turnstileContainer" class="turnstile-container"></div>
 
+          <div v-if="status" class="status-msg">{{ status }}</div>
+
           <div v-if="error" class="error-msg">
             <span>{{ error }}</span>
             <button v-if="tokenUsed" type="button" class="inline-link" @click="goToAccountLogin">Do you have an account?</button>
@@ -300,20 +325,60 @@ async function loginWithPasskey() {
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 16px;
+  padding: 26px 16px;
 }
 .center {
-  width: min(400px, 100%);
+  width: min(430px, 100%);
   display: flex;
   flex-direction: column;
   align-items: stretch;
 }
-.login-info { width: 100%; margin-bottom: 16px; }
+.auth-brand {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--surface2) 88%, var(--accent-soft));
+  color: var(--accent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--shadow) 22%, transparent);
+  flex: 0 0 auto;
+}
+.brand-mark svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+}
+.auth-brand p {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.auth-brand h1 {
+  color: var(--text);
+  font-size: clamp(25px, 8vw, 34px);
+  line-height: 0.98;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+.login-info { width: 100%; margin-bottom: 14px; }
 .login-card { width: 100%; }
 .login-tabs { width: 100%; margin-bottom: 16px; }
 .login-tabs button { flex: 1; }
-.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-.field label { color: var(--text); font-size: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; }
+.field label { color: var(--text); font-size: 12px; font-weight: 600; }
 .field-hint { color: var(--text3); font-size: 11px; margin-top: -2px; }
 .field input { width: 100%; }
 .password-wrap {
@@ -349,33 +414,16 @@ async function loginWithPasskey() {
   margin: 2px 0 10px;
   user-select: none;
 }
-.remember-toggle input {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 1px solid var(--border2);
-  border-radius: 2px;
-  background: var(--bg);
-  display: inline-block;
-  flex-shrink: 0;
-  position: relative;
-}
-.remember-toggle input:checked {
-  border-color: var(--accent);
-  background: var(--checked-bg);
-}
-.remember-toggle input:checked::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  background: var(--accent);
-  border-radius: 1px;
-}
+.remember-toggle input { margin-top: 1px; }
 .turnstile-container {
   margin-bottom: 10px;
 }
 .form-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.status-msg {
+  color: var(--green);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
 .error-msg {
   color: var(--red-h);
   font-size: 12px;
@@ -396,7 +444,7 @@ async function loginWithPasskey() {
   border-color: var(--text3);
   color: var(--text);
 }
-.link { color: var(--text2); font-size: 12px; text-decoration: none; }
+.link { color: var(--text2); font-size: 12px; font-weight: 600; text-decoration: none; }
 .link:hover { color: var(--text); }
 
 @media (max-width: 420px) {

@@ -20,9 +20,11 @@ import {
 import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/passkeys'
 import { useNotificationStore } from '../stores/notifications'
 import { isAuthEnabled } from '../lib/features'
+import { useTheme, type ThemeMode } from '../lib/theme'
 
 const emit = defineEmits<{ close: [], logout: [] }>()
 const notificationStore = useNotificationStore()
+const { themeMode, appliedTheme, setThemeMode } = useTheme()
 
 const username = getAuthUsername()
 const authEnabled = isAuthEnabled()
@@ -44,11 +46,16 @@ const currentPassword = ref('')
 const nextPassword = ref('')
 const confirmPassword = ref('')
 const logoutAllAfterPasswordChange = ref(false)
+const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
+  { mode: 'system', label: 'Auto' },
+  { mode: 'light', label: 'Light' },
+  { mode: 'dark', label: 'Dark' },
+]
 
 function save() {
   try {
     setPasteApiBase(apiBase.value)
-    apiBase.value = getPasteApiBase()
+    apiBase.value = apiBase.value.trim().replace(/\/$/, '') || getPasteApiBase()
     saved.value = true
     setTimeout(() => { saved.value = false; emit('close') }, 800)
   } catch (e: any) {
@@ -217,6 +224,28 @@ async function submitPasswordChange() {
       </div>
     </div>
 
+    <div class="field mobile-theme-field">
+      <label>Theme</label>
+      <div
+        class="theme-switch settings-theme-switch"
+        role="group"
+        :aria-label="`Theme, currently ${themeMode === 'system' ? `Auto (${appliedTheme})` : themeMode}`"
+        data-testid="theme-switch-settings"
+      >
+        <button
+          v-for="option in themeOptions"
+          :key="option.mode"
+          type="button"
+          :class="{ active: themeMode === option.mode }"
+          :aria-pressed="themeMode === option.mode"
+          :data-testid="`theme-${option.mode}`"
+          @click="setThemeMode(option.mode)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+    </div>
+
     <div class="field">
       <label for="api-base-url">API Base URL</label>
       <input id="api-base-url" v-model="apiBase" type="text" autocomplete="off" :placeholder="defaultApiBase" aria-label="API Base URL" />
@@ -246,7 +275,7 @@ async function submitPasswordChange() {
 
     <div class="settings-divider"></div>
 
-    <div v-if="authEnabled" class="account-action-row">
+    <div v-if="authEnabled" class="account-action-row" :class="{ single: !hasAccount }">
       <button class="btn-red logout-btn" type="button" @click="logout">Logout</button>
       <button
         v-if="hasAccount"
@@ -331,15 +360,58 @@ async function submitPasswordChange() {
 </template>
 
 <style scoped>
-.settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.field label { color: var(--text2); font-size: 11px; }
+.settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.settings-header > div:first-child {
+  font-weight: 700;
+}
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.field label { color: var(--text2); font-size: 11px; font-weight: 600; }
 .field input { width: 100%; font-size: 12px; }
 .field-hint { color: var(--text3); font-size: 11px; margin-bottom: 6px; }
 .row { display: flex; gap: 8px; justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: 12px 0; }
+.mobile-theme-field { display: none; }
+.settings-theme-switch {
+  width: 100%;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface2) 86%, transparent);
+}
+.settings-theme-switch button {
+  flex: 1;
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text2);
+  font-size: 12px;
+}
+.settings-theme-switch button.active {
+  background: color-mix(in srgb, var(--surface3) 88%, var(--accent-soft));
+  color: var(--text);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent) inset;
+}
+.settings-theme-switch button:hover:not(.active) {
+  background: var(--surface);
+  color: var(--text);
+}
 .account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.logout-btn { width: 100%; font-size: 11px; }
+.account-action-row.single { grid-template-columns: 1fr; }
+.logout-btn {
+  width: 100%;
+  font-size: 11px;
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+.logout-btn:hover:not(:disabled) {
+  background: var(--red-h);
+  border-color: var(--red-h);
+  color: #fff;
+}
 .change-password-btn { width: 100%; font-size: 11px; }
 .passkey-open-btn {
   width: 100%;
@@ -349,12 +421,30 @@ async function submitPasswordChange() {
   gap: 8px;
 }
 .password-checkbox {
-  display: flex;
+  min-height: 38px;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface2) 78%, transparent);
   color: var(--text2);
-  font-size: 11px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
   margin-bottom: 12px;
+  user-select: none;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.password-checkbox:hover {
+  border-color: var(--border2);
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface2) 92%, transparent);
+}
+.password-checkbox input {
+  margin-top: 1px;
 }
 .passkey-backdrop {
   position: fixed;
@@ -369,9 +459,10 @@ async function submitPasswordChange() {
 .passkey-modal {
   width: min(560px, 100%);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
-  background: var(--bg1);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   padding: 16px;
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--shadow) 38%, transparent);
 }
 .passkey-header {
   display: flex;
@@ -424,5 +515,11 @@ async function submitPasswordChange() {
   margin-top: 10px;
   color: var(--red-h);
   font-size: 11px;
+}
+
+@media (max-width: 600px) {
+  .mobile-theme-field {
+    display: flex;
+  }
 }
 </style>

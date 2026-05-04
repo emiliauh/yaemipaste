@@ -99,7 +99,7 @@ async function copyToClipboard(value: string, label: string) {
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">{{ name }}</span>
-        <button class="btn-ghost" style="padding:2px 8px" @click="emit('close')">✕</button>
+        <button class="modal-close-btn" type="button" aria-label="Close preview" @click="emit('close')">✕</button>
       </div>
       <div class="modal-body">
         <div v-if="props.loading" class="preview-loading">
@@ -159,12 +159,30 @@ async function copyToClipboard(value: string, label: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
   color: var(--text2);
 }
 .modal-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
+.modal-close-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-close-btn:hover {
+  border-color: var(--border2);
+  background: var(--surface3);
+  color: var(--text);
+}
 .modal-body {
   flex: 1;
   overflow: auto;
