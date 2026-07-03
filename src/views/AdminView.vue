@@ -33,6 +33,8 @@ import {
   type AdminWebhook,
   type WebhookDelivery,
 } from '../lib/api'
+import SettingsPanel from '../components/SettingsPanel.vue'
+import { useTheme, type ThemeMode } from '../lib/theme'
 import { useNotificationStore } from '../stores/notifications'
 
 const router = useRouter()
@@ -41,6 +43,7 @@ const tabs = ['Overview', 'Users', 'Uploads', 'Settings', 'Webhooks', 'Audit'] a
 type AdminTab = typeof tabs[number]
 
 const tab = ref<AdminTab>('Overview')
+const showSettings = ref(false)
 const loading = ref(false)
 const error = ref('')
 const dashboard = ref<AdminDashboard | null>(null)
@@ -60,6 +63,16 @@ const filterText = ref('')
 const filterExpired = ref<'all' | 'expired' | 'active'>('all')
 
 const currentUser = getAuthUsername()
+const { themeMode, appliedTheme, setThemeMode } = useTheme()
+const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
+  { mode: 'system', label: 'Auto' },
+  { mode: 'light', label: 'Light' },
+  { mode: 'dark', label: 'Dark' },
+]
+const themeLabel = computed(() => {
+  if (themeMode.value === 'system') return `System theme, currently ${appliedTheme.value}`
+  return `${themeMode.value} theme`
+})
 const filteredUploads = computed(() => uploads.value.filter((upload) => {
   const ownerOk = !filterOwner.value || upload.owner === filterOwner.value
   const text = filterText.value.trim().toLowerCase()
@@ -120,15 +133,21 @@ async function runAction(work: () => Promise<unknown>, success: string) {
   }
 }
 
+function logout() {
+  authLogout()
+  router.push('/login')
+}
+
 async function createUser() {
   await runAction(async () => {
-    const created = await adminCreateUser({
-      username: newUser.value.username.trim(),
+    const username = newUser.value.username.trim()
+    const result = await adminCreateUser({
+      username,
       password: newUser.value.password,
       upload_token: newUser.value.upload_token.trim() || undefined,
       is_admin: newUser.value.is_admin,
     })
-    window.alert(`Upload token for ${created.username}:\n${created.upload_token}`)
+    window.alert(`One-time upload token for ${username}:\n\n${result.upload_token}\n\nCopy it now. It will not be shown again.`)
     newUser.value = { username: '', password: '', upload_token: '', is_admin: false }
   }, 'User created')
 }
@@ -136,7 +155,7 @@ async function createUser() {
 async function rotateToken(username: string) {
   await runAction(async () => {
     const result = await adminRotateUserToken(username)
-    window.alert(`New token:\n${result.upload_token}`)
+    window.alert(`One-time upload token for ${username}:\n\n${result.upload_token}\n\nCopy it now. It will not be shown again.`)
   }, 'Token rotated')
 }
 
@@ -151,24 +170,77 @@ onMounted(refreshAll)
 </script>
 
 <template>
-  <main class="admin-layout">
-    <header class="admin-header">
-      <div>
-        <p class="eyebrow">Administrator</p>
-        <h1>Admin panel</h1>
-        <p class="subtle">Signed in as {{ currentUser }}</p>
+  <div class="layout admin-shell">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="sidebar-top">
+        <button class="brand-block" type="button" @click="router.push('/files')" aria-label="Back to files">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"/>
+              <path d="M12 8v8M8.5 10l3.5 2 3.5-2"/>
+            </svg>
+          </span>
+          <span class="brand-title">yaemipaste</span>
+        </button>
       </div>
-      <div class="header-actions">
-        <button class="btn-ghost" type="button" @click="router.push('/files')">Files</button>
-        <button class="btn-red" type="button" @click="authLogout(); router.push('/login')">Logout</button>
-      </div>
-    </header>
 
-    <div class="tabs admin-tabs">
-      <button v-for="item in tabs" :key="item" :class="{ active: tab === item }" type="button" @click="tab = item">
-        {{ item }}
-      </button>
-    </div>
+      <div class="sidebar-footer">
+        <nav class="nav-stack" aria-label="Admin navigation">
+          <p class="nav-section-label">workspace</p>
+          <button type="button" @click="router.push('/files')">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/></svg>
+            </span>
+            <span class="nav-copy">Files<small>uploads</small></span>
+          </button>
+          <button class="active" type="button" aria-current="page">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12l2 2 4-4"/></svg>
+            </span>
+            <span class="nav-copy">Admin<small>controls</small></span>
+          </button>
+        </nav>
+        <div class="theme-switch expanded-utilities" role="group" :aria-label="themeLabel" data-testid="theme-switch">
+          <button
+            v-for="option in themeOptions"
+            :key="option.mode"
+            type="button"
+            :class="{ active: themeMode === option.mode }"
+            :aria-pressed="themeMode === option.mode"
+            :data-testid="`theme-${option.mode}`"
+            @click="setThemeMode(option.mode)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <button class="desktop-settings-edge" type="button" @click="showSettings = true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+      <span>Settings</span>
+    </button>
+
+    <main class="workspace">
+      <section class="admin-layout">
+        <header class="admin-header">
+          <div>
+            <p class="eyebrow">Administrator</p>
+            <h1>Admin panel</h1>
+            <p class="subtle">Signed in as {{ currentUser }}</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn-ghost" type="button" @click="router.push('/files')">Files</button>
+            <button class="btn-ghost" type="button" @click="showSettings = true">Account</button>
+            <button class="btn-red" type="button" @click="logout">Logout</button>
+          </div>
+        </header>
+
+        <div class="tabs admin-tabs">
+          <button v-for="item in tabs" :key="item" :class="{ active: tab === item }" type="button" @click="tab = item">
+            {{ item }}
+          </button>
+        </div>
 
     <div v-if="error" class="error-box">{{ error }}</div>
     <div v-if="loading" class="info-box">Loading admin data…</div>
@@ -227,7 +299,7 @@ onMounted(refreshAll)
         <h2>Create user</h2>
         <input v-model="newUser.username" placeholder="username" />
         <input v-model="newUser.password" type="password" placeholder="password" />
-        <input v-model="newUser.upload_token" placeholder="custom upload token (optional)" />
+        <input v-model="newUser.upload_token" type="password" placeholder="custom upload token (optional)" />
         <label class="inline-check"><input v-model="newUser.is_admin" type="checkbox" /> administrator</label>
         <button class="btn-orange" type="submit">Create user</button>
       </form>
@@ -238,7 +310,7 @@ onMounted(refreshAll)
           <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Uploads</th><th>Storage</th><th>Actions</th></tr></thead>
           <tbody>
             <tr v-for="user in users" :key="user.username">
-              <td>{{ user.username }}<div class="subtle">token {{ user.upload_token_preview }}</div></td>
+              <td>{{ user.username }}<div class="subtle">{{ user.upload_token_preview ? 'token configured' : 'no token' }}</div></td>
               <td>{{ user.is_admin ? 'admin' : 'user' }}</td>
               <td>{{ user.suspended_at ? `suspended ${ts(user.suspended_at)}` : 'active' }}</td>
               <td>{{ user.upload_count }}</td>
@@ -319,7 +391,7 @@ onMounted(refreshAll)
             <tr v-for="hook in webhooks" :key="hook.id">
               <td>{{ hook.url }}<div class="subtle">{{ hook.events.join(', ') }}</div></td>
               <td>{{ hook.enabled ? 'enabled' : 'disabled' }}</td>
-              <td>{{ hook.secret_configured ? `secret ${hook.secret_preview}` : 'unsigned' }}</td>
+              <td>{{ hook.secret_configured ? 'secret configured' : 'unsigned' }}</td>
               <td class="actions">
                 <button class="btn-ghost" type="button" @click="runAction(() => adminUpdateWebhook(hook.id, { enabled: !hook.enabled }), 'Webhook updated')">{{ hook.enabled ? 'Disable' : 'Enable' }}</button>
                 <button class="btn-ghost" type="button" @click="runAction(() => adminTestWebhook(hook.id), 'Webhook test queued')">Test</button>
@@ -352,15 +424,55 @@ onMounted(refreshAll)
         </tbody>
       </table>
     </section>
-  </main>
+      </section>
+    </main>
+
+    <nav class="mobile-tabbar" aria-label="Mobile navigation">
+      <div class="mobile-tabbar-main">
+        <button type="button" @click="router.push('/files')">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/></svg>
+          </span>
+          Files
+        </button>
+        <button class="active" type="button" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12l2 2 4-4"/></svg>
+          </span>
+          Admin
+        </button>
+      </div>
+      <button class="mobile-tabbar-settings" type="button" aria-label="Settings" @click="showSettings = true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+      </button>
+    </nav>
+
+    <div v-if="showSettings" class="settings-layer">
+      <div class="overlay" @click="showSettings = false" />
+      <SettingsPanel
+        @close="showSettings = false"
+        @logout="router.push('/login')"
+      />
+    </div>
+  </div>
 </template>
 
 <style scoped>
+.layout {
+  --surface: var(--bg1);
+  --surface2: var(--bg2);
+  --surface3: var(--bg3);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: transparent;
+}
+.workspace {
+  min-width: 0;
+  padding: 26px 26px 42px;
+}
 .admin-layout {
   max-width: 1180px;
   width: 100%;
   margin: 0 auto;
-  padding: 18px 16px 40px;
 }
 .admin-header {
   display: flex;
@@ -368,6 +480,11 @@ onMounted(refreshAll)
   gap: 16px;
   align-items: flex-start;
   margin-bottom: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 8px);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 18px 36px color-mix(in srgb, var(--shadow) 18%, transparent);
 }
 .header-actions, .actions {
   display: flex;
@@ -391,9 +508,11 @@ h2 { font-size: 13px; margin-bottom: 10px; }
   font-size: 11px;
 }
 .admin-tabs {
-  margin: 0 auto 16px;
+  margin: 0 0 16px;
   max-width: 100%;
   overflow-x: auto;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--shadow) 14%, transparent);
 }
 .admin-grid {
   display: grid;
@@ -454,6 +573,8 @@ select {
 }
 .card {
   overflow-x: auto;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--shadow) 12%, transparent);
 }
 .error-box {
   border: 1px solid var(--error-border);
@@ -463,14 +584,130 @@ select {
   padding: 10px 12px;
   margin-bottom: 12px;
 }
+.info-box {
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
 .danger-card {
   border-color: var(--error-border);
 }
+.mobile-tabbar {
+  display: none;
+}
+.settings-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+}
+.settings-layer :deep(.settings-panel) {
+  pointer-events: auto;
+  z-index: 1;
+  left: 82px;
+  right: auto;
+  top: auto;
+  bottom: 18px;
+  width: min(380px, calc(100vw - 108px));
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+}
 @media (max-width: 760px) {
-  .admin-layout { padding-top: 14px; }
+  .workspace { padding: 18px; }
   .admin-header { flex-direction: column; }
   .admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tabs button { padding: 6px 16px; }
+}
+@media (max-width: 600px) {
+  .layout {
+    display: block;
+  }
+  .sidebar,
+  .desktop-settings-edge {
+    display: none;
+  }
+  .workspace {
+    padding: 14px 12px 104px;
+  }
+  .admin-header {
+    padding: 16px;
+  }
+  .admin-tabs {
+    width: 100%;
+  }
+  .header-actions {
+    width: 100%;
+  }
+  .header-actions button {
+    flex: 1;
+  }
+  .mobile-tabbar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 110;
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    background: transparent;
+  }
+  .mobile-tabbar-main {
+    min-width: 0;
+    flex: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    box-shadow: 0 18px 36px var(--shadow);
+    backdrop-filter: blur(16px);
+  }
+  .mobile-tabbar-main button,
+  .mobile-tabbar-settings {
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text2);
+    font-weight: 600;
+    touch-action: manipulation;
+  }
+  .mobile-tabbar-main button.active {
+    border-color: var(--border);
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .mobile-tabbar .nav-icon {
+    width: 22px;
+    height: 22px;
+  }
+  .mobile-tabbar-settings {
+    flex: 0 0 52px;
+    padding: 0;
+    border-color: var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    box-shadow: 0 18px 36px var(--shadow);
+    backdrop-filter: blur(16px);
+  }
+  .settings-layer :deep(.settings-panel) {
+    left: 12px;
+    right: 12px;
+    bottom: 88px;
+    width: auto;
+    max-height: calc(100dvh - 118px);
+  }
 }
 @media (max-width: 480px) {
   .admin-grid { grid-template-columns: 1fr; }
