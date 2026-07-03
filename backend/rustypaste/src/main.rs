@@ -8,6 +8,7 @@ use hotwatch::{Event, EventKind, Hotwatch};
 use rustypaste::config::{Config, CorsConfig, ServerConfig};
 use rustypaste::middleware::ContentLengthLimiter;
 use rustypaste::paste::PasteType;
+use rustypaste::ratelimit::RateLimiter;
 use rustypaste::server;
 use rustypaste::util;
 use rustypaste::CONFIG_ENV;
@@ -171,6 +172,7 @@ async fn main() -> IoResult<()> {
     let (config, server_config, _hotwatch) = setup(&PathBuf::new())?;
 
     // Clone CORS config for the closure
+    let rate_limiter = Data::new(RateLimiter::new());
     let cors_config = server_config.cors.clone();
 
     // Create an HTTP server.
@@ -186,6 +188,7 @@ async fn main() -> IoResult<()> {
         App::new()
             .app_data(Data::clone(&config))
             .app_data(Data::new(http_client))
+            .app_data(Data::clone(&rate_limiter))
             .wrap(build_cors(cors_config.as_ref()))
             .wrap(Logger::new(
                 "%{r}a \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",

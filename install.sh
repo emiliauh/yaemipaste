@@ -526,7 +526,7 @@ configure_env() {
     fi
   fi
 
-  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
+  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
   ui_port="$(prompt "UI port" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
   public_url="$(prompt "Public site URL" "$(env_get_nonempty PASTE_URL "$(default_public_url "$ui_port")")")"
   api_base="$(prompt "Paste API base" "$(env_get VITE_PASTE_API "/api")")"
@@ -545,6 +545,7 @@ configure_env() {
   bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
   token_create_path="$(prompt "Auth token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
   token_revoke_path="$(prompt "Auth token revoke path" "$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")")"
+  claim_init_path="$(prompt "Admin claim init path" "$(env_get AUTH_ADMIN_CLAIM_INIT_PATH "/claim/init")")"
   register_url="$(prompt "Register endpoint URL" "$(env_get_nonempty AUTH_REGISTER_URL "${public_url%/}/auth/register")")"
   admin_bearer="$(prompt "Admin bearer token" "$(env_get_nonempty AUTH_ADMIN_BEARER "")")"
 
@@ -613,6 +614,7 @@ configure_env() {
   upsert_env AUTH_BOOTSTRAP_PATH "$bootstrap_path"
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"
   upsert_env AUTH_TOKEN_REVOKE_PATH "$token_revoke_path"
+  upsert_env AUTH_ADMIN_CLAIM_INIT_PATH "$claim_init_path"
   upsert_env AUTH_REGISTER_URL "$register_url"
   upsert_env AUTH_ADMIN_BEARER "$admin_bearer"
 }
@@ -661,6 +663,9 @@ stack_install_or_update() {
   wait_for_http "http://${probe_host}:${ui_port}/" "UI endpoint" '^200$' 60 2 || die "UI endpoint failed readiness check."
   wait_for_http "http://${probe_host}:${ui_port}/auth/sharex" "Auth endpoint" '^(200|400|401)$' 30 2 || die "Auth endpoint failed readiness check."
   wait_for_http "http://${probe_host}:${ui_port}/api/" "Paste endpoint" '^(200|400|401|405)$' 30 2 || die "Paste endpoint failed readiness check."
+  if [[ "$(env_get VITE_ENABLE_AUTH "1")" == "1" ]]; then
+    init_admin_claim 0
+  fi
   success "Yaemipaste install/update completed."
 }
 
@@ -705,12 +710,18 @@ read_auth_settings() {
   AUTH_BOOTSTRAP_PATH_VALUE="$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")"
   AUTH_TOKEN_CREATE_PATH_VALUE="$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")"
   AUTH_TOKEN_REVOKE_PATH_VALUE="$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")"
+  AUTH_ADMIN_CLAIM_INIT_PATH_VALUE="$(env_get AUTH_ADMIN_CLAIM_INIT_PATH "/claim/init")"
   AUTH_REGISTER_URL_VALUE="$(env_get_nonempty AUTH_REGISTER_URL "${inferred_public_url%/}/auth/register")"
   AUTH_ADMIN_BEARER_VALUE="$(env_get_nonempty AUTH_ADMIN_BEARER "")"
 }
 
 read_admin_bearer() {
   local token="${AUTH_ADMIN_BEARER_VALUE}"
+  if [[ -z "$token" && "$DRY_RUN" -eq 1 ]]; then
+    log "[DRY-RUN] AUTH_ADMIN_BEARER not found in .env; using a placeholder for the dry-run request."
+    printf 'dry-run-placeholder-bearer'
+    return 0
+  fi
   [[ -n "$token" ]] || die "AUTH_ADMIN_BEARER is empty in .env. Set it, restart the stack, then retry."
   printf '%s' "$token"
 }
@@ -795,6 +806,44 @@ revoke_token() {
   success "Token revoked."
 }
 
+print_admin_claim_instructions() {
+  local token="$1"
+  local public_url
+  public_url="$(env_get_nonempty PASTE_URL "$(default_public_url "$(env_get UI_PORT "$DEFAULT_UI_PORT")")")"
+  printf '\n'
+  section "Admin Claim Token"
+  printf 'Open this URL and claim the first administrator:\n%s/admin/claim\n\n' "${public_url%/}"
+  printf 'One-time claim token (shown once):\n%s\n\n' "$token"
+  warn "Store this token temporarily in a password manager. It is not stored in plaintext and cannot be shown again."
+}
+
+init_admin_claim() {
+  local reset="${1:-0}"
+  section "Admin Claim"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    ensure_repo_present
+  fi
+  read_auth_settings
+  local admin_bearer claim_url payload
+  admin_bearer="$(read_admin_bearer)"
+  claim_url="${AUTH_ADMIN_BASE_URL_VALUE%/}/${AUTH_ADMIN_CLAIM_INIT_PATH_VALUE#/}"
+  payload="{\"reset\":$([[ "$reset" -eq 1 ]] && printf true || printf false)}"
+  http_json POST "$claim_url" "$payload" "$admin_bearer"
+  if [[ "$HTTP_STATUS" == "409" ]]; then
+    warn "Admin claim token was not generated: ${HTTP_BODY}"
+    return 0
+  fi
+  expect_2xx || die "Admin claim initialization failed."
+  local created
+  created="$(extract_token_from_json "$HTTP_BODY")"
+  if [[ -z "$created" ]]; then
+    warn "Claim endpoint did not return a token. Response:"
+    printf '%s\n' "$HTTP_BODY"
+    return 0
+  fi
+  print_admin_claim_instructions "$created"
+}
+
 stack_uninstall() {
   section "Uninstall"
   ensure_runtime_prereqs
@@ -839,7 +888,9 @@ print_menu() {
   6. Stop services
   7. Restart services
   8. Service status
-  9. Uninstall / cleanup
+  9. Generate admin claim token
+  10. Reset admin claim token
+  11. Uninstall / cleanup
   0. Exit
 EOF
 }
@@ -850,6 +901,8 @@ run_action() {
     init-user) create_initial_user ;;
     create-token) create_token ;;
     revoke-token) revoke_token ;;
+    admin-claim) init_admin_claim 0 ;;
+    reset-admin-claim) init_admin_claim 1 ;;
     start) stack_start ;;
     stop) stack_stop ;;
     restart) stack_restart ;;
@@ -869,7 +922,9 @@ run_action() {
           6) stack_stop ;;
           7) stack_restart ;;
           8) stack_status ;;
-          9) stack_uninstall ;;
+          9) init_admin_claim 0 ;;
+          10) init_admin_claim 1 ;;
+          11) stack_uninstall ;;
           0) log "Bye."; break ;;
           *) warn "Invalid option: ${choice}" ;;
         esac
@@ -888,7 +943,7 @@ Yaemipaste installer + runtime manager
 Usage: $0 [options]
 
 Options:
-  --action <install|init-user|create-token|revoke-token|start|stop|restart|status|uninstall|menu>
+  --action <install|init-user|create-token|revoke-token|admin-claim|reset-admin-claim|start|stop|restart|status|uninstall|menu>
   --install-dir <path>   Default: ${DEFAULT_INSTALL_DIR}
   --repo-url <url>       Default: ${DEFAULT_REPO_URL}
   --branch <name>        Default: ${DEFAULT_BRANCH}
@@ -933,7 +988,7 @@ parse_args() {
         usage
         exit 0
         ;;
-      install|init-user|create-token|revoke-token|start|stop|restart|status|uninstall|menu)
+      install|init-user|create-token|revoke-token|admin-claim|reset-admin-claim|start|stop|restart|status|uninstall|menu)
         ACTION="$1"
         shift
         ;;

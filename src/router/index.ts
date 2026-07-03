@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { encodeFileToken, isLoggedIn, rememberResolvedFileName } from '../lib/api'
+import { encodeFileToken, isAuthAdmin, isLoggedIn, rememberResolvedFileName } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { isAuthEnabled } from '../lib/features'
 
@@ -36,6 +36,12 @@ const router = createRouter({
     },
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/register', component: () => import('../views/RegisterView.vue') },
+    { path: '/admin/claim', component: () => import('../views/AdminClaimView.vue') },
+    {
+      path: '/admin',
+      component: () => import('../views/AdminView.vue'),
+      meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true },
+    },
     { path: '/file/:filekey/preview', component: () => import('../views/FileView.vue') },
     { path: '/file/:filekey/raw', component: () => import('../views/RawRedirectView.vue') },
     { path: '/file/:filekey/download', component: () => import('../views/DownloadRedirectView.vue') },
@@ -83,8 +89,9 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register')) return '/files'
+  if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register' || to.path.startsWith('/admin'))) return '/files'
   if (to.meta.requiresAuth && !isLoggedIn()) return '/login'
+  if (to.meta.requiresAdmin && !isAuthAdmin()) return '/files'
 })
 
 export default router

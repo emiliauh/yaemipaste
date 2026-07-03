@@ -1,4 +1,5 @@
 use crate::config::{Config, TokenType};
+use crate::ratelimit::{client_key, RateLimiter};
 use actix_web::http::header::{AUTHORIZATION, CONTENT_DISPOSITION};
 use actix_web::{delete, get, post, web, HttpRequest, HttpResponse};
 use awc::Client;
@@ -23,17 +24,17 @@ use webauthn_rs::prelude::{
 const TURNSTILE_VERIFY_URL: &str = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 #[derive(Debug, Clone)]
-struct AuthEnv {
-    db_path: PathBuf,
-    jwt_secret: String,
-    jwt_ttl_seconds: i64,
-    paste_api: String,
-    turnstile_secret_key: String,
-    admin_bearers: HashSet<String>,
+pub(crate) struct AuthEnv {
+    pub(crate) db_path: PathBuf,
+    pub(crate) jwt_secret: String,
+    pub(crate) jwt_ttl_seconds: i64,
+    pub(crate) paste_api: String,
+    pub(crate) turnstile_secret_key: String,
+    pub(crate) admin_bearers: HashSet<String>,
 }
 
 impl AuthEnv {
-    fn from_env() -> Self {
+    pub(crate) fn from_env() -> Self {
         let db_path = PathBuf::from(
             env::var("DB_PATH").unwrap_or_else(|_| "/var/lib/rustypaste-auth/users.db".to_string()),
         );
@@ -139,18 +140,18 @@ struct StoredPasskey {
     passkey: Passkey,
 }
 
-fn now_seconds() -> i64 {
+pub(crate) fn now_seconds() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_secs() as i64)
         .unwrap_or(0)
 }
 
-fn normalize_username(value: &str) -> String {
+pub(crate) fn normalize_username(value: &str) -> String {
     value.trim().to_lowercase()
 }
 
-fn json_error(status: actix_web::http::StatusCode, detail: &str) -> HttpResponse {
+pub(crate) fn json_error(status: actix_web::http::StatusCode, detail: &str) -> HttpResponse {
     HttpResponse::build(status).json(json!({ "detail": detail }))
 }
 
@@ -177,7 +178,7 @@ fn ensure_column(
     Ok(())
 }
 
-fn init_db(connection: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn init_db(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS users (
@@ -210,16 +211,71 @@ fn init_db(connection: &Connection) -> rusqlite::Result<()> {
             token TEXT PRIMARY KEY,
             revoked_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS admin_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER,
+            used_at INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at INTEGER NOT NULL,
+            actor TEXT,
+            action TEXT NOT NULL,
+            target TEXT,
+            status TEXT NOT NULL,
+            reason TEXT
+        );
+        CREATE TABLE IF NOT EXISTS admin_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            updated_by TEXT
+        );
+        CREATE TABLE IF NOT EXISTS webhooks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL,
+            events TEXT NOT NULL,
+            secret_hash TEXT,
+            secret_preview TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            updated_by TEXT
+        );
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            webhook_id INTEGER,
+            event TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT NOT NULL,
+            status_code INTEGER,
+            error TEXT,
+            created_at INTEGER NOT NULL,
+            delivered_at INTEGER,
+            FOREIGN KEY(webhook_id) REFERENCES webhooks(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
+        CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_created_at ON webhook_deliveries(created_at);
         "#,
     )?;
     ensure_column(connection, "users", "passkey_user_uuid", "TEXT")?;
     ensure_column(connection, "users", "passkey_reg_state", "TEXT")?;
     ensure_column(connection, "users", "passkey_auth_state", "TEXT")?;
+    ensure_column(
+        connection,
+        "users",
+        "is_admin",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(connection, "users", "suspended_at", "INTEGER")?;
+    ensure_column(connection, "users", "suspended_reason", "TEXT")?;
     ensure_column(connection, "passkeys", "passkey_data", "TEXT")?;
     Ok(())
 }
 
-fn open_db(path: &PathBuf) -> Result<Connection, HttpResponse> {
+pub(crate) fn open_db(path: &PathBuf) -> Result<Connection, HttpResponse> {
     if let Some(parent) = path.parent() {
         if let Err(error) = std::fs::create_dir_all(parent) {
             error!("cannot create auth db directory: {}", error);
@@ -246,11 +302,15 @@ fn open_db(path: &PathBuf) -> Result<Connection, HttpResponse> {
     Ok(connection)
 }
 
-fn configured_tokens(config: &Config) -> Option<HashSet<String>> {
+pub(crate) fn configured_tokens(config: &Config) -> Option<HashSet<String>> {
     config.get_tokens(TokenType::Auth)
 }
 
-fn create_jwt(secret: &str, ttl_seconds: i64, username: &str) -> Result<String, HttpResponse> {
+pub(crate) fn create_jwt(
+    secret: &str,
+    ttl_seconds: i64,
+    username: &str,
+) -> Result<String, HttpResponse> {
     let exp = now_seconds()
         .checked_add(ttl_seconds)
         .and_then(|value| usize::try_from(value).ok())
@@ -277,7 +337,7 @@ fn create_jwt(secret: &str, ttl_seconds: i64, username: &str) -> Result<String, 
     })
 }
 
-fn bearer_token(request: &HttpRequest) -> Option<String> {
+pub(crate) fn bearer_token(request: &HttpRequest) -> Option<String> {
     request
         .headers()
         .get(AUTHORIZATION)
@@ -288,7 +348,7 @@ fn bearer_token(request: &HttpRequest) -> Option<String> {
         .map(str::to_string)
 }
 
-fn current_user(request: &HttpRequest, secret: &str) -> Result<String, HttpResponse> {
+pub(crate) fn current_user(request: &HttpRequest, secret: &str) -> Result<String, HttpResponse> {
     let bearer = bearer_token(request)
         .ok_or_else(|| json_error(actix_web::http::StatusCode::UNAUTHORIZED, "Invalid token"))?;
 
@@ -312,7 +372,7 @@ fn current_user(request: &HttpRequest, secret: &str) -> Result<String, HttpRespo
     })
 }
 
-fn require_admin(request: &HttpRequest, auth_env: &AuthEnv) -> Result<(), HttpResponse> {
+pub(crate) fn require_admin(request: &HttpRequest, auth_env: &AuthEnv) -> Result<(), HttpResponse> {
     if auth_env.admin_bearers.is_empty() {
         return Err(json_error(
             actix_web::http::StatusCode::FORBIDDEN,
@@ -761,6 +821,12 @@ async fn register(
         Ok(connection) => connection,
         Err(response) => return response,
     };
+    if !crate::admin::registration_enabled(&connection) {
+        return json_error(
+            actix_web::http::StatusCode::FORBIDDEN,
+            "Registration is disabled",
+        );
+    }
     if !token_allowed_for_register(&connection, configured.as_ref(), token) {
         return json_error(
             actix_web::http::StatusCode::BAD_REQUEST,
@@ -775,10 +841,22 @@ async fn register(
 
 #[post("/login")]
 async fn login(
+    request: HttpRequest,
+    limiter: web::Data<RateLimiter>,
     body: web::Json<LoginRequest>,
     client: web::Data<Client>,
     auth_config: web::Data<RwLock<Config>>,
 ) -> HttpResponse {
+    if !limiter.check(
+        &format!("login:{}", client_key(&request)),
+        10,
+        std::time::Duration::from_secs(60),
+    ) {
+        return json_error(
+            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            "Too many login attempts",
+        );
+    }
     let auth_env = AuthEnv::from_env();
     if !verify_turnstile(
         &client,
@@ -799,18 +877,20 @@ async fn login(
     let username = normalize_username(&body.username);
     let row = connection
         .query_row(
-            "SELECT username, password, token FROM users WHERE username=?1",
+            "SELECT username, password, token, is_admin, suspended_at FROM users WHERE username=?1",
             params![username],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
                 ))
             },
         )
         .ok();
-    let Some((db_username, db_password, db_token)) = row else {
+    let Some((db_username, db_password, db_token, is_admin, suspended_at)) = row else {
         return json_error(
             actix_web::http::StatusCode::UNAUTHORIZED,
             "Invalid credentials",
@@ -821,6 +901,12 @@ async fn login(
         return json_error(
             actix_web::http::StatusCode::UNAUTHORIZED,
             "Invalid credentials",
+        );
+    }
+    if suspended_at.is_some() {
+        return json_error(
+            actix_web::http::StatusCode::FORBIDDEN,
+            "Account is suspended",
         );
     }
 
@@ -844,6 +930,16 @@ async fn login(
         );
     }
 
+    if is_admin == 1 {
+        crate::admin::audit(
+            &connection,
+            Some(&db_username),
+            "admin.login",
+            None,
+            "success",
+            None,
+        );
+    }
     let jwt = match create_jwt(&auth_env.jwt_secret, auth_env.jwt_ttl_seconds, &db_username) {
         Ok(token) => token,
         Err(response) => return response,
@@ -852,6 +948,7 @@ async fn login(
         "access_token": jwt,
         "paste_token": db_token,
         "username": db_username,
+        "is_admin": is_admin == 1,
     }))
 }
 
@@ -898,16 +995,22 @@ async fn me(request: HttpRequest) -> HttpResponse {
     };
     let row = connection
         .query_row(
-            "SELECT username, created_at FROM users WHERE username=?1",
+            "SELECT username, created_at, is_admin, suspended_at, suspended_reason FROM users WHERE username=?1",
             params![username],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?, row.get::<_, Option<i64>>(3)?, row.get::<_, Option<String>>(4)?)),
         )
         .optional()
         .ok()
         .flatten();
     match row {
-        Some((username, created_at)) => {
-            HttpResponse::Ok().json(json!({ "username": username, "created_at": created_at }))
+        Some((username, created_at, is_admin, suspended_at, suspended_reason)) => {
+            if suspended_at.is_some() {
+                return json_error(
+                    actix_web::http::StatusCode::FORBIDDEN,
+                    "Account is suspended",
+                );
+            }
+            HttpResponse::Ok().json(json!({ "username": username, "created_at": created_at, "is_admin": is_admin == 1, "suspended_at": suspended_at, "suspended_reason": suspended_reason }))
         }
         None => json_error(actix_web::http::StatusCode::NOT_FOUND, "User not found"),
     }
@@ -1703,12 +1806,14 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(passkey_auth_finish)
         .service(admin_bootstrap)
         .service(admin_create_token)
-        .service(admin_revoke_token);
+        .service(admin_revoke_token)
+        .service(web::scope("/admin").configure(crate::admin::configure_routes));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ratelimit::RateLimiter;
     use actix_web::http::StatusCode;
     use actix_web::test;
     use actix_web::web::Data;
@@ -1770,6 +1875,7 @@ mod tests {
             App::new()
                 .app_data(Data::new(RwLock::new(test_config())))
                 .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
                 .service(web::scope("/auth").configure(configure_routes)),
         )
         .await;
@@ -1865,6 +1971,109 @@ mod tests {
         assert_eq!(StatusCode::OK, status_response.status());
         let status_json: Value = test::read_body_json(status_response).await;
         assert_eq!(status_json["status"], "invalid");
+
+        let _ = std::fs::remove_file(db_path);
+        clear_auth_test_env();
+    }
+
+    #[actix_web::test]
+    async fn admin_claim_settings_and_destructive_user_flow() {
+        let db_path = test_db_path("admin-claim");
+        set_auth_test_env(&db_path);
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config())))
+                .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
+                .service(web::scope("/auth").configure(configure_routes)),
+        )
+        .await;
+
+        let claim_init = test::TestRequest::post()
+            .uri("/auth/admin/claim/init")
+            .insert_header((AUTHORIZATION, "Bearer admin-token"))
+            .set_json(json!({}))
+            .to_request();
+        let claim_init_response = test::call_service(&app, claim_init).await;
+        assert_eq!(StatusCode::OK, claim_init_response.status());
+        let claim_init_json: Value = test::read_body_json(claim_init_response).await;
+        let claim_token = claim_init_json["token"]
+            .as_str()
+            .expect("claim token should exist")
+            .to_string();
+
+        let claim = test::TestRequest::post()
+            .uri("/auth/admin/claim")
+            .set_json(json!({
+                "claim_token": claim_token,
+                "username": "admin",
+                "password": "password123",
+                "upload_token": "seed-token",
+            }))
+            .to_request();
+        let claim_response = test::call_service(&app, claim).await;
+        assert_eq!(StatusCode::OK, claim_response.status());
+        let claim_json: Value = test::read_body_json(claim_response).await;
+        assert_eq!(claim_json["is_admin"], true);
+        let admin_jwt = claim_json["access_token"]
+            .as_str()
+            .expect("admin jwt should exist")
+            .to_string();
+
+        let reused_claim = test::TestRequest::post()
+            .uri("/auth/admin/claim")
+            .set_json(json!({
+                "claim_token": claim_init_json["token"],
+                "username": "other-admin",
+                "password": "password123",
+            }))
+            .to_request();
+        let reused_claim_response = test::call_service(&app, reused_claim).await;
+        assert_eq!(StatusCode::CONFLICT, reused_claim_response.status());
+
+        let update_settings = test::TestRequest::put()
+            .uri("/auth/admin/settings")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({
+                "app_name": "Test Paste",
+                "public_title": "Test Title",
+                "registration_enabled": false,
+                "storage_warning_bytes": 1024,
+            }))
+            .to_request();
+        let update_settings_response = test::call_service(&app, update_settings).await;
+        assert_eq!(StatusCode::OK, update_settings_response.status());
+        let settings_json: Value = test::read_body_json(update_settings_response).await;
+        assert_eq!(settings_json["registration_enabled"], "false");
+
+        let create_user = test::TestRequest::post()
+            .uri("/auth/admin/users")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({
+                "username": "managed",
+                "password": "password123",
+                "upload_token": "spare-token",
+            }))
+            .to_request();
+        let create_user_response = test::call_service(&app, create_user).await;
+        assert_eq!(StatusCode::OK, create_user_response.status());
+
+        let bad_delete = test::TestRequest::delete()
+            .uri("/auth/admin/users/managed")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({ "confirmation": "wrong" }))
+            .to_request();
+        let bad_delete_response = test::call_service(&app, bad_delete).await;
+        assert_eq!(StatusCode::BAD_REQUEST, bad_delete_response.status());
+
+        let delete_user = test::TestRequest::delete()
+            .uri("/auth/admin/users/managed")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({ "confirmation": "DELETE USER" }))
+            .to_request();
+        let delete_user_response = test::call_service(&app, delete_user).await;
+        assert_eq!(StatusCode::OK, delete_user_response.status());
 
         let _ = std::fs::remove_file(db_path);
         clear_auth_test_env();

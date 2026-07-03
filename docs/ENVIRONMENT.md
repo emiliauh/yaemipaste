@@ -70,6 +70,7 @@ docker compose --profile with-resolver up --build -d
 | `AUTH_BOOTSTRAP_PATH` | First-user bootstrap path | `/bootstrap` |
 | `AUTH_TOKEN_CREATE_PATH` | Token creation path | `/tokens` |
 | `AUTH_TOKEN_REVOKE_PATH` | Token revoke path template | `/tokens/%s` |
+| `AUTH_ADMIN_CLAIM_INIT_PATH` | One-time admin claim token initialization path | `/claim/init` |
 | `AUTH_REGISTER_URL` | Public register endpoint used when token-based registration is chosen | `http://localhost:8080/auth/register` |
 | `AUTH_ADMIN_BEARER` | Admin bearer used by installer lifecycle commands | empty |
 

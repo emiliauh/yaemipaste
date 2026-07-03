@@ -26,7 +26,7 @@ const FILE_RESOLVE_BASE = (() => {
 })()
 const API_BASE_KEY = 'rp_api_base'
 const REMEMBER_ME_KEY = 'rp_remember_me'
-const AUTH_KEYS = ['rp_jwt', 'rp_token', 'rp_username'] as const
+const AUTH_KEYS = ['rp_jwt', 'rp_token', 'rp_username', 'rp_is_admin'] as const
 const FILE_TOKEN_MAP_KEY = 'rp_file_token_map'
 
 export interface UploadProgress {
@@ -176,6 +176,7 @@ interface AuthSessionResponse {
   access_token: string
   paste_token: string
   username: string
+  is_admin?: boolean
 }
 
 async function responseDetail(response: Response, fallback: string): Promise<string> {
@@ -282,6 +283,7 @@ function saveAuthSession(data: AuthSessionResponse, rememberMe = true) {
   storage.setItem('rp_jwt', data.access_token)
   storage.setItem('rp_token', data.paste_token)
   storage.setItem('rp_username', data.username)
+  storage.setItem('rp_is_admin', data.is_admin ? '1' : '0')
   localStorage.setItem(REMEMBER_ME_KEY, rememberMe ? '1' : '0')
 }
 
@@ -303,6 +305,10 @@ export function setRememberPreference(rememberMe: boolean) {
 
 export function getAuthUsername(): string {
   return readAuthValue('rp_username')
+}
+
+export function isAuthAdmin(): boolean {
+  return readAuthValue('rp_is_admin') === '1'
 }
 
 export function hasAccountAuth(): boolean {
@@ -1084,6 +1090,244 @@ export async function resolveFileName(tokenOrFileName: string, origin = publicSi
   return resolved.fileName
 }
 
+
+export interface AdminUpload {
+  path: string
+  owner: string | null
+  file_name: string
+  size_bytes: number
+  created_at: number | null
+  expires_at: number | null
+  expired: boolean
+  content_type: string | null
+}
+
+export interface AdminUser {
+  username: string
+  created_at: number
+  is_admin: boolean
+  suspended_at: number | null
+  suspended_reason: string | null
+  upload_token_preview: string
+  upload_count: number
+  disk_usage_bytes: number
+}
+
+export interface AdminDashboard {
+  total_disk_usage_bytes: number
+  upload_count: number
+  user_count: number
+  suspended_user_count: number
+  admin_count: number
+  users: AdminUser[]
+  recent_uploads: AdminUpload[]
+  recent_audit: AdminAuditEntry[]
+  failed_webhook_deliveries: WebhookDelivery[]
+  config_status: Record<string, unknown>
+  warnings: string[]
+}
+
+export interface AdminSettings {
+  app_name?: string
+  public_title?: string
+  registration_enabled?: string
+  storage_warning_bytes?: string
+}
+
+export interface AdminWebhook {
+  id: number
+  url: string
+  events: string[]
+  enabled: boolean
+  secret_configured: boolean
+  secret_preview: string | null
+  created_at: number
+  updated_at: number
+  updated_by: string | null
+}
+
+export interface WebhookDelivery {
+  id: number
+  webhook_id: number | null
+  event: string
+  status: string
+  status_code: number | null
+  error: string | null
+  created_at: number
+  delivered_at: number | null
+}
+
+export interface AdminAuditEntry {
+  id: number
+  created_at: number
+  actor: string | null
+  action: string
+  target: string | null
+  status: string
+  reason: string | null
+}
+
+export interface AdminClaimStatus {
+  admin_exists: boolean
+  pending_claim: boolean
+  claim_available: boolean
+}
+
+export interface AdminClaimInitResponse {
+  token: string | null
+  expires_at: number | null
+  detail: string
+}
+
+async function adminRequest<T>(path: string, options: RequestInit = {}, fallback = 'Admin request failed'): Promise<T> {
+  requireAuthEnabled()
+  const headers = new Headers(options.headers)
+  if (!headers.has('Content-Type') && options.body) headers.set('Content-Type', 'application/json')
+  for (const [key, value] of Object.entries(jwtBearerHeader())) headers.set(key, value)
+  const response = await fetch(`${AUTH_API}/admin${path}`, { ...options, headers })
+  if (!response.ok) throw new Error(await responseDetail(response, fallback))
+  return readJson<T>(response, fallback)
+}
+
+export async function adminClaimStatus(): Promise<AdminClaimStatus> {
+  requireAuthEnabled()
+  const response = await fetch(`${AUTH_API}/admin/claim/status`)
+  if (!response.ok) throw new Error(await responseDetail(response, 'Could not load admin claim status'))
+  return readJson<AdminClaimStatus>(response, 'Could not load admin claim status')
+}
+
+export async function adminClaim(claimToken: string, username: string, password: string, uploadToken = '') {
+  requireAuthEnabled()
+  const response = await fetch(`${AUTH_API}/admin/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ claim_token: claimToken, username, password, upload_token: uploadToken || undefined }),
+  })
+  if (!response.ok) throw new Error(await responseDetail(response, 'Admin claim failed'))
+  const data = await readJson<AuthSessionResponse>(response, 'Admin claim failed')
+  saveAuthSession(data, true)
+  return data
+}
+
+export function adminDashboard() {
+  return adminRequest<AdminDashboard>('/dashboard', {}, 'Could not load admin dashboard')
+}
+
+export function adminUsers() {
+  return adminRequest<AdminUser[]>('/users', {}, 'Could not load users')
+}
+
+export function adminCreateUser(payload: { username: string; password: string; upload_token?: string; is_admin?: boolean }) {
+  return adminRequest<{ detail: string; username: string; upload_token: string }>('/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, 'Could not create user')
+}
+
+export function adminUpdateUser(username: string, payload: { suspended?: boolean; suspension_reason?: string; is_admin?: boolean }) {
+  return adminRequest<{ detail: string }>(`/users/${encodeURIComponent(username)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, 'Could not update user')
+}
+
+export function adminRotateUserToken(username: string, token = '') {
+  return adminRequest<{ detail: string; upload_token: string }>(`/users/${encodeURIComponent(username)}/token`, {
+    method: 'POST',
+    body: JSON.stringify({ token: token || undefined }),
+  }, 'Could not rotate user token')
+}
+
+export function adminDeleteUser(username: string, confirmation: string) {
+  return adminRequest<{ detail: string }>(`/users/${encodeURIComponent(username)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmation }),
+  }, 'Could not delete user')
+}
+
+export function adminPurgeUserUploads(username: string, confirmation: string) {
+  return adminRequest<{ detail: string; bytes_removed: number }>(`/users/${encodeURIComponent(username)}/purge`, {
+    method: 'POST',
+    body: JSON.stringify({ confirmation }),
+  }, 'Could not purge user uploads')
+}
+
+export function adminUserUploads(username: string) {
+  return adminRequest<AdminUpload[]>(`/users/${encodeURIComponent(username)}/uploads`, {}, 'Could not load user uploads')
+}
+
+export function adminUploads() {
+  return adminRequest<AdminUpload[]>('/uploads', {}, 'Could not load uploads')
+}
+
+export function adminDeleteUpload(path: string) {
+  return adminRequest<{ detail: string; bytes_removed: number }>(`/uploads?path=${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+  }, 'Could not delete upload')
+}
+
+export function adminBulkDeleteUploads(paths: string[], confirmation: string) {
+  return adminRequest<{ deleted: number; bytes_removed: number; errors: unknown[] }>('/uploads/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ paths, confirmation }),
+  }, 'Could not bulk delete uploads')
+}
+
+export function adminPurgeExpired(confirmation: string) {
+  return adminRequest<{ deleted: number; bytes_removed: number }>('/uploads/purge-expired', {
+    method: 'POST',
+    body: JSON.stringify({ confirmation }),
+  }, 'Could not purge expired uploads')
+}
+
+export function adminSettings() {
+  return adminRequest<AdminSettings>('/settings', {}, 'Could not load settings')
+}
+
+export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; registration_enabled?: boolean; storage_warning_bytes?: number }) {
+  return adminRequest<AdminSettings>('/settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, 'Could not update settings')
+}
+
+export function adminWebhooks() {
+  return adminRequest<AdminWebhook[]>('/webhooks', {}, 'Could not load webhooks')
+}
+
+export function adminCreateWebhook(payload: { url: string; events: string[]; secret?: string; enabled?: boolean }) {
+  return adminRequest<{ detail: string; id: number }>('/webhooks', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, 'Could not create webhook')
+}
+
+export function adminUpdateWebhook(id: number, payload: { url?: string; events?: string[]; secret?: string; enabled?: boolean }) {
+  return adminRequest<{ detail: string }>(`/webhooks/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, 'Could not update webhook')
+}
+
+export function adminDeleteWebhook(id: number) {
+  return adminRequest<{ detail: string }>(`/webhooks/${id}`, {
+    method: 'DELETE',
+  }, 'Could not delete webhook')
+}
+
+export function adminTestWebhook(id: number) {
+  return adminRequest<{ detail: string }>(`/webhooks/${id}/test`, {
+    method: 'POST',
+  }, 'Could not test webhook')
+}
+
+export function adminWebhookDeliveries() {
+  return adminRequest<WebhookDelivery[]>('/webhooks/deliveries', {}, 'Could not load webhook deliveries')
+}
+
+export function adminAuditLog() {
+  return adminRequest<AdminAuditEntry[]>('/audit', {}, 'Could not load audit log')
+}
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`

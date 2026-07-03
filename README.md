@@ -101,6 +101,31 @@ Create the first user:
 ./install.sh --action init-user
 ```
 
+## Admin Panel
+
+yaemipaste includes a self-hosted admin panel at `/admin`, protected
+server-side by account JWT + `is_admin=1` (not just hidden client-side).
+
+Claim the first administrator once, right after install:
+
+```bash
+./install.sh --action admin-claim
+```
+
+This prints a one-time claim URL and token. The token is bcrypt-hashed
+server-side, never written in plaintext, and is invalidated the moment it's
+used. Lost it or need a fresh one? `./install.sh --action reset-admin-claim`.
+
+From the panel you can manage users (create/suspend/delete/rotate tokens),
+browse and purge uploads, edit safe global settings, configure webhooks, and
+review an audit log of admin actions. Full details:
+`docs/wiki/User-and-Token-Management.md`.
+
+The installer's interactive menu (`./install.sh` with no flags) covers the
+same actions; a Ratatui TUI was evaluated but not added since the existing
+shell menu already meets the guided-install/admin-claim needs without a new
+Rust binary to build, ship, and keep in sync with `install.sh`.
+
 ## Manual Docker Run
 
 If you do not want to use the installer, you can still run the app manually:

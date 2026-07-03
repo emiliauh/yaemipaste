@@ -19,6 +19,9 @@ pub mod auth;
 /// Account authentication routes and handlers.
 pub mod account_auth;
 
+/// Web administration routes and handlers.
+pub mod admin;
+
 /// Storage handler.
 pub mod paste;
 
@@ -33,6 +36,9 @@ pub mod util;
 
 /// Custom middleware implementation.
 pub mod middleware;
+
+/// In-memory abuse protection helpers.
+pub mod ratelimit;
 
 // Use macros from tracing crate.
 #[macro_use]

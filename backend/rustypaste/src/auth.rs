@@ -1,3 +1,4 @@
+use crate::account_auth::init_db;
 use crate::config::{Config, TokenType};
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::http::header::AUTHORIZATION;
@@ -20,10 +21,15 @@ fn account_token_exists(token: &str) -> bool {
     let Ok(connection) = Connection::open(auth_db_path()) else {
         return false;
     };
+    if init_db(&connection).is_err() {
+        return false;
+    }
     connection
-        .query_row("SELECT 1 FROM users WHERE token=?1 LIMIT 1", [token], |_row| {
-            Ok(true)
-        })
+        .query_row(
+            "SELECT 1 FROM users WHERE token=?1 AND suspended_at IS NULL LIMIT 1",
+            [token],
+            |_row| Ok(true),
+        )
         .ok()
         .unwrap_or(false)
 }
@@ -72,7 +78,7 @@ pub(crate) async fn extract_tokens(req: &ServiceRequest) -> Result<HashSet<Token
 
     for token_type in [TokenType::Auth, TokenType::Delete] {
         let maybe_tokens = config.get_tokens(token_type);
-        if let Some(configured_tokens) = maybe_tokens {
+        if let Some(configured_tokens) = &maybe_tokens {
             if configured_tokens.contains(auth_header.unwrap_or_default()) {
                 user_tokens.insert(token_type);
                 continue;
@@ -80,10 +86,13 @@ pub(crate) async fn extract_tokens(req: &ServiceRequest) -> Result<HashSet<Token
         }
         if db_token_valid {
             user_tokens.insert(token_type);
-        } else if token_type == TokenType::Auth {
+        } else if token_type == TokenType::Auth && maybe_tokens.is_none() {
             // not configured `auth_tokens` means that the user is allowed to access the endpoints
             user_tokens.insert(token_type);
-        } else if token_type == TokenType::Delete && req.method() == Method::DELETE {
+        } else if token_type == TokenType::Delete
+            && req.method() == Method::DELETE
+            && maybe_tokens.is_none()
+        {
             // explicitly disable `DELETE` methods if no `delete_tokens` are set
             warn!("delete endpoint is not served because there are no delete_tokens set");
             Err(error::ErrorNotFound(""))?;

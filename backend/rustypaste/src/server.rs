@@ -5,24 +5,25 @@ use crate::header::{self, ContentDisposition};
 use crate::mime as mime_util;
 use crate::paste::{Paste, PasteType};
 use crate::util::{self, safe_path_join, token_to_dir_name};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
 use actix_files::NamedFile;
 use actix_multipart::{Field, Multipart};
 use actix_web::http::header::{
-    ContentDisposition as ActixContentDisposition, DispositionParam, DispositionType,
-    AUTHORIZATION, ACCEPT,
+    ContentDisposition as ActixContentDisposition, DispositionParam, DispositionType, ACCEPT,
+    AUTHORIZATION,
 };
 use actix_web::http::StatusCode;
 use actix_web::middleware::ErrorHandlers;
 use actix_web::{delete, error, get, post, web, Error, HttpRequest, HttpResponse};
 use actix_web_grants::GrantsMiddleware;
 use awc::Client;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use byte_unit::{Byte, UnitType};
 use futures_util::stream::StreamExt;
 use mime::TEXT_PLAIN_UTF_8;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::convert::TryFrom;
 use std::env;
 use std::fs;
@@ -222,7 +223,10 @@ fn resolve_token_to_file(token: &str, upload_path: &Path) -> Result<ResolveMatch
             continue;
         }
         let dir_name = entry.file_name().to_string_lossy().to_string();
-        if matches!(dir_name.as_str(), "oneshot" | "oneshot_url" | "url" | ".rpmeta") {
+        if matches!(
+            dir_name.as_str(),
+            "oneshot" | "oneshot_url" | "url" | ".rpmeta"
+        ) {
             continue;
         }
         let owner_token = decode_dir_token(&dir_name);
@@ -637,7 +641,8 @@ async fn delete(
     if !path.is_file() || !path.exists() {
         return Err(error::ErrorNotFound("file is not found or expired :(\n"));
     }
-    match fs::remove_file(path) {
+    let deleted_size = path.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+    match fs::remove_file(&path) {
         Ok(_) => info!("deleted file: {:?}", file.to_string()),
         Err(e) => {
             error!("cannot delete file: {}", e);
@@ -645,6 +650,16 @@ async fn delete(
         }
     }
     let _ = fs::remove_file(metadata_path);
+    let owner =
+        get_auth_token(&request, &config).and_then(|token| lookup_username_for_token(&token));
+    crate::admin::dispatch_webhook(
+        "file.deleted",
+        json!({
+            "file": file.to_string(),
+            "owner": owner,
+            "bytes_removed": deleted_size,
+        }),
+    );
     Ok(HttpResponse::Ok().body(String::from("file deleted\n")))
 }
 
@@ -683,9 +698,10 @@ async fn upload(
         .clone()
     {
         Some(v) => v,
-        None => {
-            format!("{}://{}", connection.scheme(), connection.host(),)
-        }
+        None => env::var("PASTE_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "http://localhost:8080".to_string()),
     };
     let time = util::get_system_time()?;
     let mut expiry_date = header::parse_expiry_date(request.headers(), time)?;
@@ -871,6 +887,16 @@ async fn upload(
                     warn!("cannot store upload metadata for {}: {}", file_name, e);
                 }
             }
+            crate::admin::dispatch_webhook(
+                "file.uploaded",
+                json!({
+                    "file": file_name.clone(),
+                    "uploader": upload_meta.uploader.clone(),
+                    "source": upload_meta.source.clone(),
+                    "original_name": upload_meta.original_name.clone(),
+                    "size_bytes": paste.data.len(),
+                }),
+            );
             urls.push(format!(
                 "{}{}\n",
                 server_url,
@@ -1690,7 +1716,10 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080{}\n", public_path_from_file_name(&file_name)),
+            &format!(
+                "http://localhost:8080{}\n",
+                public_path_from_file_name(&file_name)
+            ),
         )
         .await?;
 
@@ -1740,7 +1769,10 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080{}\n", public_path_from_file_name(&file_name)),
+            &format!(
+                "http://localhost:8080{}\n",
+                public_path_from_file_name(&file_name)
+            ),
         )
         .await?;
 
@@ -1793,7 +1825,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/{header_filename}\n"),
+            &format!("http://localhost:8080/fn_from_header/file.txt\n"),
         )
         .await?;
 
@@ -1843,7 +1875,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/{header_filename}\n"),
+            &format!("http://localhost:8080/fn_from_header/file.txt\n"),
         )
         .await?;
 
@@ -1942,7 +1974,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/{file_name}\n"),
+            &format!("http://localhost:8080/test_file/file.txt\n"),
         )
         .await?;
 
@@ -2004,7 +2036,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body().boxed(),
-            &format!("http://localhost:8080/{file_name}\n"),
+            &format!("http://localhost:8080/rp_test_3b5eeeee7a7326cd6141f54820e6356a0e9d1dd4021407cb1d5e9de9f034ed2f/file.png\n"),
         )
         .await?;
 
@@ -2056,7 +2088,7 @@ mod tests {
         )
         .await;
         assert_eq!(StatusCode::OK, response.status());
-        assert_body(response.into_body(), "http://localhost:8080/url\n").await?;
+        assert_body(response.into_body(), "http://localhost:8080/url/file\n").await?;
 
         let serve_request = TestRequest::get().uri("/url").to_request();
         let response = test::call_service(&app, serve_request).await;
@@ -2100,7 +2132,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/{file_name}\n"),
+            &format!("http://localhost:8080/oneshot/file.txt\n"),
         )
         .await?;
 
@@ -2165,7 +2197,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/{oneshot_url_suffix}\n"),
+            &format!("http://localhost:8080/{oneshot_url_suffix}/file\n"),
         )
         .await?;
 
