@@ -27,6 +27,8 @@ const AUTO_REFRESH_MS = 2_000
 const PASSWORD_CHANGE_LIMIT = 3
 const PASSWORD_CHANGE_COUNT_KEY = 'rp_pw_change_counts'
 const HISTORY_WS_ENV = (import.meta.env.VITE_HISTORY_WS ?? '').trim()
+const TEXT_PREVIEW_BYTES = 256 * 1024
+const TEXT_PREVIEW_CHARS = 32_000
 
 const files = ref<PasteFile[]>([])
 const loading = ref(true)
@@ -70,6 +72,14 @@ const notificationStore = useNotificationStore()
 let hoverToken = 0
 let previewToken = 0
 let compactFileNamesMediaQuery: MediaQueryList | null = null
+
+async function readPreviewText(blob: Blob): Promise<string> {
+  const previewText = await blob.slice(0, TEXT_PREVIEW_BYTES).text()
+  if (blob.size > TEXT_PREVIEW_BYTES || previewText.length > TEXT_PREVIEW_CHARS) {
+    return `${previewText.slice(0, TEXT_PREVIEW_CHARS)}\n\n…`
+  }
+  return previewText
+}
 
 function showToast(msg: string, type: 'success' | 'error' = 'success') {
   notificationStore.push(msg, type)
@@ -614,7 +624,7 @@ async function submitPasswordPreview() {
     if (!isPreviewMimeType(decrypted.metadata.type, decrypted.metadata.name)) {
       throw new Error('This password-encrypted file type has no inline preview')
     }
-    const textContent = isText(decrypted.metadata.name) ? await decrypted.blob.text() : undefined
+    const textContent = isText(decrypted.metadata.name) ? await readPreviewText(decrypted.blob) : undefined
     clearPreviewObjectUrl(preview.value)
     preview.value = {
       file,
@@ -822,7 +832,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
     })
     if (!response.ok) throw new Error('Preview download failed')
     const payload = await response.blob()
-    const textContent = kind === 'text' ? await payload.text() : undefined
+    const textContent = kind === 'text' ? await readPreviewText(payload) : undefined
     return {
       file: f,
       url: URL.createObjectURL(payload),
@@ -842,7 +852,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
   })
   if (!response.ok) throw new Error('Preview download failed')
   const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
-  const textContent = kind === 'text' ? await decrypted.blob.text() : undefined
+  const textContent = kind === 'text' ? await readPreviewText(decrypted.blob) : undefined
   return {
     file: f,
     url: URL.createObjectURL(decrypted.blob),

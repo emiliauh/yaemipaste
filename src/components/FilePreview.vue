@@ -67,7 +67,13 @@ function truncateText(value: string, forceTruncated = false) {
 
 async function readTextPreviewFromResponse(response: Response) {
   const reader = response.body?.getReader()
-  if (!reader) return truncateText(await response.text())
+  if (!reader) {
+    const payload = await response.clone().blob()
+    return truncateText(
+      await payload.slice(0, TEXT_PREVIEW_BYTES).text(),
+      payload.size > TEXT_PREVIEW_BYTES,
+    )
+  }
 
   const decoder = new TextDecoder()
   let text = ''
