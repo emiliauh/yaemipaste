@@ -387,17 +387,27 @@ function onPasteAreaLongPressCancel() {
 <style scoped>
 .files-tab { display: flex; flex-direction: column; gap: var(--space-3); padding-bottom: 18px; }
 .upload-panel {
+  position: relative;
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 38%),
-    linear-gradient(145deg, color-mix(in srgb, var(--bg1) 90%, transparent), color-mix(in srgb, var(--bg) 74%, transparent));
-  box-shadow: 0 24px 70px color-mix(in srgb, #000 22%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
+  box-shadow: 0 20px 48px color-mix(in srgb, var(--shadow) 60%, transparent);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   overflow: visible;
   padding: 22px;
+}
+.upload-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-5);
+  right: var(--space-5);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
 }
 .upload-panel-head {
   display: flex;
@@ -605,9 +615,9 @@ function onPasteAreaLongPressCancel() {
   gap: var(--space-2);
 }
 .upload-zone {
-  border: 1px dashed color-mix(in srgb, var(--border2) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border2) 88%, transparent);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bg) 52%, transparent);
+  background: color-mix(in srgb, var(--bg1) 60%, transparent);
   color: var(--text2);
   cursor: pointer;
   display: flex;
@@ -621,14 +631,18 @@ function onPasteAreaLongPressCancel() {
   transition: border-color var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
 }
 .upload-zone svg {
-  color: var(--accent);
+  color: var(--text2);
   margin-bottom: 2px;
 }
 .upload-zone:hover,
 .upload-zone.drag-over {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  background: color-mix(in srgb, var(--bg1) 78%, transparent);
   transform: translateY(-2px);
+}
+.upload-zone:hover svg,
+.upload-zone.drag-over svg {
+  color: var(--accent);
 }
 .upload-zone:active {
   transform: translateY(0) scale(0.99);
@@ -677,11 +691,9 @@ function onPasteAreaLongPressCancel() {
   color: var(--accent);
 }
 .divider {
-  color: var(--text2);
+  color: var(--text3);
   font-size: var(--fs-xs);
-  letter-spacing: 0.08em;
   text-align: center;
-  text-transform: uppercase;
 }
 .text-paste-input {
   width: 100%;

@@ -41,7 +41,7 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 <style scoped>
 .github-link {
   position: fixed;
-  left: var(--space-4);
+  right: var(--space-4);
   bottom: var(--space-3);
   width: var(--space-6);
   height: var(--space-6);

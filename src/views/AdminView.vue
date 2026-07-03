@@ -475,6 +475,7 @@ onMounted(refreshAll)
   margin: 0 auto;
 }
 .admin-header {
+  position: relative;
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
@@ -485,6 +486,17 @@ onMounted(refreshAll)
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   box-shadow: 0 18px 36px color-mix(in srgb, var(--shadow) 18%, transparent);
+}
+.admin-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-5);
+  right: var(--space-5);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
 }
 .header-actions, .actions {
   display: flex;
@@ -515,6 +527,19 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   overflow-x: auto;
   background: color-mix(in srgb, var(--surface) 82%, transparent);
   box-shadow: 0 12px 28px color-mix(in srgb, var(--shadow) 14%, transparent);
+}
+.admin-tabs button {
+  position: relative;
+}
+.admin-tabs button.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
 }
 .admin-grid {
   display: grid;
@@ -607,7 +632,19 @@ select:active:not(:disabled) {
   background: color-mix(in srgb, var(--surface) 86%, transparent);
 }
 .danger-card {
+  position: relative;
   border-color: var(--error-border);
+}
+.danger-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-5);
+  right: var(--space-5);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
 }
 .danger-card p + p {
   margin-top: var(--space-1);

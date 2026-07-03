@@ -45,6 +45,7 @@ const isEncryptedNoKey = computed(() => !keyPart.value && decodedName.value.ends
   padding: var(--space-4);
 }
 .error-card {
+  position: relative;
   width: min(460px, 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -56,6 +57,17 @@ const isEncryptedNoKey = computed(() => !keyPart.value && decodedName.value.ends
   text-align: center;
   gap: var(--space-3);
   animation: error-card-in var(--duration-base) var(--ease-out) both;
+}
+.error-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-5);
+  right: var(--space-5);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
 }
 .lock-mark {
   width: 42px;

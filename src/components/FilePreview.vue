@@ -146,6 +146,7 @@ async function copyToClipboard(value: string, label: string) {
   animation: backdrop-in var(--duration-fast) var(--ease-out) both;
 }
 .modal {
+  position: relative;
   background: var(--bg1);
   border: 1px solid var(--border2);
   border-radius: var(--radius-lg);
@@ -156,6 +157,18 @@ async function copyToClipboard(value: string, label: string) {
   overflow: hidden;
   min-width: 300px;
   animation: modal-in var(--duration-base) var(--ease-out) both;
+}
+.modal::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-4);
+  right: var(--space-4);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
+  z-index: 1;
 }
 .modal-header {
   display: flex;

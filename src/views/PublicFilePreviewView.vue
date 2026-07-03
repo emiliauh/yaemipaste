@@ -206,12 +206,25 @@ watch(requestedFileName, () => void load(), { immediate: true })
 }
 
 .preview-card {
+  position: relative;
   width: min(820px, 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg1);
   padding: var(--space-5);
   animation: card-in var(--duration-base) var(--ease-out) both;
+}
+
+.preview-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-5);
+  right: var(--space-5);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
 }
 
 h1 {

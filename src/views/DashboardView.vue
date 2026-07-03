@@ -8,7 +8,7 @@ import { useTheme, type ThemeMode } from '../lib/theme'
 import { isAuthEnabled } from '../lib/features'
 import { isAuthAdmin } from '../lib/api'
 
-const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed'
+const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
 const HISTORY_REFRESH_EVENT = 'rp:history-refresh'
 
 const router = useRouter()
@@ -450,10 +450,27 @@ function toggleCompactTheme() {
 }
 
 .nav-stack button.active {
+  position: relative;
   color: var(--text);
-  background: color-mix(in srgb, var(--surface2, var(--bg2)) 86%, var(--accent-soft, var(--bg2)));
-  border-color: color-mix(in srgb, var(--border2) 88%, var(--accent));
+  background: color-mix(in srgb, var(--surface2, var(--bg2)) 82%, transparent);
+  border-color: transparent;
   box-shadow: none;
+}
+
+.nav-stack button.active::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+.sidebar-collapsed .nav-stack button.active::before {
+  left: -12px;
 }
 
 .sidebar-collapsed .nav-stack button {
@@ -465,7 +482,6 @@ function toggleCompactTheme() {
 
 .sidebar-collapsed .nav-stack button.active {
   background: color-mix(in srgb, var(--surface2, var(--bg2)) 70%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
 }
 
 .nav-icon {

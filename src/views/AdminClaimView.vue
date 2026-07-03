@@ -107,9 +107,24 @@ onMounted(loadStatus)
   overflow-y: auto;
 }
 .claim-card {
+  position: relative;
   width: min(560px, 100%);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
+  box-shadow: 0 20px 48px color-mix(in srgb, var(--shadow) 60%, transparent);
+}
+.claim-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-5);
+  right: var(--space-5);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
 }
 .claim-header {
   display: flex;
@@ -188,6 +203,7 @@ code {
 @media (max-width: 600px) {
   .claim-wrap { padding: var(--space-3); }
   .claim-card { padding: var(--space-4); }
+  .claim-card::before { left: var(--space-4); right: var(--space-4); }
   .claim-header { flex-direction: column; align-items: stretch; gap: var(--space-3); }
   .claim-header .btn-ghost { width: 100%; min-height: 40px; }
   .claim-form input,
