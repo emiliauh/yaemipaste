@@ -203,7 +203,7 @@ async function loginWithPasskey() {
         <span class="icon">ⓘ</span>
         <span>
           Authentication Required<br>
-          <span style="color:var(--text3)">Sign in with your account, or enter a token directly.</span>
+          <span style="color:var(--text2)">Sign in with your account, or enter a token directly.</span>
         </span>
       </div>
 
@@ -216,13 +216,14 @@ async function loginWithPasskey() {
         <form @submit.prevent="submit">
           <template v-if="mode === 'account'">
             <div class="field">
-              <label>Username</label>
-              <input v-model="username" type="text" autocomplete="username" autofocus placeholder="username" required />
+              <label for="login-username">Username</label>
+              <input id="login-username" v-model="username" type="text" autocomplete="username" autofocus placeholder="username" required />
             </div>
             <div class="field">
-              <label>Password</label>
+              <label for="login-password">Password</label>
               <div class="password-wrap">
                 <input
+                  id="login-password"
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
                   autocomplete="current-password"
@@ -253,9 +254,9 @@ async function loginWithPasskey() {
 
           <template v-else>
             <div class="field">
-              <label>Auth Token</label>
+              <label for="login-token">Auth Token</label>
               <p class="field-hint">Your token will be stored on your device until you logout.</p>
-              <input v-model="token" type="text" autocomplete="off" autofocus placeholder="enter token" required />
+              <input id="login-token" v-model="token" type="text" autocomplete="off" autofocus placeholder="enter token" required />
             </div>
           </template>
 
@@ -266,7 +267,7 @@ async function loginWithPasskey() {
 
           <div v-if="TURNSTILE_SITE_KEY" ref="turnstileContainer" class="turnstile-container"></div>
 
-          <div v-if="error" class="error-msg">
+          <div v-if="error" class="error-msg" role="alert">
             <span>{{ error }}</span>
             <button v-if="tokenUsed" type="button" class="inline-link" @click="goToAccountLogin">Do you have an account?</button>
           </div>
@@ -300,7 +301,8 @@ async function loginWithPasskey() {
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 16px;
+  padding: var(--space-4);
+  overflow-y: auto;
 }
 .center {
   width: min(400px, 100%);
@@ -308,46 +310,76 @@ async function loginWithPasskey() {
   flex-direction: column;
   align-items: stretch;
 }
-.login-info { width: 100%; margin-bottom: 16px; }
-.login-card { width: 100%; }
-.login-tabs { width: 100%; margin-bottom: 16px; }
-.login-tabs button { flex: 1; }
-.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
-.field label { color: var(--text); font-size: 12px; }
-.field-hint { color: var(--text3); font-size: 11px; margin-top: -2px; }
-.field input { width: 100%; }
+.login-info {
+  width: 100%;
+  margin-bottom: var(--space-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+}
+.login-card {
+  width: 100%;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+.login-tabs {
+  width: 100%;
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-sm);
+}
+.login-tabs button {
+  flex: 1;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.login-tabs button:hover:not(.active) { transform: translateY(-1px); }
+.login-tabs button:active { transform: scale(0.98); }
+.field { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.field label { color: var(--text); font-size: var(--fs-sm); line-height: var(--lh-tight); }
+.field-hint { color: var(--text2); font-size: var(--fs-xs); line-height: var(--lh-body); margin-top: -2px; }
+.field input {
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+.field input::placeholder { color: var(--text2); }
 .password-wrap {
   position: relative;
 }
 .password-wrap input {
-  padding-right: 36px;
+  padding-right: 40px;
 }
 .password-toggle {
   position: absolute;
-  right: 8px;
+  right: var(--space-1);
   top: 50%;
   transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text3);
+  color: var(--text2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .password-toggle:hover {
   color: var(--text);
+  background: var(--bg2);
+  transform: translateY(-50%) translateY(-1px);
+}
+.password-toggle:active {
+  transform: translateY(-50%) scale(0.9);
 }
 .remember-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text2);
-  font-size: 12px;
-  margin: 2px 0 10px;
+  font-size: var(--fs-sm);
+  margin: var(--space-1) 0 var(--space-3);
   user-select: none;
+  cursor: pointer;
 }
 .remember-toggle input {
   appearance: none;
@@ -355,12 +387,15 @@ async function loginWithPasskey() {
   height: 16px;
   padding: 0;
   border: 1px solid var(--border2);
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--bg);
   display: inline-block;
   flex-shrink: 0;
   position: relative;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
+.remember-toggle:hover input { border-color: var(--text3); }
 .remember-toggle input:checked {
   border-color: var(--accent);
   background: var(--checked-bg);
@@ -373,34 +408,68 @@ async function loginWithPasskey() {
   border-radius: 1px;
 }
 .turnstile-container {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
-.form-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+.form-footer button {
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.form-footer button:hover:not(:disabled) { transform: translateY(-1px); }
+.form-footer button:active:not(:disabled) { transform: scale(0.98); }
 .error-msg {
   color: var(--red-h);
-  font-size: 12px;
-  margin-bottom: 10px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  margin-bottom: var(--space-3);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .inline-link {
   background: transparent;
   border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--text2);
-  padding: 2px 8px;
-  font-size: 11px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-xs);
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 .inline-link:hover {
   border-color: var(--text3);
   color: var(--text);
 }
-.link { color: var(--text2); font-size: 12px; text-decoration: none; }
-.link:hover { color: var(--text); }
+.inline-link:active { transform: scale(0.98); }
+.link {
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+  display: inline-block;
+  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.link:hover { color: var(--text); transform: translateY(-1px); }
+.link:active { transform: scale(0.98); }
 
-@media (max-width: 420px) {
-  .page { padding: 12px; }
-  .card { padding: 16px; }
+@media (max-width: 600px) {
+  .page { padding: var(--space-3); }
+  .login-card { padding: var(--space-4); }
+  .field input,
+  .login-tabs button,
+  .form-footer button,
+  .inline-link {
+    min-height: 40px;
+  }
+  .password-toggle { width: 40px; height: 40px; }
+  .password-wrap input { padding-right: 48px; }
+  .form-footer { flex-direction: column; align-items: stretch; }
+  .form-footer > * { width: 100%; text-align: center; justify-content: center; }
 }
 </style>

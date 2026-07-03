@@ -82,7 +82,7 @@ const filteredUploads = computed(() => uploads.value.filter((upload) => {
 }))
 
 function ts(value: number | null | undefined): string {
-  if (!value) return '—'
+  if (!value) return 'N/A'
   return new Date(value * 1000).toLocaleString()
 }
 
@@ -334,25 +334,25 @@ onMounted(refreshAll)
 
     <section v-if="tab === 'Uploads'" class="stack">
       <div class="card filters">
-        <select v-model="filterOwner">
+        <select v-model="filterOwner" aria-label="Filter by owner">
           <option value="">All owners</option>
           <option v-for="user in users" :key="user.username" :value="user.username">{{ user.username }}</option>
         </select>
-        <select v-model="filterExpired">
+        <select v-model="filterExpired" aria-label="Filter by expiry status">
           <option value="all">All expiry states</option>
           <option value="active">Active</option>
           <option value="expired">Expired</option>
         </select>
-        <input v-model="filterText" placeholder="filter path or type" />
+        <input v-model="filterText" placeholder="filter path or type" aria-label="Filter uploads by path or type" />
         <button class="btn-red" type="button" :disabled="selectedUploads.size === 0" @click="runAction(() => adminBulkDeleteUploads(Array.from(selectedUploads), confirmText('Type PURGE UPLOADS') ?? ''), 'Selected uploads deleted')">Delete selected</button>
         <button class="btn-red" type="button" @click="runAction(() => adminPurgeExpired(confirmText('Type PURGE EXPIRED') ?? ''), 'Expired uploads purged')">Purge expired</button>
       </div>
       <div class="card">
         <table class="file-table admin-table">
-          <thead><tr><th></th><th>Path</th><th>Owner</th><th>Size</th><th>Created</th><th>Expires</th><th>Actions</th></tr></thead>
+          <thead><tr><th aria-label="Select"></th><th>Path</th><th>Owner</th><th>Size</th><th>Created</th><th>Expires</th><th>Actions</th></tr></thead>
           <tbody>
             <tr v-for="upload in filteredUploads" :key="upload.path">
-              <td><input type="checkbox" :checked="selectedUploads.has(upload.path)" @change="toggleSelection(upload.path, ($event.target as HTMLInputElement).checked)" /></td>
+              <td><input type="checkbox" :checked="selectedUploads.has(upload.path)" :aria-label="`Select ${upload.path}`" @change="toggleSelection(upload.path, ($event.target as HTMLInputElement).checked)" /></td>
               <td>{{ upload.path }}</td>
               <td>{{ upload.owner ?? 'anonymous' }}</td>
               <td>{{ formatBytes(upload.size_bytes) }}</td>
@@ -406,7 +406,7 @@ onMounted(refreshAll)
         <table class="file-table admin-table">
           <tbody>
             <tr v-for="delivery in deliveries" :key="delivery.id">
-              <td>{{ ts(delivery.created_at) }}</td><td>{{ delivery.event }}</td><td>{{ delivery.status }}</td><td>{{ delivery.error ?? delivery.status_code ?? '—' }}</td>
+              <td>{{ ts(delivery.created_at) }}</td><td>{{ delivery.event }}</td><td>{{ delivery.status }}</td><td>{{ delivery.error ?? delivery.status_code ?? 'N/A' }}</td>
             </tr>
           </tbody>
         </table>
@@ -419,7 +419,7 @@ onMounted(refreshAll)
         <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Status</th><th>Reason</th></tr></thead>
         <tbody>
           <tr v-for="entry in audit" :key="entry.id">
-            <td>{{ ts(entry.created_at) }}</td><td>{{ entry.actor ?? 'system' }}</td><td>{{ entry.action }}</td><td>{{ entry.target ?? '—' }}</td><td>{{ entry.status }}</td><td>{{ entry.reason ?? '—' }}</td>
+            <td>{{ ts(entry.created_at) }}</td><td>{{ entry.actor ?? 'system' }}</td><td>{{ entry.action }}</td><td>{{ entry.target ?? 'N/A' }}</td><td>{{ entry.status }}</td><td>{{ entry.reason ?? 'N/A' }}</td>
           </tr>
         </tbody>
       </table>
@@ -467,7 +467,7 @@ onMounted(refreshAll)
 }
 .workspace {
   min-width: 0;
-  padding: 26px 26px 42px;
+  padding: var(--space-5) var(--space-5) var(--space-7);
 }
 .admin-layout {
   max-width: 1180px;
@@ -477,35 +477,37 @@ onMounted(refreshAll)
 .admin-header {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: flex-start;
-  margin-bottom: 16px;
-  padding: 18px 20px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border);
-  border-radius: calc(var(--radius) + 8px);
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   box-shadow: 0 18px 36px color-mix(in srgb, var(--shadow) 18%, transparent);
 }
 .header-actions, .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .eyebrow {
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 h1, h2 {
   color: var(--text);
-  font-weight: 400;
+  font-weight: 600;
+  line-height: var(--lh-tight);
 }
-h1 { font-size: 18px; }
-h2 { font-size: 13px; margin-bottom: 10px; }
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .subtle {
-  color: var(--text3);
-  font-size: 11px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
 }
 .admin-tabs {
   margin: 0 0 16px;
@@ -517,62 +519,74 @@ h2 { font-size: 13px; margin-bottom: 10px; }
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 .metric {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .metric span {
   color: var(--text2);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 .metric strong {
   color: var(--text);
-  font-size: 20px;
-  font-weight: 400;
+  font-size: var(--fs-h1);
+  font-weight: 600;
 }
 .wide {
   grid-column: 1 / -1;
 }
 .stack {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .form-grid {
   display: grid;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .form-grid label {
   display: grid;
-  gap: 5px;
+  gap: var(--space-1);
   color: var(--text2);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 .inline-check {
   display: flex !important;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 select {
   background: var(--bg2);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   color: var(--text);
   font-family: var(--font);
-  padding: 6px 10px;
+  font-size: var(--fs-body);
+  padding: var(--space-2) var(--space-3);
+  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+select:hover:not(:disabled) {
+  background: var(--bg3);
+  border-color: var(--text3);
+}
+select:active:not(:disabled) {
+  transform: scale(0.98);
 }
 .admin-table {
   min-width: 720px;
+  font-size: var(--fs-body);
 }
 .card {
   overflow-x: auto;
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   box-shadow: 0 16px 32px color-mix(in srgb, var(--shadow) 12%, transparent);
 }
@@ -580,16 +594,51 @@ select {
   border: 1px solid var(--error-border);
   background: var(--danger-bg);
   color: var(--red-h);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-body);
+}
+:root[data-theme="light"] .error-box {
+  color: var(--red);
 }
 .info-box {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   background: color-mix(in srgb, var(--surface) 86%, transparent);
 }
 .danger-card {
   border-color: var(--error-border);
+}
+.danger-card p + p {
+  margin-top: var(--space-1);
+}
+.admin-layout input:not([type="checkbox"]) {
+  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.admin-layout input:not([type="checkbox"]):hover:not(:disabled) {
+  border-color: var(--text3);
+}
+.admin-layout input:not([type="checkbox"]):active:not(:disabled) {
+  transform: scale(0.98);
+}
+.admin-layout input[type="checkbox"] {
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.admin-layout input[type="checkbox"]:hover:not(:disabled) {
+  transform: scale(1.12);
+}
+.admin-layout input[type="checkbox"]:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.admin-layout button:not(:disabled) {
+  transition: transform var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.admin-layout button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+.admin-layout button:not(:disabled):active {
+  transform: translateY(0) scale(0.96);
 }
 .mobile-tabbar {
   display: none;
@@ -618,10 +667,10 @@ select {
   overflow: auto;
 }
 @media (max-width: 760px) {
-  .workspace { padding: 18px; }
+  .workspace { padding: var(--space-4); }
   .admin-header { flex-direction: column; }
   .admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tabs button { padding: 6px 16px; }
+  .tabs button { padding: var(--space-2) var(--space-4); }
 }
 @media (max-width: 600px) {
   .layout {
@@ -632,10 +681,10 @@ select {
     display: none;
   }
   .workspace {
-    padding: 14px 12px 104px;
+    padding: var(--space-3) var(--space-3) 104px;
   }
   .admin-header {
-    padding: 16px;
+    padding: var(--space-4);
   }
   .admin-tabs {
     width: 100%;
@@ -645,6 +694,19 @@ select {
   }
   .header-actions button {
     flex: 1;
+  }
+  .admin-layout button,
+  .admin-layout select,
+  .admin-layout input:not([type="checkbox"]) {
+    min-height: 40px;
+  }
+  .admin-layout input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+  }
+  .admin-table td,
+  .admin-table th {
+    padding: var(--space-2) var(--space-3);
   }
   .mobile-tabbar {
     position: fixed;

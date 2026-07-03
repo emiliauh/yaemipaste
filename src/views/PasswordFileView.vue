@@ -126,8 +126,9 @@ onBeforeUnmount(clearObjectUrl)
       <template v-if="!decrypted">
         <form class="pw-form" @submit.prevent="decrypt">
           <div class="field">
-            <label>Password</label>
+            <label for="pw-password-input">Password</label>
             <input
+              id="pw-password-input"
               v-model="password"
               type="password"
               autocomplete="current-password"
@@ -188,26 +189,27 @@ onBeforeUnmount(clearObjectUrl)
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: var(--space-4);
 }
 .pw-panel {
   width: min(640px, 100%);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--bg1);
-  padding: 20px;
+  padding: var(--space-5);
+  animation: panel-in var(--duration-base) var(--ease-out) both;
 }
 .pw-topline {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 .seal-mark {
   width: 34px;
   height: 34px;
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--bg2);
   color: var(--accent);
   display: flex;
@@ -217,70 +219,85 @@ onBeforeUnmount(clearObjectUrl)
 }
 .eyebrow {
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .subline {
-  color: var(--text3);
-  font-size: 11px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
 }
 .pw-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .field label {
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .field input {
   width: 100%;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
 }
 .error-msg {
   color: var(--red-h);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .status-msg {
   color: var(--text2);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
+.pw-form .btn-primary {
+  border-radius: var(--radius-sm);
+  min-height: 40px;
+  transition: transform var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.pw-form .btn-primary:hover:not(:disabled) { transform: translateY(-1px); }
+.pw-form .btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.97); }
 .details-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 .details-grid div {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg);
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
 }
 .details-grid span {
   display: block;
-  color: var(--text3);
-  font-size: 10px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   text-transform: uppercase;
-  margin-bottom: 3px;
+  margin-bottom: var(--space-1);
 }
 .details-grid strong {
-  color: var(--text2);
-  font-size: 12px;
+  color: var(--text);
+  font-size: var(--fs-sm);
   font-weight: 400;
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
 .state {
   color: var(--text2);
-  font-size: 12px;
-  padding: 20px 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  padding: var(--space-5) 0;
   text-align: center;
 }
 .preview-frame {
-  margin: 14px 0;
+  margin: var(--space-3) 0;
   display: flex;
   justify-content: center;
   max-height: 65vh;
@@ -290,38 +307,54 @@ onBeforeUnmount(clearObjectUrl)
   max-width: 100%;
   max-height: 65vh;
   object-fit: contain;
+  border-radius: var(--radius-md);
 }
 .text-preview {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3);
   max-height: 45vh;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text2);
-  padding: 12px;
+  padding: var(--space-3);
   font-family: var(--font);
-  font-size: 12px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
   white-space: pre-wrap;
 }
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 .btn-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 5px 12px;
-  border-radius: var(--radius);
-  font-size: 12px;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
   text-decoration: none;
+  transition: transform var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
+.btn-link:hover { transform: translateY(-1px); }
+.btn-link:active { transform: translateY(0) scale(0.97); }
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 560px) {
   .details-grid { grid-template-columns: 1fr; }
-  .actions { flex-direction: column; }
+  .preview-frame img,
+  .preview-frame video { max-height: 46vh; }
+  .actions { flex-direction: column; align-items: stretch; }
 }
 </style>

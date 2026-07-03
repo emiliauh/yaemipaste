@@ -1115,7 +1115,7 @@ onBeforeUnmount(() => {
       <div ref="actionsMenuRef" class="actions-menu-wrap">
         <button
           class="btn-ghost"
-          style="padding:4px 10px;font-size:12px"
+          style="padding:var(--space-1) var(--space-3);font-size:var(--fs-sm)"
           :disabled="!hasSelection || bulkDeleting || bulkDownloading"
           aria-haspopup="menu"
           :aria-expanded="actionsOpen ? 'true' : 'false'"
@@ -1235,7 +1235,7 @@ onBeforeUnmount(() => {
               <div class="action-row">
                 <button
                   class="btn-ghost action-btn"
-                  style="padding:3px 10px;font-size:11px"
+                  style="padding:var(--space-1) var(--space-3);font-size:var(--fs-xs)"
                   :title="canDownloadEncrypted(f) ? 'Download decrypted file' : 'Download file'"
                   aria-label="Download"
                   @click.stop="downloadFile(f)"
@@ -1247,7 +1247,7 @@ onBeforeUnmount(() => {
                   </svg>
                   <span class="action-label">Download</span>
                 </button>
-                <button class="btn-orange action-btn" style="padding:3px 10px;font-size:11px" aria-label="Copy" @click.stop="copy(f)">
+                <button class="btn-orange action-btn" style="padding:var(--space-1) var(--space-3);font-size:var(--fs-xs)" aria-label="Copy" @click.stop="copy(f)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px">
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -1257,7 +1257,7 @@ onBeforeUnmount(() => {
                 <div class="row-more-wrap">
                   <button
                     class="btn-ghost row-more-btn action-btn"
-                    style="padding:3px 10px;font-size:11px"
+                    style="padding:var(--space-1) var(--space-3);font-size:var(--fs-xs)"
                     aria-label="More"
                     aria-haspopup="menu"
                     :aria-expanded="rowMoreOpen === f.file_name ? 'true' : 'false'"
@@ -1296,7 +1296,7 @@ onBeforeUnmount(() => {
       <div class="pagination">
         <button
           class="btn-ghost"
-          style="padding:4px 10px;font-size:12px"
+          style="padding:var(--space-1) var(--space-3);font-size:var(--fs-sm)"
           :disabled="currentPage <= 1"
           @click="goToPage(currentPage - 1)"
         >
@@ -1305,7 +1305,7 @@ onBeforeUnmount(() => {
         <span>Page {{ currentPage }} of {{ totalPages }}</span>
         <button
           class="btn-ghost"
-          style="padding:4px 10px;font-size:12px"
+          style="padding:var(--space-1) var(--space-3);font-size:var(--fs-sm)"
           :disabled="currentPage >= totalPages"
           @click="goToPage(currentPage + 1)"
         >
@@ -1345,7 +1345,7 @@ onBeforeUnmount(() => {
       <div class="password-modal">
         <div class="password-modal-header">
           <strong>Change decryption password</strong>
-          <button class="btn-ghost" style="padding:2px 8px" :disabled="changingPassword" @click="closePasswordModal">✕</button>
+          <button class="btn-ghost" style="padding:var(--space-1) var(--space-2);min-width:28px;min-height:28px" :disabled="changingPassword" @click="closePasswordModal">✕</button>
         </div>
         <div class="password-modal-copy">
           Updating this re-encrypts the file and refreshes your owner link.
@@ -1389,7 +1389,7 @@ onBeforeUnmount(() => {
       <div class="password-modal">
         <div class="password-modal-header">
           <strong>{{ passwordPromptAction === 'download' ? 'Download password-encrypted file' : 'Preview password-encrypted file' }}</strong>
-          <button class="btn-ghost" style="padding:2px 8px" :disabled="passwordPreviewBusy" @click="closePasswordPreviewModal">✕</button>
+          <button class="btn-ghost" style="padding:var(--space-1) var(--space-2);min-width:28px;min-height:28px" :disabled="passwordPreviewBusy" @click="closePasswordPreviewModal">✕</button>
         </div>
         <div class="password-modal-copy">
           {{ passwordPromptAction === 'download'
@@ -1426,7 +1426,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.history-tab { display: flex; flex-direction: column; gap: 10px; padding-bottom: 20px; }
+.history-tab { display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: 20px; }
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1439,28 +1439,28 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 12px;
 }
-.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .toolbar-control {
   min-height: 34px;
-  border-radius: var(--radius);
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
 }
 .toolbar-delete-all {
-  padding: 0 14px;
+  padding: 0 var(--space-3);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.bulk-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.select-all { display: inline-flex; align-items: center; gap: 6px; color: var(--text2); font-size: 12px; }
-.selection-count { color: var(--text3); font-size: 11px; }
+.bulk-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.select-all { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text2); font-size: var(--fs-sm); }
+.selection-count { color: var(--text2); font-size: var(--fs-xs); }
 .actions-menu-wrap { position: relative; }
-.page-size-wrap { display: inline-flex; align-items: center; gap: 8px; }
-.page-size-label { color: var(--text3); font-size: 11px; }
+.page-size-wrap { display: inline-flex; align-items: center; gap: var(--space-2); }
+.page-size-label { color: var(--text2); font-size: var(--fs-xs); }
 .page-size-segment {
   display: inline-flex;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--bg);
 }
@@ -1468,10 +1468,11 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 0;
   min-width: 34px;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
   background: transparent;
   color: var(--text2);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .page-size-btn.active {
   background: var(--bg2);
@@ -1481,20 +1482,23 @@ onBeforeUnmount(() => {
   background: var(--bg1);
   color: var(--text);
 }
+.page-size-btn:active {
+  transform: scale(0.94);
+}
 .actions-menu {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
   min-width: 160px;
-  padding: 6px;
+  padding: var(--space-2);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg1);
   box-shadow: 0 8px 24px var(--shadow);
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .search-wrap {
   position: relative;
@@ -1508,21 +1512,22 @@ onBeforeUnmount(() => {
   min-height: inherit;
   padding-right: 28px;
 }
-.search-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text3); pointer-events: none; }
+.search-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text2); pointer-events: none; }
 .table-wrap { overflow-x: auto; }
 .pagination {
-  margin-top: 10px;
+  margin-top: var(--space-2);
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  gap: 10px;
-  color: var(--text3);
-  font-size: 11px;
+  gap: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-xs);
 }
-.sort-arrow { color: var(--text3); font-size: 10px; margin-left: 2px; }
-.state-msg { color: var(--text2); font-size: 12px; padding: 20px 0; text-align: center; }
+.sort-arrow { color: var(--text2); font-size: var(--fs-xs); margin-left: 2px; }
+.state-msg { color: var(--text2); font-size: var(--fs-sm); padding: 20px 0; text-align: center; }
 .select-col { width: 1px; }
-.filename { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.filename { display: flex; align-items: center; gap: var(--space-1); cursor: pointer; }
 .filename-text { min-width: 0; display: inline-flex; align-items: baseline; max-width: 100%; }
 .filename-base {
   min-width: 0;
@@ -1538,11 +1543,13 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   object-fit: contain;
 }
+.filename { transition: color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out); }
+.filename:active { opacity: 0.7; }
 @media (hover: hover) and (pointer: fine) {
   .filename:hover { color: var(--accent); }
 }
 .file-table td.name { max-width: 0; width: auto; overflow: hidden; }
-.action-row { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
+.action-row { display: flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: nowrap; }
 .action-btn { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
 .action-label { display: inline; }
 .row-more-wrap { position: relative; }
@@ -1551,19 +1558,19 @@ onBeforeUnmount(() => {
   right: 0;
   top: calc(100% + 6px);
   min-width: 220px;
-  padding: 6px;
+  padding: var(--space-2);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg1);
   box-shadow: 0 8px 24px var(--shadow);
   z-index: 25;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .row-item-note {
-  color: var(--text3);
-  font-size: 10px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   padding: 0 2px 4px;
 }
 .row-delete-btn {
@@ -1575,12 +1582,15 @@ onBeforeUnmount(() => {
   border-color: var(--red);
   color: #fff;
 }
+.row-delete-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
 .password-modal {
   width: min(420px, calc(100vw - 24px));
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg1);
-  padding: 14px;
+  padding: var(--space-4);
 }
 .password-modal-header {
   display: flex;
@@ -1589,46 +1599,46 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 .password-modal-copy {
-  color: var(--text3);
-  font-size: 11px;
-  margin-bottom: 6px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  margin-bottom: var(--space-2);
 }
 .password-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 .password-form label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
   color: var(--text2);
 }
 .password-modal-error {
   color: var(--red-h);
-  font-size: 12px;
-  margin-top: 8px;
+  font-size: var(--fs-sm);
+  margin-top: var(--space-2);
 }
 .password-modal-status {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text2);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .password-modal-actions {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .busy-inline {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 @media (max-width: 600px) {
@@ -1658,8 +1668,8 @@ onBeforeUnmount(() => {
   }
   .pagination {
     justify-content: space-between;
-    gap: 6px;
-    font-size: 10px;
+    gap: var(--space-2);
+    font-size: var(--fs-xs);
   }
 }
 .hover-preview {
@@ -1668,9 +1678,9 @@ onBeforeUnmount(() => {
   width: 220px;
   max-width: calc(100vw - 32px);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg1);
-  padding: 6px;
+  padding: var(--space-2);
   pointer-events: none;
   box-shadow: 0 8px 24px var(--shadow);
 }
@@ -1685,28 +1695,40 @@ onBeforeUnmount(() => {
 .hover-loading {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: var(--text3);
-  font-size: 11px;
-  padding: 36px 8px;
+  gap: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  padding: 36px var(--space-2);
   justify-content: center;
   width: 100%;
 }
 .loading-spinner {
   width: 12px;
   height: 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 2px solid var(--border2);
   border-top-color: var(--orange);
   animation: spin 0.8s linear infinite;
 }
 .hover-name {
-  color: var(--text3);
-  font-size: 10px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   margin-top: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.history-tab .btn-ghost,
+.history-tab .btn-primary,
+.history-tab .btn-red,
+.history-tab .btn-orange {
+  transition: background var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.history-tab .btn-ghost:not(:disabled):active,
+.history-tab .btn-primary:not(:disabled):active,
+.history-tab .btn-red:not(:disabled):active,
+.history-tab .btn-orange:not(:disabled):active {
+  transform: scale(0.96);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>

@@ -89,70 +89,110 @@ onMounted(loadStatus)
           Custom upload token <span>(optional)</span>
           <input v-model="uploadToken" autocomplete="off" placeholder="Leave blank to generate" />
         </label>
-        <div v-if="error" class="error-box">{{ error }}</div>
+        <div v-if="error" class="error-box" role="alert">{{ error }}</div>
         <button class="btn-orange" type="submit" :disabled="busy">{{ busy ? 'Claiming…' : 'Claim admin' }}</button>
       </form>
-      <div v-else-if="error" class="error-box">{{ error }}</div>
+      <div v-else-if="error" class="error-box" role="alert">{{ error }}</div>
     </section>
   </main>
 </template>
 
 <style scoped>
 .claim-wrap {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--space-5);
+  overflow-y: auto;
 }
 .claim-card {
   width: min(560px, 100%);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
 }
 .claim-header {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: flex-start;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
+.claim-header .btn-ghost {
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.claim-header .btn-ghost:hover:not(:disabled) { transform: translateY(-1px); }
+.claim-header .btn-ghost:active:not(:disabled) { transform: scale(0.98); }
 .eyebrow {
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 h1 {
   color: var(--text);
-  font-size: 18px;
-  font-weight: 400;
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  font-weight: 600;
 }
 .copy {
   color: var(--text2);
-  margin-bottom: 16px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  margin-bottom: var(--space-4);
+}
+.claim-wrap .info-box {
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
 }
 .claim-form {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 label {
   display: grid;
-  gap: 5px;
+  gap: var(--space-2);
   color: var(--text2);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 label span {
-  color: var(--text3);
+  color: var(--text2);
+}
+.claim-form input {
+  border-radius: var(--radius-sm);
+}
+.claim-form input::placeholder {
+  color: var(--text2);
 }
 .error-box {
   border: 1px solid var(--error-border);
-  background: var(--danger-bg);
   color: var(--red-h);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
 }
+.btn-orange {
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.btn-orange:hover:not(:disabled) { transform: translateY(-1px); }
+.btn-orange:active:not(:disabled) { transform: scale(0.98); }
 code {
   color: var(--text);
+}
+
+@media (max-width: 600px) {
+  .claim-wrap { padding: var(--space-3); }
+  .claim-card { padding: var(--space-4); }
+  .claim-header { flex-direction: column; align-items: stretch; gap: var(--space-3); }
+  .claim-header .btn-ghost { width: 100%; min-height: 40px; }
+  .claim-form input,
+  .btn-orange {
+    min-height: 40px;
+  }
 }
 </style>

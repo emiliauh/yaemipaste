@@ -385,17 +385,17 @@ function onPasteAreaLongPressCancel() {
 </template>
 
 <style scoped>
-.files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 18px; }
+.files-tab { display: flex; flex-direction: column; gap: var(--space-3); padding-bottom: 18px; }
 .upload-panel {
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-  border-radius: 28px;
+  border-radius: var(--radius-lg);
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 38%),
     linear-gradient(145deg, color-mix(in srgb, var(--bg1) 90%, transparent), color-mix(in srgb, var(--bg) 74%, transparent));
   box-shadow: 0 24px 70px color-mix(in srgb, #000 22%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   overflow: visible;
   padding: 22px;
 }
@@ -403,51 +403,62 @@ function onPasteAreaLongPressCancel() {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: var(--space-4);
 }
 .upload-panel h1 {
   color: var(--text);
-  font-size: clamp(26px, 4vw, 36px);
-  font-weight: 760;
+  font-size: var(--fs-display);
+  font-weight: 700;
   letter-spacing: -0.04em;
-  line-height: 0.95;
+  line-height: var(--lh-tight);
   margin: 0;
 }
 .upload-panel p {
-  color: var(--text3);
-  font-size: 13px;
-  line-height: 1.45;
-  margin: 8px 0 0;
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  margin: var(--space-2) 0 0;
 }
 .upload-options {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   min-width: min(100%, 360px);
 }
 .encrypt-toggle,
 .name-toggle {
   border: 1px solid color-mix(in srgb, var(--border2) 82%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--bg1) 84%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--space-2);
   min-height: 38px;
-  padding: 0 13px;
+  padding: 0 var(--space-3);
   color: var(--text2);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 650;
   letter-spacing: -0.01em;
   width: fit-content;
   box-sizing: border-box;
 }
+.name-toggle {
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.name-toggle:hover {
+  border-color: var(--border2);
+  color: var(--text);
+}
+.name-toggle:active {
+  transform: scale(0.97);
+}
 .encrypt-btn {
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .encrypt-btn:disabled {
   cursor: not-allowed;
@@ -457,6 +468,9 @@ function onPasteAreaLongPressCancel() {
   border-color: var(--accent);
   color: var(--text);
   transform: translateY(-1px);
+}
+.encrypt-btn:not(:disabled):active {
+  transform: translateY(0) scale(0.97);
 }
 .encrypt-btn.active-encrypt {
   border-color: var(--accent);
@@ -494,9 +508,9 @@ function onPasteAreaLongPressCancel() {
 .pw-input {
   width: 150px;
   min-height: 38px;
-  font-size: 12px;
-  padding: 0 12px;
-  border-radius: 999px;
+  font-size: var(--fs-sm);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
   box-sizing: border-box;
 }
 .password-wrap {
@@ -514,14 +528,18 @@ function onPasteAreaLongPressCancel() {
   height: 24px;
   border: 0;
   background: transparent;
-  color: var(--text3);
+  color: var(--text2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .password-toggle:hover {
   color: var(--text);
+}
+.password-toggle:active {
+  transform: translateY(-50%) scale(0.9);
 }
 .pw-field-enter-active,
 .pw-field-leave-active {
@@ -536,22 +554,22 @@ function onPasteAreaLongPressCancel() {
 }
 .share-result {
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg1) 82%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
 }
 .share-label {
-  color: var(--text3);
-  font-size: 10px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   text-transform: uppercase;
 }
 .share-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 .share-link-block {
@@ -560,43 +578,47 @@ function onPasteAreaLongPressCancel() {
 }
 .share-file {
   display: block;
-  color: var(--text3);
-  font-size: 11px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   margin-bottom: 3px;
 }
 .share-mode {
   display: block;
-  color: var(--text3);
-  font-size: 10px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   margin-bottom: 3px;
 }
 .share-result a {
   color: var(--accent-h);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   overflow-wrap: anywhere;
   text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.share-result a:hover {
+  text-decoration: underline;
 }
 .share-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .upload-zone {
   border: 1px dashed color-mix(in srgb, var(--border2) 90%, transparent);
-  border-radius: 24px;
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--bg) 52%, transparent);
-  color: var(--text3);
+  color: var(--text2);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: 180px;
   padding: 34px 22px;
   text-align: center;
-  transition: border-color 0.16s, background 0.16s, transform 0.16s;
+  transition: border-color var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
 }
 .upload-zone svg {
   color: var(--accent);
@@ -606,25 +628,28 @@ function onPasteAreaLongPressCancel() {
 .upload-zone.drag-over {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 9%, var(--bg));
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+.upload-zone:active {
+  transform: translateY(0) scale(0.99);
 }
 .upload-zone-title {
   color: var(--text);
-  font-size: 18px;
+  font-size: var(--fs-h1);
   font-weight: 750;
   letter-spacing: -0.02em;
 }
 .upload-zone p {
-  color: var(--text3);
-  font-size: 13px;
+  color: var(--text2);
+  font-size: var(--fs-body);
   margin: 0;
 }
 .paste-area {
   border: 1px solid color-mix(in srgb, var(--border2) 76%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--bg1) 72%, transparent);
-  color: var(--text3);
-  padding: 11px 16px;
+  color: var(--text2);
+  padding: 11px var(--space-4);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -633,15 +658,18 @@ function onPasteAreaLongPressCancel() {
   touch-action: manipulation;
   user-select: none;
   -webkit-touch-callout: none;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .paste-area span {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 650;
 }
 .paste-area:hover {
-  border-color: var(--text3);
-  color: var(--text2);
+  border-color: var(--text2);
+  color: var(--text);
+}
+.paste-area:active {
+  transform: scale(0.98);
 }
 .paste-area.pressing {
   border-color: var(--accent);
@@ -649,8 +677,8 @@ function onPasteAreaLongPressCancel() {
   color: var(--accent);
 }
 .divider {
-  color: var(--text3);
-  font-size: 11px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   letter-spacing: 0.08em;
   text-align: center;
   text-transform: uppercase;
@@ -659,9 +687,9 @@ function onPasteAreaLongPressCancel() {
   width: 100%;
   min-height: 156px;
   resize: vertical;
-  border-radius: 18px;
-  padding: 14px 16px;
-  line-height: 1.5;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  line-height: var(--lh-body);
   box-sizing: border-box;
 }
 .text-actions-row {
@@ -669,26 +697,26 @@ function onPasteAreaLongPressCancel() {
   justify-content: space-between;
   align-items: center;
   margin-top: 0;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .upload-progress {
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg1) 82%, transparent);
-  padding: 10px 12px;
+  padding: var(--space-3);
 }
 .progress-row {
   display: flex;
   justify-content: space-between;
-  color: var(--text3);
-  font-size: 11px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   margin-bottom: 7px;
 }
 .progress-track {
   height: 7px;
   background: var(--bg);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 .progress-fill {
@@ -702,8 +730,8 @@ function onPasteAreaLongPressCancel() {
     padding-bottom: 112px;
   }
   .upload-panel {
-    border-radius: 22px;
-    padding: 16px;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
   }
   .upload-panel-head {
     flex-direction: column;
@@ -733,7 +761,15 @@ function onPasteAreaLongPressCancel() {
     justify-content: flex-end;
   }
   .share-result {
-    padding: 12px;
+    padding: var(--space-3);
   }
+}
+.files-tab .btn-ghost,
+.files-tab .btn-primary {
+  transition: background var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.files-tab .btn-ghost:not(:disabled):active,
+.files-tab .btn-primary:not(:disabled):active {
+  transform: scale(0.97);
 }
 </style>

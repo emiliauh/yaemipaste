@@ -136,15 +136,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: var(--space-4);
   width: 100%;
   min-height: 76px;
   border: 1px solid color-mix(in srgb, var(--border2) 82%, transparent);
-  border-radius: 22px;
+  border-radius: var(--radius-lg);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--bg1) 86%, transparent), color-mix(in srgb, var(--subtle-grad-end) 88%, transparent)),
     color-mix(in srgb, var(--bg) 72%, transparent);
-  padding: 15px 16px 15px 18px;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
   box-shadow: 0 18px 46px color-mix(in srgb, var(--shadow) 72%, transparent);
   backdrop-filter: blur(16px);
 }
@@ -158,20 +158,20 @@ onUnmounted(() => {
 .expiry-headings {
   min-width: 0;
   display: grid;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .expiry-label {
   color: var(--accent-h);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.18em;
-  line-height: 1.2;
+  line-height: var(--lh-tight);
   text-transform: uppercase;
 }
 .expiry-tip {
-  color: var(--text3);
-  font-size: 11px;
-  line-height: 1.35;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
 }
 .expiry-tip kbd {
   border: 1px solid color-mix(in srgb, var(--border2) 84%, transparent);
@@ -186,7 +186,7 @@ onUnmounted(() => {
   flex: 0 0 204px;
   min-height: 44px;
   border: 1px solid color-mix(in srgb, var(--border2) 90%, transparent);
-  border-radius: 15px;
+  border-radius: var(--radius-sm);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--bg2) 86%, transparent), color-mix(in srgb, var(--subtle-grad-end) 92%, transparent)),
     var(--bg1);
@@ -194,24 +194,27 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 0 13px 0 15px;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) 0 var(--space-4);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 7%, transparent);
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .expiry-trigger:hover,
 .expiry-trigger[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--border2));
 }
+.expiry-trigger:active {
+  transform: scale(0.98);
+}
 .expiry-trigger svg {
   flex: 0 0 auto;
-  color: var(--text3);
+  color: var(--text2);
 }
 .expiry-value {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -223,9 +226,9 @@ onUnmounted(() => {
   z-index: 70;
   width: 204px;
   border: 1px solid color-mix(in srgb, var(--border2) 88%, transparent);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg1) 94%, transparent);
-  padding: 6px;
+  padding: var(--space-2);
   box-shadow: 0 18px 40px color-mix(in srgb, var(--shadow) 82%, transparent);
   backdrop-filter: blur(16px);
 }
@@ -242,28 +245,31 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   min-height: 34px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text2);
   text-align: left;
-  padding: 7px 9px 7px 28px;
+  padding: var(--space-2) var(--space-2) var(--space-2) 28px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 12px;
-  transition: background 0.15s, color 0.15s;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .expiry-options button:hover,
 .expiry-options button.active {
   background: color-mix(in srgb, var(--bg2) 86%, transparent);
   color: var(--text);
 }
+.expiry-options button:active {
+  transform: scale(0.98);
+}
 .option-dot {
   position: absolute;
   left: 10px;
   width: 7px;
   height: 7px;
-  border: 1px solid var(--text3);
+  border: 1px solid var(--text2);
   border-radius: 50%;
   background: var(--bg1);
 }
@@ -303,10 +309,18 @@ onUnmounted(() => {
     color: var(--text2);
     display: none;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     min-height: 34px;
-    padding: 7px 9px;
+    padding: var(--space-2);
     box-shadow: 0 8px 24px var(--shadow);
+    transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  }
+  .expiry-mobile-toggle:hover {
+    color: var(--text);
+    border-color: var(--border2);
+  }
+  .expiry-mobile-toggle:active {
+    transform: scale(0.97);
   }
   .expiry-menu.mobile-collapsed .expiry-mobile-toggle {
     display: inline-flex;
@@ -314,9 +328,9 @@ onUnmounted(() => {
   .expiry-panel {
     display: block;
     min-height: auto;
-    border-radius: var(--radius);
+    border-radius: var(--radius-md);
     background: var(--bg1);
-    padding: 9px;
+    padding: var(--space-2);
     box-shadow: 0 8px 24px var(--shadow);
     backdrop-filter: none;
   }
@@ -327,15 +341,15 @@ onUnmounted(() => {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
     margin-bottom: 5px;
   }
   .expiry-trigger {
     width: 100%;
     min-height: auto;
     flex: 0 1 auto;
-    border-radius: var(--radius);
-    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
   }
   .expiry-options {
     left: 0;
@@ -343,7 +357,7 @@ onUnmounted(() => {
     top: auto;
     bottom: calc(100% + 6px);
     width: auto;
-    border-radius: var(--radius);
+    border-radius: var(--radius-md);
   }
   .expiry-label {
     margin-bottom: 0;
@@ -361,7 +375,15 @@ onUnmounted(() => {
     color: var(--text2);
     min-width: 28px;
     min-height: 24px;
-    padding: 3px 6px;
+    padding: var(--space-1) var(--space-2);
+    transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  }
+  .expiry-collapse:hover {
+    color: var(--text);
+    border-color: var(--border2);
+  }
+  .expiry-collapse:active {
+    transform: scale(0.92);
   }
 }
 </style>

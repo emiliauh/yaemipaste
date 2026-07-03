@@ -99,7 +99,7 @@ async function copyToClipboard(value: string, label: string) {
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">{{ name }}</span>
-        <button class="btn-ghost" style="padding:2px 8px" @click="emit('close')">✕</button>
+        <button class="btn-ghost btn-icon-close" aria-label="Close preview" @click="emit('close')">✕</button>
       </div>
       <div class="modal-body">
         <div v-if="props.loading" class="preview-loading">
@@ -125,7 +125,7 @@ async function copyToClipboard(value: string, label: string) {
         <span class="footer-size">Size: {{ sizeLabel }}</span>
         <div class="footer-actions">
           <a v-if="!isFallbackPreview" :href="url" target="_blank" rel="noopener" class="link">Open in tab</a>
-          <button class="btn-ghost" style="padding:4px 10px;font-size:12px" @click="copyToClipboard(copyUrl, 'URL')">
+          <button class="btn-ghost btn-copy" @click="copyToClipboard(copyUrl, 'URL')">
             Copy
           </button>
         </div>
@@ -143,25 +143,27 @@ async function copyToClipboard(value: string, label: string) {
   align-items: center;
   justify-content: center;
   z-index: 200;
+  animation: backdrop-in var(--duration-fast) var(--ease-out) both;
 }
 .modal {
   background: var(--bg1);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   max-width: 90vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 300px;
+  animation: modal-in var(--duration-base) var(--ease-out) both;
 }
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text2);
 }
 .modal-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
@@ -171,34 +173,35 @@ async function copyToClipboard(value: string, label: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: var(--space-4);
 }
-.preview-img { max-width: 100%; max-height: 70vh; object-fit: contain; }
-.preview-video { max-width: 100%; max-height: 70vh; }
+.preview-img { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: var(--radius-md); }
+.preview-video { max-width: 100%; max-height: 70vh; border-radius: var(--radius-md); }
 .text-preview {
   width: min(680px, 100%);
   max-height: 56vh;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text2);
-  padding: 12px;
+  padding: var(--space-3);
   font-family: var(--font);
-  font-size: 12px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
   white-space: pre-wrap;
 }
 .preview-loading {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: var(--space-2);
+  font-size: var(--fs-body);
   color: var(--text2);
 }
 .loading-spinner {
   width: 14px;
   height: 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 2px solid var(--border2);
   border-top-color: var(--orange);
   animation: spin 0.8s linear infinite;
@@ -207,47 +210,119 @@ async function copyToClipboard(value: string, label: string) {
   min-width: min(360px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: flex-start;
   background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
 }
 .fallback-title {
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-weight: 600;
+  line-height: var(--lh-tight);
   color: var(--text);
 }
 .fallback-meta {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text2);
 }
 .fallback-note {
-  font-size: 12px;
-  color: var(--orange);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  color: var(--accent-h);
 }
 .fallback-download {
-  font-size: 12px;
+  font-size: var(--fs-sm);
+  border-radius: var(--radius-sm);
   text-decoration: none;
+  transition: transform var(--duration-fast) var(--ease-out);
 }
+.fallback-download:hover:not(:disabled) { transform: translateY(-1px); }
+.fallback-download:active:not(:disabled) { transform: translateY(0) scale(0.97); }
 .modal-footer {
-  padding: 8px 14px;
+  padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--border);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
-.footer-size { color: var(--text3); }
+.footer-size { color: var(--text2); }
 .footer-actions {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
-.link { color: var(--text2); text-decoration: none; }
-.link:hover { color: var(--text); }
+.link {
+  color: var(--text2);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.link:hover { color: var(--text); transform: translateY(-1px); }
+.link:active { transform: translateY(0) scale(0.97); }
+.btn-icon-close {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.btn-icon-close:hover { transform: translateY(-1px); }
+.btn-icon-close:active { transform: translateY(0) scale(0.9); }
+.btn-copy {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-sm);
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.btn-copy:hover { transform: translateY(-1px); }
+.btn-copy:active { transform: translateY(0) scale(0.97); }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 600px) {
+  .modal {
+    max-width: 96vw;
+    max-height: 92dvh;
+  }
+  .modal-header {
+    padding: var(--space-2) var(--space-3);
+  }
+  .modal-body {
+    padding: var(--space-3);
+  }
+  .preview-img,
+  .preview-video {
+    max-height: 50vh;
+  }
+  .fallback-preview {
+    width: 100%;
+  }
+  .modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .footer-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .footer-actions .link,
+  .footer-actions .btn-copy {
+    width: 100%;
+    min-height: 40px;
+  }
+}
 </style>

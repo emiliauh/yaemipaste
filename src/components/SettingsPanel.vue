@@ -210,10 +210,10 @@ async function submitPasswordChange() {
 <template>
   <div class="settings-panel">
     <div class="settings-header">
-      <div style="font-size:13px; color:var(--text)">Settings</div>
+      <div style="font-size:var(--fs-h2); font-weight:600; color:var(--text)">Settings</div>
       <div class="row">
-        <button class="btn-ghost" style="font-size:11px" @click="emit('close')">Cancel</button>
-        <button class="btn-primary" style="font-size:11px" @click="save">{{ saved ? 'Saved' : 'Save' }}</button>
+        <button class="btn-ghost" style="font-size:var(--fs-xs)" @click="emit('close')">Cancel</button>
+        <button class="btn-primary" style="font-size:var(--fs-xs)" @click="save">{{ saved ? 'Saved' : 'Save' }}</button>
       </div>
     </div>
 
@@ -228,7 +228,7 @@ async function submitPasswordChange() {
       <p class="field-hint">
         {{ sharexEnabled ? 'Download pre-configured .sxcu for your account.' : 'ShareX account configs are unavailable on this deployment.' }}
       </p>
-      <button class="btn-primary" style="font-size:11px; width:100%" :disabled="downloading || !sharexEnabled" @click="downloadShareX">
+      <button class="btn-primary" style="font-size:var(--fs-xs); width:100%" :disabled="downloading || !sharexEnabled" @click="downloadShareX">
         {{ downloading ? 'Generating…' : 'Download .sxcu' }}
       </button>
     </div>
@@ -240,7 +240,7 @@ async function submitPasswordChange() {
       </button>
     </div>
 
-    <div v-if="username" style="margin-top:4px; color:var(--text3); font-size:11px; margin-bottom:8px">
+    <div v-if="username" style="margin-top:var(--space-1); color:var(--text2); font-size:var(--fs-xs); margin-bottom:var(--space-2)">
       Signed in as <span style="color:var(--text2)">{{ username }}</span>
     </div>
 
@@ -259,7 +259,7 @@ async function submitPasswordChange() {
       </button>
     </div>
 
-    <div style="margin-top:8px; color:var(--text3); font-size:10px; text-align:center">
+    <div style="margin-top:var(--space-2); color:var(--text2); font-size:var(--fs-xs); text-align:center">
       yaemipaste + rustypaste
     </div>
   </div>
@@ -331,30 +331,30 @@ async function submitPasswordChange() {
 </template>
 
 <style scoped>
-.settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.field label { color: var(--text2); font-size: 11px; }
-.field input { width: 100%; font-size: 12px; }
-.field-hint { color: var(--text3); font-size: 11px; margin-bottom: 6px; }
-.row { display: flex; gap: 8px; justify-content: flex-end; }
-.settings-divider { height: 1px; background: var(--border); margin: 12px 0; }
-.account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.logout-btn { width: 100%; font-size: 11px; }
-.change-password-btn { width: 100%; font-size: 11px; }
+.settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
+.field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); }
+.field label { color: var(--text2); font-size: var(--fs-xs); }
+.field input { width: 100%; font-size: var(--fs-sm); }
+.field-hint { color: var(--text2); font-size: var(--fs-xs); margin-bottom: var(--space-2); }
+.row { display: flex; gap: var(--space-2); justify-content: flex-end; }
+.settings-divider { height: 1px; background: var(--border); margin: var(--space-3) 0; }
+.account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.logout-btn { width: 100%; font-size: var(--fs-xs); }
+.change-password-btn { width: 100%; font-size: var(--fs-xs); }
 .passkey-open-btn {
   width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .password-checkbox {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text2);
-  font-size: 11px;
-  margin-bottom: 12px;
+  font-size: var(--fs-xs);
+  margin-bottom: var(--space-3);
 }
 .passkey-backdrop {
   position: fixed;
@@ -364,65 +364,82 @@ async function submitPasswordChange() {
   align-items: center;
   justify-content: center;
   z-index: 1200;
-  padding: 16px;
+  padding: var(--space-4);
 }
 .passkey-modal {
   width: min(560px, 100%);
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg1);
-  padding: 16px;
+  padding: var(--space-4);
 }
 .passkey-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 .passkey-header h3 {
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  line-height: var(--lh-tight);
   color: var(--text);
 }
 .passkey-copy {
-  color: var(--text3);
-  font-size: 11px;
-  margin-bottom: 12px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  margin-bottom: var(--space-3);
 }
 .passkey-add-btn {
   width: 100%;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 .passkey-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .passkey-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   background: var(--bg);
 }
 .passkey-id {
   color: var(--text2);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .passkey-meta {
-  color: var(--text3);
-  font-size: 10px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
 }
 .passkey-state {
-  color: var(--text3);
-  font-size: 11px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
 }
 .passkey-error {
-  margin-top: 10px;
+  margin-top: var(--space-2);
   color: var(--red-h);
-  font-size: 11px;
+  font-size: var(--fs-xs);
+}
+.settings-panel .btn-ghost,
+.settings-panel .btn-primary,
+.settings-panel .btn-red,
+.passkey-modal .btn-ghost,
+.passkey-modal .btn-primary,
+.passkey-modal .btn-red {
+  transition: background var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.settings-panel .btn-ghost:not(:disabled):active,
+.settings-panel .btn-primary:not(:disabled):active,
+.settings-panel .btn-red:not(:disabled):active,
+.passkey-modal .btn-ghost:not(:disabled):active,
+.passkey-modal .btn-primary:not(:disabled):active,
+.passkey-modal .btn-red:not(:disabled):active {
+  transform: scale(0.97);
 }
 </style>

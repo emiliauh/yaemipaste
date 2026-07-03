@@ -41,12 +41,12 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 <style scoped>
 .github-link {
   position: fixed;
-  left: 14px;
-  bottom: 12px;
-  width: 32px;
-  height: 32px;
+  left: var(--space-4);
+  bottom: var(--space-3);
+  width: var(--space-6);
+  height: var(--space-6);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -54,11 +54,20 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
   background: var(--bg1);
   box-shadow: 0 2px 10px var(--shadow);
   z-index: 60;
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .github-link:hover {
   color: var(--accent-h);
   border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.github-link:active {
+  transform: translateY(0) scale(0.94);
 }
 
 .github-link svg {

@@ -42,25 +42,26 @@ const isEncryptedNoKey = computed(() => !keyPart.value && decodedName.value.ends
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: var(--space-4);
 }
 .error-card {
   width: min(460px, 100%);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--bg1);
-  padding: 28px 24px;
+  padding: var(--space-6) var(--space-5);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 12px;
+  gap: var(--space-3);
+  animation: error-card-in var(--duration-base) var(--ease-out) both;
 }
 .lock-mark {
   width: 42px;
   height: 42px;
   border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--bg2);
   color: var(--red-h);
   display: flex;
@@ -69,11 +70,17 @@ const isEncryptedNoKey = computed(() => !keyPart.value && decodedName.value.ends
 }
 h1 {
   color: var(--text);
-  font-size: 15px;
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
 }
 p {
-  color: var(--text3);
-  font-size: 12px;
-  line-height: 1.6;
+  color: var(--text2);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+@keyframes error-card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

@@ -202,53 +202,56 @@ watch(requestedFileName, () => void load(), { immediate: true })
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: var(--space-4);
 }
 
 .preview-card {
   width: min(820px, 100%);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--bg1);
-  padding: 20px;
+  padding: var(--space-5);
+  animation: card-in var(--duration-base) var(--ease-out) both;
 }
 
 h1 {
-  font-size: 16px;
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
   color: var(--text);
-  margin-bottom: 14px;
+  margin-bottom: var(--space-3);
 }
 
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .meta-grid > div {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg);
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
 }
 
 .meta-grid span {
   display: block;
-  color: var(--text3);
-  font-size: 10px;
+  color: var(--text2);
+  font-size: var(--fs-xs);
   text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .meta-grid strong {
-  color: var(--text2);
-  font-size: 12px;
+  color: var(--text);
+  font-size: var(--fs-sm);
   font-weight: 400;
+  line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
 
 .preview-frame {
-  margin-top: 14px;
+  margin-top: var(--space-3);
   display: flex;
   justify-content: center;
   max-height: 65vh;
@@ -259,48 +262,51 @@ h1 {
   max-width: 100%;
   max-height: 65vh;
   object-fit: contain;
+  border-radius: var(--radius-md);
 }
 
 .preview-pdf {
-  margin-top: 14px;
+  margin-top: var(--space-3);
   width: 100%;
   min-height: 65vh;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg);
 }
 
 .no-preview {
-  margin-top: 14px;
+  margin-top: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text2);
-  padding: 14px;
-  font-size: 12px;
+  padding: var(--space-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .text-preview {
-  margin-top: 14px;
+  margin-top: var(--space-3);
   max-height: 45vh;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text2);
-  padding: 12px;
+  padding: var(--space-3);
   font-family: var(--font);
-  font-size: 12px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
   white-space: pre-wrap;
 }
 
 .state {
   color: var(--text2);
-  font-size: 12px;
-  padding: 14px 0;
+  font-size: var(--fs-sm);
+  padding: var(--space-3) 0;
 }
 
 .state.error {
@@ -310,19 +316,31 @@ h1 {
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 14px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .btn-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 5px 12px;
-  border-radius: var(--radius);
-  font-size: 12px;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
   text-decoration: none;
+  transition: transform var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.btn-link:hover { transform: translateY(-1px); }
+.btn-link:active { transform: translateY(0) scale(0.97); }
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 620px) {
@@ -330,8 +348,18 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .preview-frame img,
+  .preview-frame video {
+    max-height: 46vh;
+  }
+
+  .preview-pdf {
+    min-height: 50vh;
+  }
+
   .actions {
     flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

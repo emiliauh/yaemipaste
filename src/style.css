@@ -26,8 +26,44 @@
   --success-border: #20442f;
   --error-border: #4a1e1e;
   --subtle-grad-end: #111111;
-  --radius:    4px;
-  --font:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+
+  /* Radius scale - documented, do not invent ad-hoc values.
+     sm = controls (buttons/inputs/pills-non-full), md = cards/panels,
+     lg = hero-scale panels (upload panel, auth cards), full = pill toggles */
+  --radius:     10px;
+  --radius-sm:  10px;
+  --radius-md:  16px;
+  --radius-lg:  24px;
+  --radius-full: 999px;
+
+  /* Type scale */
+  --font:       'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --fs-display: clamp(28px, 3.4vw, 38px);
+  --fs-h1:      clamp(20px, 2.2vw, 24px);
+  --fs-h2:      15px;
+  --fs-body:    13px;
+  --fs-sm:      12px;
+  --fs-xs:      11px;
+  --lh-tight:   1.15;
+  --lh-body:    1.55;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Motion tokens */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 0.15s;
+  --duration-base: 0.22s;
+  --duration-slow: 0.4s;
+
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
 :root[data-theme="light"] {
@@ -54,6 +90,21 @@
   --success-border: #8fd3aa;
   --error-border: #efafa7;
   --subtle-grad-end: #f1f4f8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 html, body {
