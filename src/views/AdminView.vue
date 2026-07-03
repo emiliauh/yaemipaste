@@ -34,6 +34,7 @@ import {
   type WebhookDelivery,
 } from '../lib/api'
 import SettingsPanel from '../components/SettingsPanel.vue'
+import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
 import { useTheme, type ThemeMode } from '../lib/theme'
 import { useNotificationStore } from '../stores/notifications'
 
@@ -73,6 +74,19 @@ const themeLabel = computed(() => {
   if (themeMode.value === 'system') return `System theme, currently ${appliedTheme.value}`
   return `${themeMode.value} theme`
 })
+const ownerFilterOptions = computed<SelectOption[]>(() => [
+  { value: '', label: 'All owners', hint: 'Every upload source' },
+  ...users.value.map((user) => ({
+    value: user.username,
+    label: user.username,
+    hint: user.is_admin ? 'Administrator' : 'User',
+  })),
+])
+const expiryFilterOptions: SelectOption[] = [
+  { value: 'all', label: 'All expiry states', hint: 'Active and expired' },
+  { value: 'active', label: 'Active', hint: 'Still available' },
+  { value: 'expired', label: 'Expired', hint: 'Ready to purge' },
+]
 const filteredUploads = computed(() => uploads.value.filter((upload) => {
   const ownerOk = !filterOwner.value || upload.owner === filterOwner.value
   const text = filterText.value.trim().toLowerCase()
@@ -334,15 +348,8 @@ onMounted(refreshAll)
 
     <section v-if="tab === 'Uploads'" class="stack">
       <div class="card filters">
-        <select v-model="filterOwner" aria-label="Filter by owner">
-          <option value="">All owners</option>
-          <option v-for="user in users" :key="user.username" :value="user.username">{{ user.username }}</option>
-        </select>
-        <select v-model="filterExpired" aria-label="Filter by expiry status">
-          <option value="all">All expiry states</option>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-        </select>
+        <CustomSelect v-model="filterOwner" label="Owner" :options="ownerFilterOptions" />
+        <CustomSelect v-model="filterExpired" label="Expiry" :options="expiryFilterOptions" />
         <input v-model="filterText" placeholder="filter path or type" aria-label="Filter uploads by path or type" />
         <button class="btn-red" type="button" :disabled="selectedUploads.size === 0" @click="runAction(() => adminBulkDeleteUploads(Array.from(selectedUploads), confirmText('Type PURGE UPLOADS') ?? ''), 'Selected uploads deleted')">Delete selected</button>
         <button class="btn-red" type="button" @click="runAction(() => adminPurgeExpired(confirmText('Type PURGE EXPIRED') ?? ''), 'Expired uploads purged')">Purge expired</button>
@@ -487,17 +494,6 @@ onMounted(refreshAll)
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   box-shadow: 0 18px 36px color-mix(in srgb, var(--shadow) 18%, transparent);
 }
-.admin-header::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: var(--space-5);
-  right: var(--space-5);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.7;
-}
 .header-actions, .actions {
   display: flex;
   flex-wrap: wrap;
@@ -587,23 +583,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   gap: var(--space-2);
   align-items: center;
 }
-select {
-  background: var(--bg2);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: var(--fs-body);
-  padding: var(--space-2) var(--space-3);
-  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-}
-select:hover:not(:disabled) {
-  background: var(--bg3);
-  border-color: var(--text3);
-}
-select:active:not(:disabled) {
-  transform: scale(0.98);
-}
 .admin-table {
   min-width: 720px;
   font-size: var(--fs-body);
@@ -634,17 +613,6 @@ select:active:not(:disabled) {
 .danger-card {
   position: relative;
   border-color: var(--error-border);
-}
-.danger-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: var(--space-5);
-  right: var(--space-5);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.7;
 }
 .danger-card p + p {
   margin-top: var(--space-1);

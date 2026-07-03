@@ -67,7 +67,13 @@ function toggleCompactTheme() {
           @click="toggleSidebar"
         >
           <span class="brand-mark" aria-hidden="true">
-            <img src="/favicon.svg" alt="" />
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M5 7.5h14" />
+              <path d="M7 7.5l.8-2.1A2 2 0 0 1 9.7 4h4.6a2 2 0 0 1 1.9 1.4l.8 2.1" />
+              <path d="M6.5 7.5 7.4 19a2 2 0 0 0 2 1.8h5.2a2 2 0 0 0 2-1.8l.9-11.5" />
+              <path d="M10 11.2v5.4" />
+              <path d="M14 11.2v5.4" />
+            </svg>
           </span>
           <div>
             <div class="brand-title">yaemipaste</div>
@@ -272,13 +278,15 @@ function toggleCompactTheme() {
       </button>
     </nav>
 
-    <div v-if="showSettings" class="settings-layer" data-testid="settings-layer">
-      <div class="overlay" @click="showSettings = false" />
-      <SettingsPanel
-        @close="showSettings = false"
-        @logout="router.push('/login')"
-      />
-    </div>
+    <Transition name="settings-layer">
+      <div v-if="showSettings" class="settings-layer" data-testid="settings-layer">
+        <div class="overlay" @click="showSettings = false" />
+        <SettingsPanel
+          @close="showSettings = false"
+          @logout="router.push('/login')"
+        />
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -353,10 +361,15 @@ function toggleCompactTheme() {
   box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent) inset;
 }
 
-.sidebar .brand-mark img {
-  width: 22px;
-  height: 22px;
+.sidebar .brand-mark svg {
+  width: 23px;
+  height: 23px;
   display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .brand-title {
@@ -385,7 +398,7 @@ function toggleCompactTheme() {
   border-radius: var(--radius-sm);
 }
 
-.sidebar-collapsed .sidebar .brand-mark img {
+.sidebar-collapsed .sidebar .brand-mark svg {
   width: 21px;
   height: 21px;
 }
@@ -636,7 +649,7 @@ function toggleCompactTheme() {
   z-index: 80;
   position: fixed;
   bottom: 18px;
-  left: 238px;
+  left: 254px;
   max-width: 170px;
   min-height: 42px;
   display: inline-flex;
@@ -651,13 +664,14 @@ function toggleCompactTheme() {
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface2, var(--bg2)) 88%, transparent);
   box-shadow: 0 12px 26px color-mix(in srgb, var(--shadow) 24%, transparent);
-  transition: left var(--duration-base) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: left var(--duration-base) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .desktop-settings-edge:hover {
   color: var(--text);
   border-color: var(--border2);
-  background: var(--surface3, var(--bg3));
+  background: color-mix(in srgb, var(--surface3, var(--bg3)) 84%, transparent);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--shadow) 28%, transparent), 0 0 0 1px color-mix(in srgb, var(--text) 4%, transparent) inset;
 }
 
 .desktop-settings-edge:active {
@@ -676,7 +690,7 @@ function toggleCompactTheme() {
 }
 
 .sidebar-collapsed .desktop-settings-edge {
-  left: 80px;
+  left: 88px;
   bottom: 22px;
   width: 40px;
   min-height: 40px;
@@ -720,13 +734,35 @@ function toggleCompactTheme() {
   inset: 0;
 }
 
+.settings-layer-enter-active,
+.settings-layer-leave-active {
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.settings-layer-enter-active :deep(.settings-panel),
+.settings-layer-leave-active :deep(.settings-panel) {
+  transition: opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
+  will-change: opacity, transform;
+}
+
+.settings-layer-enter-from,
+.settings-layer-leave-to {
+  opacity: 0;
+}
+
+.settings-layer-enter-from :deep(.settings-panel),
+.settings-layer-leave-to :deep(.settings-panel) {
+  opacity: 0;
+  transform: translate3d(-10px, 14px, 0) scale(0.98);
+}
+
 .settings-layer :deep(.settings-panel) {
   pointer-events: auto;
   z-index: 1;
 }
 
 .sidebar-collapsed .settings-layer :deep(.settings-panel) {
-  left: 80px;
+  left: 104px;
 }
 
 @media (max-width: 600px) {
@@ -863,11 +899,11 @@ function toggleCompactTheme() {
   }
 
   .desktop-settings-edge {
-    left: 218px;
+    left: 234px;
   }
 
   .sidebar-collapsed .desktop-settings-edge {
-    left: 80px;
+    left: 88px;
   }
 }
 </style>

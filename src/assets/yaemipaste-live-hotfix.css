@@ -359,7 +359,7 @@ body {
   }
 }
 
-/* 2026-06-17 fix: upload zone layout — remove overflow clip that caused expiry menu
+/* 2026-06-17 fix: upload zone layout. Remove overflow clip that caused expiry menu
    controls to bleed into the drop zone area; restore visible overflow on files-tab
    so the expiry dropdown can render above the upload panel without being clipped.
    Keep upload-panel overflow:visible so inner menus don't get masked by the panel edge. */

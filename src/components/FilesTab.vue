@@ -398,17 +398,6 @@ function onPasteAreaLongPressCancel() {
   overflow: visible;
   padding: 22px;
 }
-.upload-panel::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: var(--space-5);
-  right: var(--space-5);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.7;
-}
 .upload-panel-head {
   display: flex;
   align-items: flex-start;

@@ -17,9 +17,13 @@ const loading = ref(true)
 const error = ref('')
 const objectUrl = ref('')
 const textPreview = ref('')
+const textPreviewTruncated = ref(false)
 const metadata = ref<EncryptedMetadata | null>(null)
 const status = ref('Preparing encrypted paste…')
+const statusStep = ref<'idle' | 'resolving' | 'downloading' | 'decrypting' | 'previewing' | 'ready'>('idle')
 const resolvedFileName = ref('')
+const TEXT_PREVIEW_BYTES = 256 * 1024
+const TEXT_PREVIEW_CHARS = 32_000
 
 const fileName = computed(() => {
   const pk = String(route.params.filekey ?? '')
@@ -41,6 +45,25 @@ const isText = computed(() => metadata.value?.type.startsWith('text/') ?? false)
 function clearObjectUrl() {
   if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
   objectUrl.value = ''
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+}
+
+async function setStage(step: typeof statusStep.value, message: string) {
+  statusStep.value = step
+  status.value = message
+  await yieldToBrowser()
+}
+
+async function loadTextPreview(blob: Blob) {
+  textPreviewTruncated.value = blob.size > TEXT_PREVIEW_BYTES
+  const previewText = await blob.slice(0, TEXT_PREVIEW_BYTES).text()
+  textPreview.value = previewText.length > TEXT_PREVIEW_CHARS
+    ? `${previewText.slice(0, TEXT_PREVIEW_CHARS)}\n\n…`
+    : previewText
+  textPreviewTruncated.value ||= previewText.length > TEXT_PREVIEW_CHARS
 }
 
 async function downloadEncryptedPayload(name: string): Promise<Blob> {
@@ -75,8 +98,10 @@ async function load() {
   clearObjectUrl()
   metadata.value = null
   textPreview.value = ''
+  textPreviewTruncated.value = false
   error.value = ''
   resolvedFileName.value = ''
+  statusStep.value = 'idle'
 
   if (!fileName.value || !key.value) {
     error.value = 'Missing encrypted file or key'
@@ -85,21 +110,28 @@ async function load() {
   }
 
   loading.value = true
-  status.value = 'Downloading encrypted file…'
   try {
+    const startedAt = performance.now()
+    await setStage('resolving', 'Resolving encrypted paste…')
     const resolvedName = await resolveFileName(fileName.value)
     resolvedFileName.value = resolvedName
-    const startedAt = performance.now()
+
+    await setStage('downloading', 'Downloading encrypted payload…')
     const payload = await downloadEncryptedPayload(resolvedName)
+
+    await setStage('decrypting', 'Decrypting in this browser…')
     const decrypted = await decryptEncryptedBlob(payload, key.value)
     metadata.value = decrypted.metadata
     rememberEncryptedFile(resolvedName, key.value, decrypted.metadata, publicSiteOrigin())
     objectUrl.value = URL.createObjectURL(decrypted.blob)
+
     if (decrypted.metadata.type.startsWith('text/')) {
-      textPreview.value = await decrypted.blob.text()
+      await setStage('previewing', 'Preparing a safe text preview…')
+      await loadTextPreview(decrypted.blob)
     }
+
     const seconds = Math.max(0.1, (performance.now() - startedAt) / 1000)
-    status.value = `Decrypted in ${seconds.toFixed(1)} seconds`
+    await setStage('ready', `Decrypted in ${seconds.toFixed(1)} seconds`)
     notificationStore.push(status.value)
   } catch (e: any) {
     error.value = e.message ?? 'Could not decrypt file'
@@ -129,7 +161,19 @@ onBeforeUnmount(clearObjectUrl)
         </div>
       </div>
 
-      <div v-if="loading" class="state">Decrypting…</div>
+      <div v-if="loading" class="decrypt-loading" aria-live="polite">
+        <div class="stage-list" aria-label="Decryption progress">
+          <span :class="{ active: statusStep === 'resolving', complete: ['downloading', 'decrypting', 'previewing', 'ready'].includes(statusStep) }">Resolve</span>
+          <span :class="{ active: statusStep === 'downloading', complete: ['decrypting', 'previewing', 'ready'].includes(statusStep) }">Download</span>
+          <span :class="{ active: statusStep === 'decrypting', complete: ['previewing', 'ready'].includes(statusStep) }">Decrypt</span>
+          <span :class="{ active: statusStep === 'previewing', complete: statusStep === 'ready' }">Preview</span>
+        </div>
+        <div class="skeleton-block skeleton-title"></div>
+        <div class="skeleton-grid">
+          <span></span>
+          <span></span>
+        </div>
+      </div>
       <div v-else-if="error" class="state error">{{ error }}</div>
 
       <template v-else-if="metadata && objectUrl">
@@ -157,7 +201,10 @@ onBeforeUnmount(clearObjectUrl)
         <div v-else-if="isVideo" class="preview-frame">
           <video :src="objectUrl" controls />
         </div>
-        <pre v-else-if="isText" class="text-preview">{{ textPreview }}</pre>
+        <div v-else-if="isText" class="text-preview-wrap">
+          <pre class="text-preview">{{ textPreview }}</pre>
+          <p v-if="textPreviewTruncated" class="preview-note">Preview truncated for performance. Download or open the file to view everything.</p>
+        </div>
         <p v-else class="state">Ready to download.</p>
 
         <div class="actions">
@@ -180,22 +227,14 @@ onBeforeUnmount(clearObjectUrl)
 .decrypt-panel {
   position: relative;
   width: min(720px, 100%);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border2) 78%, transparent);
   border-radius: var(--radius-lg);
-  background: var(--bg1);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 94%, white 6%), var(--bg1));
+  box-shadow:
+    0 24px 80px rgb(0 0 0 / 0.28),
+    0 0 0 1px rgb(255 255 255 / 0.03) inset;
   padding: var(--space-5);
   animation: panel-in var(--duration-base) var(--ease-out) both;
-}
-.decrypt-panel::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: var(--space-5);
-  right: var(--space-5);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.7;
 }
 .decrypt-topline {
   display: flex;
@@ -283,7 +322,64 @@ h1 {
   padding: var(--space-5) 0;
   text-align: center;
 }
-.error { color: var(--red-h); }
+.error {
+  color: var(--red-h);
+  border: 1px solid color-mix(in srgb, var(--red-h) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--red-h) 8%, transparent);
+  padding: var(--space-4);
+}
+.decrypt-loading {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-2) 0 var(--space-1);
+}
+.stage-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.stage-list span {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
+  padding: var(--space-2);
+  text-align: center;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+.stage-list span.active {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  color: var(--text);
+}
+.stage-list span.complete {
+  color: var(--accent-h);
+}
+.skeleton-block,
+.skeleton-grid span {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--bg), var(--bg2), var(--bg));
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.4s var(--ease-out) infinite;
+}
+.skeleton-title {
+  height: 84px;
+}
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.skeleton-grid span {
+  height: 58px;
+}
 .preview-frame {
   margin: var(--space-4) 0;
   display: flex;
@@ -297,8 +393,10 @@ h1 {
   object-fit: contain;
   border-radius: var(--radius-md);
 }
-.text-preview {
+.text-preview-wrap {
   margin-top: var(--space-4);
+}
+.text-preview {
   max-height: 45vh;
   overflow: auto;
   border: 1px solid var(--border);
@@ -310,6 +408,12 @@ h1 {
   font-size: var(--fs-sm);
   line-height: var(--lh-body);
   white-space: pre-wrap;
+}
+.preview-note {
+  margin-top: var(--space-2);
+  color: var(--accent-h);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
 }
 .actions {
   display: flex;
@@ -337,6 +441,19 @@ h1 {
 @keyframes panel-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes skeleton-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decrypt-panel,
+  .skeleton-block,
+  .skeleton-grid span {
+    animation: none;
+  }
 }
 
 @media (max-width: 560px) {

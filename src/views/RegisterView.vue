@@ -133,17 +133,6 @@ async function submit() {
   background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
   box-shadow: 0 20px 48px color-mix(in srgb, var(--shadow) 60%, transparent);
 }
-.register-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: var(--space-5);
-  right: var(--space-5);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.7;
-}
 .register-title {
   font-size: var(--fs-h1);
   line-height: var(--lh-tight);
@@ -210,7 +199,6 @@ async function submit() {
 @media (max-width: 600px) {
   .page { padding: var(--space-3); }
   .register-card { padding: var(--space-4); }
-  .register-card::before { left: var(--space-4); right: var(--space-4); }
   .field input,
   .form-footer button,
   .inline-link {

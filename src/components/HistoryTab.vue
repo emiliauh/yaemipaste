@@ -18,6 +18,8 @@ interface PreviewState {
   loading: boolean
 }
 
+type DeleteConfirmMode = 'all' | 'selected'
+
 type PageSize = 15 | 30 | 45
 const PAGE_SIZES: PageSize[] = [15, 30, 45]
 const HISTORY_REFRESH_EVENT = 'rp:history-refresh'
@@ -59,6 +61,8 @@ const passwordPreviewValue = ref('')
 const passwordPreviewBusy = ref(false)
 const passwordPreviewError = ref('')
 const passwordPromptAction = ref<'preview' | 'download'>('preview')
+const deleteConfirmOpen = ref(false)
+const deleteConfirmMode = ref<DeleteConfirmMode>('selected')
 const wsConnected = ref(false)
 const compactFileNames = ref(window.matchMedia('(max-width: 600px)').matches)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
@@ -249,6 +253,24 @@ const filtered = computed(() => {
       return String(av).localeCompare(String(bv)) * sortDir.value
     })
 })
+const totalBytes = computed(() => files.value.reduce((sum, file) => sum + file.file_size, 0))
+const encryptedCount = computed(() => files.value.filter(isEncryptedFile).length)
+const expiringCount = computed(() => files.value.filter((file) => !!file.expires_at).length)
+const latestFileDate = computed(() => {
+  const timestamps = files.value
+    .map((file) => file.created_at ? Date.parse(file.created_at) : 0)
+    .filter((time) => Number.isFinite(time) && time > 0)
+  if (!timestamps.length) return 'No uploads yet'
+  return new Date(Math.max(...timestamps)).toLocaleString()
+})
+const deleteConfirmFiles = computed(() => deleteConfirmMode.value === 'all' ? files.value : selectedFilesList.value)
+const deleteConfirmCount = computed(() => deleteConfirmFiles.value.length)
+const deleteConfirmTitle = computed(() => deleteConfirmMode.value === 'all' ? 'Delete all files?' : 'Delete selected files?')
+const deleteConfirmMessage = computed(() => {
+  const count = deleteConfirmCount.value
+  if (deleteConfirmMode.value === 'all') return `This will permanently delete ${count} file${count === 1 ? '' : 's'} from your history.`
+  return `This will permanently delete ${count} selected file${count === 1 ? '' : 's'}.`
+})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
 const paginatedFiles = computed(() => {
@@ -287,8 +309,15 @@ async function del(f: PasteFile) {
   }
 }
 
+function requestDeleteAll() {
+  if (!files.value.length || bulkDeleting.value) return
+  deleteConfirmMode.value = 'all'
+  deleteConfirmOpen.value = true
+  actionsOpen.value = false
+  closeRowMoreMenu()
+}
+
 async function deleteAll() {
-  if (!confirm(`Delete all ${files.value.length} files?`)) return
   for (const f of [...files.value]) await del(f)
 }
 
@@ -702,11 +731,39 @@ async function downloadSelectedAsZip() {
   }
 }
 
+function requestDeleteSelected() {
+  if (!hasSelection.value || bulkDeleting.value) return
+  deleteConfirmMode.value = 'selected'
+  deleteConfirmOpen.value = true
+  actionsOpen.value = false
+  closeRowMoreMenu()
+}
+
+function closeDeleteConfirm() {
+  if (bulkDeleting.value) return
+  deleteConfirmOpen.value = false
+}
+
+async function confirmDelete() {
+  if (!deleteConfirmCount.value || bulkDeleting.value) return
+  if (deleteConfirmMode.value === 'all') {
+    bulkDeleting.value = true
+    try {
+      await deleteAll()
+      deleteConfirmOpen.value = false
+    } finally {
+      bulkDeleting.value = false
+    }
+    return
+  }
+  await deleteSelected()
+  deleteConfirmOpen.value = false
+}
+
 async function deleteSelected() {
   if (!hasSelection.value || bulkDeleting.value) return
   const selected = [...selectedFilesList.value]
   if (!selected.length) return
-  if (!confirm(`Delete ${selected.length} selected file(s)?`)) return
   actionsOpen.value = false
   bulkDeleting.value = true
   let deletedCount = 0
@@ -1073,248 +1130,288 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="history-tab">
-    <!-- Toolbar -->
-    <div class="toolbar">
-      <button class="btn-red toolbar-control toolbar-delete-all" :disabled="!files.length" @click="deleteAll">
-        Delete All
-      </button>
-      <div class="search-wrap toolbar-control">
-        <input v-model="search" type="text" placeholder="Search" />
-        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
+    <section class="history-hero" aria-labelledby="history-title">
+      <div class="history-hero-copy">
+        <span class="eyebrow">Management surface</span>
+        <h2 id="history-title">History</h2>
+        <p>Review stored uploads, manage encrypted files, and take action without leaving the vault.</p>
       </div>
-    </div>
-    <div class="bulk-actions">
-      <label class="select-all">
-        <input
-          type="checkbox"
-          :checked="allVisibleSelected"
-          :disabled="!paginatedFiles.length || bulkDeleting || bulkDownloading"
-          aria-label="Select all files"
-          @change="toggleSelectAll(($event.target as HTMLInputElement).checked)"
-        />
-        <span>Select all</span>
-      </label>
-      <span class="selection-count">{{ selectedCount }} selected</span>
-      <div class="page-size-wrap">
-        <span class="page-size-label">Per page</span>
-        <div class="page-size-segment" role="group" aria-label="Per page">
-          <button
-            v-for="size in PAGE_SIZES"
-            :key="size"
-            class="page-size-btn"
-            :class="{ active: pageSize === size }"
-            :aria-pressed="pageSize === size ? 'true' : 'false'"
-            @click="setPageSize(size)"
-          >
-            {{ size }}
-          </button>
+      <div class="history-summary" aria-label="History summary">
+        <div class="summary-card">
+          <span class="summary-label">Files</span>
+          <strong>{{ files.length }}</strong>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Storage</span>
+          <strong>{{ formatBytes(totalBytes) }}</strong>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Encrypted</span>
+          <strong>{{ encryptedCount }}</strong>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Expiring</span>
+          <strong>{{ expiringCount }}</strong>
         </div>
       </div>
-      <div ref="actionsMenuRef" class="actions-menu-wrap">
-        <button
-          class="btn-ghost"
-          style="padding:var(--space-1) var(--space-3);font-size:var(--fs-sm)"
-          :disabled="!hasSelection || bulkDeleting || bulkDownloading"
-          aria-haspopup="menu"
-          :aria-expanded="actionsOpen ? 'true' : 'false'"
-          @click="actionsOpen = !actionsOpen"
-        >
-          Actions
+    </section>
+
+    <section class="history-panel" aria-label="History controls and files">
+      <div class="toolbar">
+        <div class="toolbar-main">
+          <div class="search-wrap toolbar-control">
+            <input v-model="search" type="text" placeholder="Search uploads" aria-label="Search uploads" />
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </div>
+          <div class="live-status" :class="{ connected: wsConnected }">
+            <span aria-hidden="true"></span>
+            {{ wsConnected ? 'Live sync' : 'Polling' }}
+          </div>
+        </div>
+        <button class="btn-red toolbar-control toolbar-delete-all" :disabled="!files.length || bulkDeleting" @click="requestDeleteAll">
+          Delete all
         </button>
-        <div v-if="actionsOpen" class="actions-menu" role="menu">
+      </div>
+
+      <div class="bulk-actions">
+        <label class="select-all">
+          <input
+            type="checkbox"
+            :checked="allVisibleSelected"
+            :disabled="!paginatedFiles.length || bulkDeleting || bulkDownloading"
+            aria-label="Select all files"
+            @change="toggleSelectAll(($event.target as HTMLInputElement).checked)"
+          />
+          <span>Select page</span>
+        </label>
+        <span class="selection-count">{{ selectedCount }} selected</span>
+        <span class="history-meta">Latest: {{ latestFileDate }}</span>
+        <div class="page-size-wrap">
+          <span class="page-size-label">Per page</span>
+          <div class="page-size-segment" role="group" aria-label="Per page">
+            <button
+              v-for="size in PAGE_SIZES"
+              :key="size"
+              class="page-size-btn"
+              :class="{ active: pageSize === size }"
+              :aria-pressed="pageSize === size ? 'true' : 'false'"
+              @click="setPageSize(size)"
+            >
+              {{ size }}
+            </button>
+          </div>
+        </div>
+        <div ref="actionsMenuRef" class="actions-menu-wrap">
           <button
-            class="btn-ghost"
-            style="width:100%;justify-content:flex-start"
-            :disabled="bulkDeleting || bulkDownloading"
-            @click="downloadSelectedAsZip"
+            class="btn-ghost bulk-action-trigger"
+            :disabled="!hasSelection || bulkDeleting || bulkDownloading"
+            aria-haspopup="menu"
+            :aria-expanded="actionsOpen ? 'true' : 'false'"
+            @click="actionsOpen = !actionsOpen"
           >
-            {{ bulkDownloading ? 'Downloading…' : 'Download Selected' }}
+            Actions
           </button>
-          <button
-            class="btn-red"
-            style="width:100%;justify-content:flex-start"
-            :disabled="bulkDeleting || bulkDownloading"
-            @click="deleteSelected"
-          >
-            {{ bulkDeleting ? 'Deleting…' : 'Delete Selected' }}
-          </button>
-          <button
-            class="btn-ghost"
-            style="width:100%;justify-content:flex-start"
-            :disabled="bulkDeleting || bulkDownloading"
-            @click="clearSelection(); actionsOpen = false"
-          >
-            Clear Selection
-          </button>
+          <div v-if="actionsOpen" class="actions-menu" role="menu">
+            <button
+              class="menu-action"
+              :disabled="bulkDeleting || bulkDownloading"
+              @click="downloadSelectedAsZip"
+            >
+              {{ bulkDownloading ? 'Downloading…' : 'Download selected' }}
+            </button>
+            <button
+              class="menu-action danger"
+              :disabled="bulkDeleting || bulkDownloading"
+              @click="requestDeleteSelected"
+            >
+              {{ bulkDeleting ? 'Deleting…' : 'Delete selected' }}
+            </button>
+            <button
+              class="menu-action"
+              :disabled="bulkDeleting || bulkDownloading"
+              @click="clearSelection(); actionsOpen = false"
+            >
+              Clear selection
+            </button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Loading / error -->
-    <div v-if="loading" class="state-msg">Loading…</div>
-    <div v-else-if="error" class="state-msg" style="color:var(--red-h)">{{ error }}</div>
-    <div v-else-if="!filtered.length" class="state-msg">No files.</div>
+      <div v-if="loading" class="skeleton-table" aria-label="Loading history">
+        <div class="skeleton-toolbar"></div>
+        <div v-for="row in 6" :key="row" class="skeleton-row">
+          <span class="skeleton-check"></span>
+          <span class="skeleton-name"></span>
+          <span class="skeleton-size"></span>
+          <span class="skeleton-actions"></span>
+        </div>
+      </div>
 
-    <!-- Table -->
-    <div v-else class="table-wrap" @mouseleave="hideHover">
-      <table class="file-table">
-        <thead>
-          <tr>
-            <th style="width:1px">
-              <input
-                type="checkbox"
-                :checked="allVisibleSelected"
-                :disabled="!paginatedFiles.length || bulkDeleting || bulkDownloading"
-                aria-label="Select all rows"
-                @change="toggleSelectAll(($event.target as HTMLInputElement).checked)"
-              />
-            </th>
-            <th class="sortable" @click="setSort('file_name')">
-              Name <span class="sort-arrow">{{ sortKey === 'file_name' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
-            </th>
-            <th class="sortable col-size" @click="setSort('file_size')">
-              Size <span class="sort-arrow">{{ sortKey === 'file_size' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
-            </th>
-            <th class="sortable col-expiry" @click="setSort('expires_at')">
-              Expires At <span class="sort-arrow">{{ sortKey === 'expires_at' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
-            </th>
-            <th style="width:1px"></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="f in paginatedFiles"
-            :key="f.file_name"
-            class="file-row"
-            @mouseenter="showHover(f, $event)"
-            @mousemove="moveHover"
-            @mouseleave="hideHover"
-          >
-            <td class="select-col">
-              <input
-                type="checkbox"
-                :checked="selectedFiles.has(f.file_name)"
-                :aria-label="`Select ${f.file_name}`"
-                :disabled="bulkDeleting || bulkDownloading"
-                @change="toggleSelection(f.file_name, ($event.target as HTMLInputElement).checked)"
-              />
-            </td>
-            <td class="name">
-              <span
-                class="filename"
-                :title="shareUrl(f.file_name)"
-                @click.stop="openPreview(f)"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
-                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-                  <polyline points="13 2 13 9 20 9"/>
-                </svg>
-                <svg v-if="isEncryptedFile(f)" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="lock-icon" :title="isPasswordEncryptedFile(f) ? 'Password-encrypted' : 'Encrypted'">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-                <img
-                  v-if="hasShareXBadge(f.file_name)"
-                  class="sharex-icon"
-                  :src="sharexLogoUrl"
-                  title="Captured and uploaded with ShareX"
-                  aria-label="Uploaded with ShareX"
-                  alt="Uploaded with ShareX"
+      <div v-else-if="error" class="state-card error-state" role="alert">
+        <strong>History unavailable</strong>
+        <p>{{ error }}</p>
+      </div>
+
+      <div v-else-if="!filtered.length" class="state-card">
+        <strong>{{ search ? 'No matching files' : 'No files yet' }}</strong>
+        <p>{{ search ? 'Try a different filename or clear the search field.' : 'Uploaded files will appear here with preview, download, copy, and delete actions.' }}</p>
+      </div>
+
+      <div v-else class="table-wrap" @mouseleave="hideHover">
+        <table class="file-table">
+          <thead>
+            <tr>
+              <th style="width:1px">
+                <input
+                  type="checkbox"
+                  :checked="allVisibleSelected"
+                  :disabled="!paginatedFiles.length || bulkDeleting || bulkDownloading"
+                  aria-label="Select all rows"
+                  @change="toggleSelectAll(($event.target as HTMLInputElement).checked)"
                 />
-                <span class="filename-text">
-                  <span class="filename-base">{{ displayBaseName(f) }}</span>
-                  <span v-if="displayExtension(f)" class="filename-ext">{{ displayExtension(f) }}</span>
-                </span>
-              </span>
-            </td>
-            <td class="size">{{ formatBytes(f.file_size) }}</td>
-            <td class="expiry">{{ f.expires_at ?? 'Never' }}</td>
-            <td class="actions">
-              <div class="action-row">
-                <button
-                  class="btn-ghost action-btn"
-                  style="padding:var(--space-1) var(--space-3);font-size:var(--fs-xs)"
-                  :title="canDownloadEncrypted(f) ? 'Download decrypted file' : 'Download file'"
-                  aria-label="Download"
-                  @click.stop="downloadFile(f)"
+              </th>
+              <th class="sortable" @click="setSort('file_name')">
+                Name <span class="sort-arrow">{{ sortKey === 'file_name' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
+              </th>
+              <th class="sortable col-size" @click="setSort('file_size')">
+                Size <span class="sort-arrow">{{ sortKey === 'file_size' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
+              </th>
+              <th class="sortable col-expiry" @click="setSort('expires_at')">
+                Expires <span class="sort-arrow">{{ sortKey === 'expires_at' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
+              </th>
+              <th style="width:1px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="f in paginatedFiles"
+              :key="f.file_name"
+              class="file-row"
+              @mouseenter="showHover(f, $event)"
+              @mousemove="moveHover"
+              @mouseleave="hideHover"
+            >
+              <td class="select-col">
+                <input
+                  type="checkbox"
+                  :checked="selectedFiles.has(f.file_name)"
+                  :aria-label="`Select ${f.file_name}`"
+                  :disabled="bulkDeleting || bulkDownloading"
+                  @change="toggleSelection(f.file_name, ($event.target as HTMLInputElement).checked)"
+                />
+              </td>
+              <td class="name">
+                <span
+                  class="filename"
+                  :title="shareUrl(f.file_name)"
+                  @click.stop="openPreview(f)"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  <span class="file-icon" aria-hidden="true">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                      <polyline points="13 2 13 9 20 9"/>
+                    </svg>
+                  </span>
+                  <svg v-if="isEncryptedFile(f)" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="lock-icon" :title="isPasswordEncryptedFile(f) ? 'Password-encrypted' : 'Encrypted'">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
-                  <span class="action-label">Download</span>
-                </button>
-                <button class="btn-orange action-btn" style="padding:var(--space-1) var(--space-3);font-size:var(--fs-xs)" aria-label="Copy" @click.stop="copy(f)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                  <span class="action-label">Copy</span>
-                </button>
-                <div class="row-more-wrap">
+                  <img
+                    v-if="hasShareXBadge(f.file_name)"
+                    class="sharex-icon"
+                    :src="sharexLogoUrl"
+                    title="Captured and uploaded with ShareX"
+                    aria-label="Uploaded with ShareX"
+                    alt="Uploaded with ShareX"
+                  />
+                  <span class="filename-text">
+                    <span class="filename-base">{{ displayBaseName(f) }}</span>
+                    <span v-if="displayExtension(f)" class="filename-ext">{{ displayExtension(f) }}</span>
+                  </span>
+                </span>
+              </td>
+              <td class="size">{{ formatBytes(f.file_size) }}</td>
+              <td class="expiry">{{ f.expires_at ?? 'Never' }}</td>
+              <td class="actions">
+                <div class="action-row">
                   <button
-                    class="btn-ghost row-more-btn action-btn"
-                    style="padding:var(--space-1) var(--space-3);font-size:var(--fs-xs)"
-                    aria-label="More"
-                    aria-haspopup="menu"
-                    :aria-expanded="rowMoreOpen === f.file_name ? 'true' : 'false'"
-                    @click.stop="rowMoreOpen = rowMoreOpen === f.file_name ? null : f.file_name"
+                    class="btn-ghost action-btn"
+                    :title="canDownloadEncrypted(f) ? 'Download decrypted file' : 'Download file'"
+                    aria-label="Download"
+                    @click.stop="downloadFile(f)"
                   >
-                    ⋯
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    <span class="action-label">Download</span>
                   </button>
-                  <div v-if="rowMoreOpen === f.file_name" class="row-item-menu" role="menu">
+                  <button class="btn-orange action-btn" aria-label="Copy" @click.stop="copy(f)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    <span class="action-label">Copy</span>
+                  </button>
+                  <div class="row-more-wrap">
                     <button
-                      v-if="isPasswordEncryptedFile(f)"
-                      class="btn-ghost"
-                      style="width:100%;justify-content:flex-start"
-                      :disabled="!canChangeDecryptionPassword(f) || changingPassword"
-                      @click.stop="openPasswordModal(f)"
+                      class="btn-ghost row-more-btn action-btn"
+                      aria-label="More"
+                      aria-haspopup="menu"
+                      :aria-expanded="rowMoreOpen === f.file_name ? 'true' : 'false'"
+                      @click.stop="rowMoreOpen = rowMoreOpen === f.file_name ? null : f.file_name"
                     >
-                      Change decryption password
+                      ⋯
                     </button>
-                    <div v-if="isPasswordEncryptedFile(f)" class="row-item-note">
-                      {{ passwordChangesRemaining(f.file_name) }} / {{ PASSWORD_CHANGE_LIMIT }} changes remaining
+                    <div v-if="rowMoreOpen === f.file_name" class="row-item-menu" role="menu">
+                      <button
+                        v-if="isPasswordEncryptedFile(f)"
+                        class="menu-action"
+                        :disabled="!canChangeDecryptionPassword(f) || changingPassword"
+                        @click.stop="openPasswordModal(f)"
+                      >
+                        Change decryption password
+                      </button>
+                      <div v-if="isPasswordEncryptedFile(f)" class="row-item-note">
+                        {{ passwordChangesRemaining(f.file_name) }} / {{ PASSWORD_CHANGE_LIMIT }} changes remaining
+                      </div>
+                      <button
+                        class="menu-action danger"
+                        :disabled="deleting.has(f.file_name)"
+                        @click.stop="del(f)"
+                      >
+                        {{ deleting.has(f.file_name) ? 'Deleting…' : 'Delete' }}
+                      </button>
                     </div>
-                    <button
-                      class="btn-red row-delete-btn"
-                      style="width:100%;justify-content:flex-start"
-                      :disabled="deleting.has(f.file_name)"
-                      @click.stop="del(f)"
-                    >
-                      {{ deleting.has(f.file_name) ? 'Deleting…' : 'Delete' }}
-                    </button>
                   </div>
                 </div>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="pagination">
-        <button
-          class="btn-ghost"
-          style="padding:var(--space-1) var(--space-3);font-size:var(--fs-sm)"
-          :disabled="currentPage <= 1"
-          @click="goToPage(currentPage - 1)"
-        >
-          Previous
-        </button>
-        <span>Page {{ currentPage }} of {{ totalPages }}</span>
-        <button
-          class="btn-ghost"
-          style="padding:var(--space-1) var(--space-3);font-size:var(--fs-sm)"
-          :disabled="currentPage >= totalPages"
-          @click="goToPage(currentPage + 1)"
-        >
-          Next
-        </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination">
+          <button
+            class="btn-ghost pagination-btn"
+            :disabled="currentPage <= 1"
+            @click="goToPage(currentPage - 1)"
+          >
+            Previous
+          </button>
+          <span>Page {{ currentPage }} of {{ totalPages }}</span>
+          <button
+            class="btn-ghost pagination-btn"
+            :disabled="currentPage >= totalPages"
+            @click="goToPage(currentPage + 1)"
+          >
+            Next
+          </button>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- File preview modal -->
     <div
       v-if="hoverPreview"
       class="hover-preview"
@@ -1341,11 +1438,36 @@ onBeforeUnmount(() => {
       @close="closePreview"
     />
 
-    <div v-if="passwordModalOpen" class="modal-backdrop" @click.self="closePasswordModal">
-      <div class="password-modal">
+    <div v-if="deleteConfirmOpen" class="modal-backdrop" @click.self="closeDeleteConfirm">
+      <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+        <div class="modal-icon danger" aria-hidden="true">!</div>
         <div class="password-modal-header">
-          <strong>Change decryption password</strong>
-          <button class="btn-ghost" style="padding:var(--space-1) var(--space-2);min-width:28px;min-height:28px" :disabled="changingPassword" @click="closePasswordModal">✕</button>
+          <strong id="delete-confirm-title">{{ deleteConfirmTitle }}</strong>
+          <button class="modal-close btn-ghost" :disabled="bulkDeleting" aria-label="Close confirmation" @click="closeDeleteConfirm">✕</button>
+        </div>
+        <p class="password-modal-copy">{{ deleteConfirmMessage }}</p>
+        <div class="confirm-detail">
+          <span>{{ deleteConfirmCount }} item{{ deleteConfirmCount === 1 ? '' : 's' }}</span>
+          <span>Permanent deletion</span>
+        </div>
+        <div class="password-modal-actions">
+          <button class="btn-ghost" :disabled="bulkDeleting" @click="closeDeleteConfirm">Cancel</button>
+          <button class="btn-red confirm-danger" :disabled="bulkDeleting || !deleteConfirmCount" @click="confirmDelete">
+            <span v-if="bulkDeleting" class="busy-inline">
+              <span class="loading-spinner" aria-hidden="true"></span>
+              <span>Deleting…</span>
+            </span>
+            <span v-else>Confirm delete</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="passwordModalOpen" class="modal-backdrop" @click.self="closePasswordModal">
+      <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
+        <div class="password-modal-header">
+          <strong id="password-change-title">Change decryption password</strong>
+          <button class="modal-close btn-ghost" :disabled="changingPassword" aria-label="Close password dialog" @click="closePasswordModal">✕</button>
         </div>
         <div class="password-modal-copy">
           Updating this re-encrypts the file and refreshes your owner link.
@@ -1386,10 +1508,10 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="passwordPreviewOpen" class="modal-backdrop" @click.self="closePasswordPreviewModal">
-      <div class="password-modal">
+      <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="password-preview-title">
         <div class="password-modal-header">
-          <strong>{{ passwordPromptAction === 'download' ? 'Download password-encrypted file' : 'Preview password-encrypted file' }}</strong>
-          <button class="btn-ghost" style="padding:var(--space-1) var(--space-2);min-width:28px;min-height:28px" :disabled="passwordPreviewBusy" @click="closePasswordPreviewModal">✕</button>
+          <strong id="password-preview-title">{{ passwordPromptAction === 'download' ? 'Download password-encrypted file' : 'Preview password-encrypted file' }}</strong>
+          <button class="modal-close btn-ghost" :disabled="passwordPreviewBusy" aria-label="Close password prompt" @click="closePasswordPreviewModal">✕</button>
         </div>
         <div class="password-modal-copy">
           {{ passwordPromptAction === 'download'
@@ -1421,101 +1543,540 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
 <style scoped>
-.history-tab { display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: 20px; }
+.history-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: 24px;
+}
+
+.history-hero,
+.history-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--bg3) 34%, transparent), transparent 34%),
+    color-mix(in srgb, var(--bg1) 88%, transparent);
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--shadow) 76%, transparent);
+}
+
+.history-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 42%);
+  gap: var(--space-4);
+  padding: clamp(18px, 3vw, 28px);
+  overflow: hidden;
+}
+
+.history-hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.eyebrow {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.history-hero h2 {
+  color: var(--text);
+  font-size: var(--fs-display);
+  line-height: var(--lh-tight);
+  font-weight: 700;
+}
+
+.history-hero p {
+  max-width: 58ch;
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.summary-card {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg) 66%, transparent);
+}
+
+.summary-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--text3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.summary-card strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(18px, 2vw, 24px);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-panel {
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--bg1) 92%, transparent);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 210;
-  background: var(--modal-bg);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--bg) 76%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
-.toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.toolbar-control {
-  min-height: 34px;
-  border-radius: var(--radius-sm);
-  font-size: var(--fs-sm);
-}
-.toolbar-delete-all {
-  padding: 0 var(--space-3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.bulk-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.select-all { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text2); font-size: var(--fs-sm); }
-.selection-count { color: var(--text2); font-size: var(--fs-xs); }
-.actions-menu-wrap { position: relative; }
-.page-size-wrap { display: inline-flex; align-items: center; gap: var(--space-2); }
-.page-size-label { color: var(--text2); font-size: var(--fs-xs); }
-.page-size-segment {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--bg);
-}
-.page-size-btn {
-  border: 0;
-  border-radius: 0;
-  min-width: 34px;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--fs-sm);
-  background: transparent;
-  color: var(--text2);
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-}
-.page-size-btn.active {
-  background: var(--bg2);
-  color: var(--text);
-}
-.page-size-btn:hover:not(.active) {
-  background: var(--bg1);
-  color: var(--text);
-}
-.page-size-btn:active {
-  transform: scale(0.94);
-}
-.actions-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  min-width: 160px;
-  padding: var(--space-2);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-md);
-  background: var(--bg1);
-  box-shadow: 0 8px 24px var(--shadow);
-  z-index: 20;
+
+.toolbar {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar-main {
+  display: flex;
+  align-items: center;
   gap: var(--space-2);
+  flex: 1 1 360px;
+  min-width: 0;
 }
+
+.toolbar-control {
+  min-height: 38px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+
+.toolbar-delete-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-3);
+}
+
 .search-wrap {
   position: relative;
-  width: min(100%, 220px);
+  width: min(100%, 360px);
   display: inline-flex;
   align-items: center;
 }
+
 .search-wrap input {
   width: 100%;
   height: 100%;
   min-height: inherit;
-  padding-right: 28px;
+  padding-right: 34px;
+  background: color-mix(in srgb, var(--bg2) 72%, var(--bg));
+  border-color: var(--border);
 }
-.search-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text2); pointer-events: none; }
-.table-wrap { overflow-x: auto; }
-.pagination {
+
+.search-icon {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text3);
+  pointer-events: none;
+}
+
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  background: var(--bg);
+}
+
+.live-status span {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--text3);
+}
+
+.live-status.connected span {
+  background: var(--green);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--green) 55%, transparent);
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-3) 0;
+}
+
+.select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-sm);
+}
+
+.selection-count,
+.history-meta {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+
+.history-meta {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text3);
+}
+
+.actions-menu-wrap { position: relative; }
+
+.bulk-action-trigger,
+.pagination-btn,
+.action-btn {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-sm);
+}
+
+.page-size-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.page-size-label {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+
+.page-size-segment {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg);
+}
+
+.page-size-btn {
+  min-width: 36px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.page-size-btn.active {
+  background: var(--bg2);
+  color: var(--text);
+}
+
+.page-size-btn:hover:not(.active) {
+  background: var(--bg1);
+  color: var(--text);
+}
+
+.page-size-btn:active { transform: scale(0.94); }
+
+.actions-menu,
+.row-item-menu {
+  position: absolute;
+  min-width: 190px;
+  padding: var(--space-2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg1) 96%, var(--bg));
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--shadow) 86%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.actions-menu {
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+}
+
+.row-item-menu {
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 232px;
+  z-index: 25;
+}
+
+.menu-action {
+  width: 100%;
+  display: inline-flex;
+  justify-content: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  text-align: left;
+}
+
+.menu-action:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--bg2);
+  color: var(--text);
+}
+
+.menu-action.danger {
+  color: var(--red-h);
+}
+
+.menu-action.danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--red) 55%, var(--border));
+  background: var(--danger-bg);
+  color: var(--red-h);
+}
+
+.skeleton-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 0;
+}
+
+.skeleton-toolbar,
+.skeleton-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--bg) 0%, var(--bg2) 48%, var(--bg) 100%);
+  background-size: 220% 100%;
+  animation: skeletonPulse 1.4s var(--ease-out) infinite;
+}
+
+.skeleton-toolbar {
+  height: 42px;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 24px minmax(140px, 1fr) 84px 136px;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 48px;
+  padding: var(--space-3);
+}
+
+.skeleton-row span {
+  display: block;
+  height: 12px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--text3) 28%, transparent);
+}
+
+.skeleton-check {
+  width: 14px;
+  height: 14px !important;
+}
+
+.skeleton-name { width: min(100%, 320px); }
+.skeleton-size { width: 64px; }
+.skeleton-actions { width: 118px; justify-self: end; }
+
+.state-card {
   margin-top: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  text-align: center;
+}
+
+.state-card strong {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-h2);
+}
+
+.state-card p {
+  max-width: 54ch;
+  margin: 0 auto;
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+}
+
+.error-state {
+  border-color: var(--error-border);
+  background: var(--danger-bg);
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.file-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.file-table th {
+  background: color-mix(in srgb, var(--bg1) 70%, var(--bg));
+}
+
+.file-table th:first-child,
+.file-table td:first-child { padding-left: var(--space-3); }
+
+.file-table th:last-child,
+.file-table td:last-child { padding-right: var(--space-3); }
+
+.file-table td {
+  height: 48px;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.file-table tr:hover td {
+  background: color-mix(in srgb, var(--bg2) 42%, transparent);
+}
+
+.sort-arrow {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  margin-left: 2px;
+}
+
+.select-col { width: 1px; }
+
+.filename {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+}
+
+.filename:active { opacity: 0.7; }
+
+.file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg1);
+  color: var(--text2);
+}
+
+.filename-text {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+}
+
+.filename-base {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filename-ext {
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--text2);
+}
+
+.lock-icon {
+  color: var(--text2);
+  flex-shrink: 0;
+}
+
+.sharex-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .filename:hover { color: var(--accent); }
+}
+
+.file-table td.name {
+  max-width: 0;
+  width: auto;
+  overflow: hidden;
+}
+
+.action-row {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-height: 30px;
+}
+
+.action-btn svg { flex: 0 0 auto; }
+.action-label { display: inline; }
+.row-more-wrap { position: relative; }
+
+.row-item-note {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+
+.pagination {
+  padding: var(--space-3);
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -1523,104 +2084,117 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
   color: var(--text2);
   font-size: var(--fs-xs);
+  border-top: 1px solid var(--border);
 }
-.sort-arrow { color: var(--text2); font-size: var(--fs-xs); margin-left: 2px; }
-.state-msg { color: var(--text2); font-size: var(--fs-sm); padding: 20px 0; text-align: center; }
-.select-col { width: 1px; }
-.filename { display: flex; align-items: center; gap: var(--space-1); cursor: pointer; }
-.filename-text { min-width: 0; display: inline-flex; align-items: baseline; max-width: 100%; }
-.filename-base {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.filename-ext { white-space: nowrap; flex-shrink: 0; }
-.lock-icon { color: var(--accent); flex-shrink: 0; }
-.sharex-icon {
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-  object-fit: contain;
-}
-.filename { transition: color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out); }
-.filename:active { opacity: 0.7; }
-@media (hover: hover) and (pointer: fine) {
-  .filename:hover { color: var(--accent); }
-}
-.file-table td.name { max-width: 0; width: auto; overflow: hidden; }
-.action-row { display: flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: nowrap; }
-.action-btn { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
-.action-label { display: inline; }
-.row-more-wrap { position: relative; }
-.row-item-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  min-width: 220px;
-  padding: var(--space-2);
+
+.password-modal,
+.confirm-modal {
+  width: min(440px, calc(100vw - 24px));
   border: 1px solid var(--border2);
-  border-radius: var(--radius-md);
-  background: var(--bg1);
-  box-shadow: 0 8px 24px var(--shadow);
-  z-index: 25;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.row-item-note {
-  color: var(--text2);
-  font-size: var(--fs-xs);
-  padding: 0 2px 4px;
-}
-.row-delete-btn {
-  border-color: var(--red);
-  color: var(--red-h);
-}
-.row-delete-btn:hover:not(:disabled) {
-  background: var(--red);
-  border-color: var(--red);
-  color: #fff;
-}
-.row-delete-btn:active:not(:disabled) {
-  transform: scale(0.96);
-}
-.password-modal {
-  width: min(420px, calc(100vw - 24px));
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-md);
-  background: var(--bg1);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--bg3) 34%, transparent), transparent 34%),
+    var(--bg1);
   padding: var(--space-4);
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 90%, transparent);
 }
+
+.confirm-modal {
+  width: min(460px, calc(100vw - 24px));
+}
+
+.modal-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text);
+  background: var(--bg);
+  font-weight: 700;
+}
+
+.modal-icon.danger {
+  border-color: color-mix(in srgb, var(--red) 55%, var(--border));
+  color: var(--red-h);
+  background: var(--danger-bg);
+}
+
 .password-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-}
-.password-modal-copy {
-  color: var(--text2);
-  font-size: var(--fs-xs);
+  gap: var(--space-3);
   margin-bottom: var(--space-2);
 }
+
+.password-modal-header strong {
+  color: var(--text);
+  font-size: var(--fs-h2);
+}
+
+.modal-close {
+  min-width: 30px;
+  min-height: 30px;
+  padding: var(--space-1) var(--space-2);
+}
+
+.password-modal-copy {
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  margin-bottom: var(--space-2);
+}
+
+.confirm-detail {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+
+.confirm-detail span {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  background: var(--bg);
+}
+
 .password-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
 }
+
 .password-form label {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: var(--fs-xs);
   color: var(--text2);
+  font-size: var(--fs-xs);
 }
+
+.password-form input {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
 .password-modal-error {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
   color: var(--red-h);
   font-size: var(--fs-sm);
-  margin-top: var(--space-2);
 }
+
 .password-modal-status {
   margin-top: var(--space-2);
   display: inline-flex;
@@ -1629,26 +2203,136 @@ onBeforeUnmount(() => {
   color: var(--text2);
   font-size: var(--fs-sm);
 }
+
 .password-modal-actions {
-  margin-top: var(--space-3);
+  margin-top: var(--space-4);
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
 }
+
+.confirm-danger {
+  border-color: color-mix(in srgb, var(--red) 55%, var(--border));
+  color: var(--red-h);
+}
+
+.confirm-danger:hover:not(:disabled) {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
 .busy-inline {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
 }
 
+.hover-preview {
+  position: fixed;
+  z-index: 300;
+  width: 232px;
+  max-width: calc(100vw - 32px);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--bg1);
+  padding: var(--space-2);
+  pointer-events: none;
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--shadow) 86%, transparent);
+}
+
+.hover-preview img,
+.hover-preview video {
+  display: block;
+  width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.hover-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 36px var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--border2);
+  border-top-color: var(--text2);
+  animation: spin 0.8s linear infinite;
+}
+
+.hover-name {
+  margin-top: var(--space-2);
+  overflow: hidden;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-tab .btn-ghost,
+.history-tab .btn-primary,
+.history-tab .btn-red,
+.history-tab .btn-orange,
+.history-tab .menu-action {
+  transition: background var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.history-tab .btn-ghost:not(:disabled):active,
+.history-tab .btn-primary:not(:disabled):active,
+.history-tab .btn-red:not(:disabled):active,
+.history-tab .btn-orange:not(:disabled):active,
+.history-tab .menu-action:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+@media (max-width: 820px) {
+  .history-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .page-size-wrap {
+    margin-left: 0;
+  }
+}
+
 @media (max-width: 600px) {
+  .history-panel,
+  .history-hero {
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+  }
+
+  .history-summary,
+  .skeleton-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .toolbar {
     align-items: stretch;
   }
+
+  .toolbar-main,
   .toolbar-control,
-  .search-wrap {
+  .search-wrap,
+  .toolbar-delete-all {
     width: 100%;
   }
+
+  .live-status {
+    justify-content: center;
+  }
+
   .table-wrap { overflow-x: hidden; }
   .file-table { table-layout: fixed; width: 100%; }
   .file-table th:last-child,
@@ -1660,7 +2344,6 @@ onBeforeUnmount(() => {
     width: 30px;
     padding: 3px !important;
   }
-  .action-btn svg { margin-right: 0 !important; }
   .row-item-menu {
     right: 0;
     left: auto;
@@ -1672,63 +2355,11 @@ onBeforeUnmount(() => {
     font-size: var(--fs-xs);
   }
 }
-.hover-preview {
-  position: fixed;
-  z-index: 300;
-  width: 220px;
-  max-width: calc(100vw - 32px);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-md);
-  background: var(--bg1);
-  padding: var(--space-2);
-  pointer-events: none;
-  box-shadow: 0 8px 24px var(--shadow);
+
+@keyframes skeletonPulse {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
 }
-.hover-preview img,
-.hover-preview video {
-  display: block;
-  width: 100%;
-  max-height: 150px;
-  object-fit: contain;
-  background: var(--bg);
-}
-.hover-loading {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text2);
-  font-size: var(--fs-xs);
-  padding: 36px var(--space-2);
-  justify-content: center;
-  width: 100%;
-}
-.loading-spinner {
-  width: 12px;
-  height: 12px;
-  border-radius: var(--radius-full);
-  border: 2px solid var(--border2);
-  border-top-color: var(--orange);
-  animation: spin 0.8s linear infinite;
-}
-.hover-name {
-  color: var(--text2);
-  font-size: var(--fs-xs);
-  margin-top: 5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.history-tab .btn-ghost,
-.history-tab .btn-primary,
-.history-tab .btn-red,
-.history-tab .btn-orange {
-  transition: background var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-}
-.history-tab .btn-ghost:not(:disabled):active,
-.history-tab .btn-primary:not(:disabled):active,
-.history-tab .btn-red:not(:disabled):active,
-.history-tab .btn-orange:not(:disabled):active {
-  transform: scale(0.96);
-}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>

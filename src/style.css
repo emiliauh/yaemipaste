@@ -1,17 +1,20 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:        #000000;
-  --bg1:       #0d0d0d;
-  --bg2:       #1a1a1a;
-  --bg3:       #252525;
-  --border:    #2a2a2a;
-  --border2:   #333333;
-  --text:      #e8e8e8;
-  --text2:     #888888;
-  --text3:     #555555;
+  --bg:        #050505;
+  --bg1:       #0b0c0d;
+  --bg2:       #151719;
+  --bg3:       #202327;
+  --surface:   #0d0e10;
+  --surface2:  #17191c;
+  --surface3:  #23262b;
+  --border:    #25282d;
+  --border2:   #343941;
+  --text:      #e8e8e6;
+  --text2:     #969893;
+  --text3:     #60635f;
   --accent:    #2f7cf6;
-  --accent-h:  #62a0ff;
+  --accent-h:  #74a8ff;
   --accent-d:  #1d5fd0;
   --orange:    var(--accent);
   --orange-h:  var(--accent-h);
@@ -21,11 +24,12 @@
   --on-accent: #ffffff;
   --shadow:    #00000066;
   --modal-bg:  #000000b5;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg2));
   --checked-bg:#122a20;
   --danger-bg: #2b1111;
   --success-border: #20442f;
   --error-border: #4a1e1e;
-  --subtle-grad-end: #111111;
+  --subtle-grad-end: #101112;
 
   /* Radius scale - documented, do not invent ad-hoc values.
      sm = controls (buttons/inputs/pills-non-full), md = cards/panels,
@@ -71,6 +75,9 @@
   --bg1:       #ffffff;
   --bg2:       #edf0f4;
   --bg3:       #dfe4ea;
+  --surface:   #ffffff;
+  --surface2:  #f2f4f7;
+  --surface3:  #e4e8ee;
   --border:    #d4d9e1;
   --border2:   #c3cad4;
   --text:      #15191f;
@@ -85,6 +92,7 @@
   --on-accent: #ffffff;
   --shadow:    #1f29371f;
   --modal-bg:  #15191f66;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--bg2));
   --checked-bg:#dff5e9;
   --danger-bg: #fde7e3;
   --success-border: #8fd3aa;
@@ -115,11 +123,12 @@ html, body {
 body {
   background-color: var(--bg);
   background-image:
-    radial-gradient(circle at 18% 8%, color-mix(in srgb, var(--accent) 7%, transparent) 0 22rem, transparent 34rem),
-    linear-gradient(180deg, var(--bg1), var(--bg) 30rem);
-  background-attachment: fixed, fixed;
+    radial-gradient(ellipse at 18% -8%, color-mix(in srgb, var(--text) 5%, transparent) 0 18rem, transparent 34rem),
+    radial-gradient(ellipse at 92% 4%, color-mix(in srgb, var(--accent) 2.5%, transparent) 0 20rem, transparent 36rem),
+    linear-gradient(155deg, var(--bg1) 0%, var(--bg) 42%, var(--subtle-grad-end) 100%);
+  background-attachment: fixed, fixed, fixed;
   background-repeat: no-repeat;
-  background-size: 100vw 100dvh, 100vw 100dvh;
+  background-size: 100vw 100dvh, 100vw 100dvh, 100vw 100dvh;
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
@@ -192,11 +201,12 @@ body {
 }
 
 .brand-mark img,
-.sidebar .brand-mark img {
+.brand-mark svg,
+.sidebar .brand-mark img,
+.sidebar .brand-mark svg {
   width: 27px;
   height: 27px;
   display: block;
-  object-fit: contain;
 }
 
 .brand-title {
@@ -289,14 +299,14 @@ body {
 
 .desktop-settings-edge {
   position: fixed;
-  left: 238px;
+  left: 254px;
   right: auto;
   bottom: 18px;
   z-index: 80;
   min-height: 42px;
   padding: 8px 12px;
   border-color: var(--border);
-  background: var(--bg);
+  background: color-mix(in srgb, var(--surface2, var(--bg2)) 88%, transparent);
 }
 
 .workspace {
@@ -305,11 +315,11 @@ body {
 }
 
 .settings-layer .settings-panel {
-  left: 238px;
+  left: 254px;
   right: auto;
   top: auto;
   bottom: 74px;
-  width: min(380px, calc(100vw - 262px));
+  width: min(380px, calc(100vw - 278px));
   height: auto;
   min-height: 0;
   max-height: calc(100dvh - 92px);
@@ -413,6 +423,7 @@ body {
   }
 
   .sidebar-collapsed .brand-mark img,
+  .sidebar-collapsed .brand-mark svg,
   .sidebar-collapsed .nav-icon svg,
   .sidebar-collapsed .compact-icon-btn svg,
   .sidebar-collapsed .desktop-settings-edge svg {
@@ -442,7 +453,7 @@ body {
 
   .layout.sidebar-collapsed > .desktop-settings-edge,
   .sidebar-collapsed .desktop-settings-edge {
-    left: 0;
+    left: 88px;
     bottom: 18px;
     width: 72px;
     min-width: 72px;
@@ -460,9 +471,9 @@ body {
 
   .sidebar-collapsed .settings-layer .settings-panel,
   .sidebar-collapsed .settings-panel {
-    left: 96px;
+    left: 112px;
     bottom: 18px;
-    width: min(380px, calc(100vw - 120px));
+    width: min(380px, calc(100vw - 136px));
     max-height: calc(100dvh - 36px);
   }
 
@@ -763,11 +774,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   position: fixed;
   top: 40px;
   right: 16px;
-  background: var(--bg1);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface, var(--bg1)) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border2) 86%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 22px 54px color-mix(in srgb, var(--shadow) 36%, transparent), 0 1px 0 color-mix(in srgb, var(--text) 5%, transparent) inset;
   padding: 16px;
-  width: 260px;
   z-index: 100;
   font-size: 12px;
 }
@@ -775,11 +786,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (min-width: 601px) {
   .layout:has(> .sidebar) .settings-panel,
   .settings-layer .settings-panel {
-    left: 238px;
+    left: 254px;
     right: auto;
     top: auto;
     bottom: 74px;
-    width: min(380px, calc(100vw - 262px));
+    width: min(380px, calc(100vw - 278px));
     height: auto;
     min-height: 0;
     max-height: calc(100dvh - 92px);
@@ -789,9 +800,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   .layout.sidebar-collapsed .settings-panel,
   .sidebar-collapsed .settings-layer .settings-panel,
   .sidebar-collapsed .settings-panel {
-    left: 96px;
+    left: 112px;
     bottom: 18px;
-    width: min(380px, calc(100vw - 120px));
+    width: min(380px, calc(100vw - 136px));
     max-height: calc(100dvh - 36px);
   }
 

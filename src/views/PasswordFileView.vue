@@ -200,17 +200,6 @@ onBeforeUnmount(clearObjectUrl)
   padding: var(--space-5);
   animation: panel-in var(--duration-base) var(--ease-out) both;
 }
-.pw-panel::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: var(--space-5);
-  right: var(--space-5);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.7;
-}
 .pw-topline {
   display: flex;
   align-items: center;
