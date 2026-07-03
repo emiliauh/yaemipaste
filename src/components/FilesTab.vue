@@ -232,212 +232,232 @@ function onPasteAreaLongPressCancel() {
   <div class="files-tab">
     <ExpirySelector :model-value="expiry" @update:model-value="setExpiry" />
 
-    <div class="security-strip">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <rect x="4" y="10" width="16" height="10" rx="2"/>
-        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
-      </svg>
-      <div>
-        <div class="security-title">Upload security</div>
-        <div class="security-copy">
-          <template v-if="!browserEncryptionReady">Browser encryption is unavailable here. Use HTTPS or localhost to enable encrypted uploads.</template>
-          <template v-else-if="encryptMode === 'password'">Password mode: only someone with the password can view this file.</template>
-          <template v-else-if="encryptMode === 'encrypt'">Strong mode: encrypted in your browser before upload.</template>
-          <template v-else>Default mode: fast upload with clean short links.</template>
+    <section class="upload-panel" aria-label="Upload controls">
+      <div class="upload-panel-head">
+        <div>
+          <h1>Share a file or paste</h1>
+          <p>
+            <template v-if="!browserEncryptionReady">Use HTTPS or localhost to enable browser encryption.</template>
+            <template v-else-if="encryptMode === 'password'">Password-protected before upload.</template>
+            <template v-else-if="encryptMode === 'encrypt'">Encrypted in this browser before upload.</template>
+            <template v-else>Public short link, ready to copy.</template>
+          </p>
         </div>
-      </div>
-    </div>
-    <div class="upload-options">
-      <button
-        type="button"
-        class="encrypt-toggle encrypt-btn"
-        :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
-        data-testid="encrypt-toggle"
-        :disabled="!browserEncryptionReady"
-        :title="browserEncryptionReady ? 'Cycle encryption mode' : 'Browser encryption requires HTTPS or localhost.'"
-        @click="cycleEncrypt"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
-        <span>{{ encryptMode === 'none' ? 'encrypt?' : encryptMode === 'encrypt' ? 'Encrypt' : 'Password encrypt' }}</span>
-      </button>
-      <Transition name="pw-field">
-        <div v-if="encryptMode === 'password'" class="password-wrap">
-          <input
-            v-model="encryptPassword"
-            :type="showEncryptPassword ? 'text' : 'password'"
-            class="pw-input"
-            placeholder="set password…"
-            autocomplete="new-password"
-          />
+
+        <div class="upload-options">
           <button
             type="button"
-            class="password-toggle"
-            :aria-label="showEncryptPassword ? 'Hide password' : 'Show password'"
-            :title="showEncryptPassword ? 'Hide password' : 'Show password'"
-            @click="showEncryptPassword = !showEncryptPassword"
+            class="encrypt-toggle encrypt-btn"
+            :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
+            data-testid="encrypt-toggle"
+            :disabled="!browserEncryptionReady"
+            :title="browserEncryptionReady ? 'Cycle encryption mode' : 'Browser encryption requires HTTPS or localhost.'"
+            @click="cycleEncrypt"
           >
-            <svg v-if="showEncryptPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M3 3l18 18"/>
-              <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
-              <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
-              <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
-            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
+            <span>{{ encryptMode === 'none' ? 'Encryption off' : encryptMode === 'encrypt' ? 'Encrypted link' : 'Password protected' }}</span>
           </button>
+          <Transition name="pw-field">
+            <div v-if="encryptMode === 'password'" class="password-wrap">
+              <input
+                v-model="encryptPassword"
+                :type="showEncryptPassword ? 'text' : 'password'"
+                class="pw-input"
+                placeholder="Set password"
+                autocomplete="new-password"
+              />
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="showEncryptPassword ? 'Hide password' : 'Show password'"
+                :title="showEncryptPassword ? 'Hide password' : 'Show password'"
+                @click="showEncryptPassword = !showEncryptPassword"
+              >
+                <svg v-if="showEncryptPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M3 3l18 18"/>
+                  <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                  <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
+                  <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
+                </svg>
+                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </Transition>
+          <label class="name-toggle" data-testid="keep-name-toggle">
+            <input v-model="keepFileName" type="checkbox" />
+            <span>Keep original name</span>
+          </label>
         </div>
-      </Transition>
-      <label class="encrypt-toggle" data-testid="keep-name-toggle">
-        <input v-model="keepFileName" type="checkbox" />
-        <span>keep file name?</span>
-      </label>
-    </div>
+      </div>
 
-    <!-- Drop zone -->
-    <div
-      class="upload-zone"
-      :class="{ 'drag-over': dragging }"
-      @dragover.prevent="dragging = true"
-      @dragleave="dragging = false"
-      @drop.prevent="onDrop"
-      @click="onClickZone"
-    >
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <polyline points="16 16 12 12 8 16"/>
-        <line x1="12" y1="12" x2="12" y2="21"/>
-        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
-      </svg>
-      <div>drag &amp; drop or click to upload files</div>
-      <input ref="fileInput" type="file" multiple style="display:none" @change="onFileChange" />
-    </div>
-
-    <!-- Long-press to paste -->
-    <div
-      class="paste-area"
-      :class="{ pressing: longPressing }"
-      data-testid="paste-area"
-      @pointerdown="onPasteAreaLongPressStart"
-      @pointerup="onPasteAreaLongPressEnd"
-      @pointercancel="onPasteAreaLongPressCancel"
-      @pointerleave="onPasteAreaLongPressCancel"
-      @contextmenu.prevent
-    >
-      <span style="color:var(--text3); font-size:12px">{{ longPressing ? 'Release to paste' : 'Long-press here to paste' }}</span>
-    </div>
-
-    <div class="divider">— or — paste text directly</div>
-
-    <!-- Text area -->
-    <textarea
-      v-model="textPaste"
-      data-testid="text-paste"
-      rows="6"
-      placeholder="Paste your text here..."
-      style="width:100%; resize:vertical"
-    />
-
-    <div class="text-actions-row">
-      <button
-        class="btn-ghost"
-        type="button"
-        data-testid="clear-notifications"
-        :disabled="!notificationStore.notifications.length"
-        @click="clearNotifications"
+      <!-- Drop zone -->
+      <div
+        class="upload-zone"
+        :class="{ 'drag-over': dragging }"
+        @dragover.prevent="dragging = true"
+        @dragleave="dragging = false"
+        @drop.prevent="onDrop"
+        @click="onClickZone"
       >
-        Clear Notifications
-      </button>
-      <button class="btn-primary" :disabled="loading || !textPaste.trim()" @click="submitText">
-        {{ loading ? 'Uploading…' : 'Upload Text' }}
-      </button>
-    </div>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <polyline points="16 16 12 12 8 16"/>
+          <line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+        <div class="upload-zone-title">Drop files here</div>
+        <p>or click to choose from your device</p>
+        <input ref="fileInput" type="file" multiple style="display:none" @change="onFileChange" />
+      </div>
 
-    <div v-if="uploadProgress" class="upload-progress" data-testid="upload-progress">
-      <div class="progress-row">
-        <span>{{ uploadProgress.phase === 'encrypting' ? 'Encrypting' : uploadProgress.phase === 'complete' ? 'Complete' : 'Uploading' }}</span>
-        <span>{{ uploadProgress.percent }}%</span>
+      <!-- Long-press to paste -->
+      <div
+        class="paste-area"
+        :class="{ pressing: longPressing }"
+        data-testid="paste-area"
+        @pointerdown="onPasteAreaLongPressStart"
+        @pointerup="onPasteAreaLongPressEnd"
+        @pointercancel="onPasteAreaLongPressCancel"
+        @pointerleave="onPasteAreaLongPressCancel"
+        @contextmenu.prevent
+      >
+        <span>{{ longPressing ? 'Release to paste' : 'Long-press to paste from clipboard' }}</span>
       </div>
-      <div class="progress-track" role="progressbar" :aria-valuenow="uploadProgress.percent" aria-valuemin="0" aria-valuemax="100">
-        <div class="progress-fill" :style="{ width: `${uploadProgress.percent}%` }"></div>
-      </div>
-    </div>
 
-    <div v-if="shareLinks.length" class="share-result">
-      <div class="share-label">Latest share link</div>
-      <div v-for="share in shareLinks" :key="share.id" class="share-row" data-testid="share-row">
-        <div class="share-link-block">
-          <span class="share-file">{{ share.name }}</span>
-          <a :href="share.previewUrl" target="_blank" rel="noopener">{{ share.previewUrl }}</a>
+      <div class="divider">paste text directly</div>
+
+      <!-- Text area -->
+      <textarea
+        v-model="textPaste"
+        data-testid="text-paste"
+        rows="6"
+        placeholder="Paste text, logs, notes, or snippets..."
+        class="text-paste-input"
+      />
+
+      <div class="text-actions-row">
+        <button
+          class="btn-ghost"
+          type="button"
+          data-testid="clear-notifications"
+          :disabled="!notificationStore.notifications.length"
+          @click="clearNotifications"
+        >
+          Clear Notifications
+        </button>
+        <button class="btn-primary" :disabled="loading || !textPaste.trim()" @click="submitText">
+          {{ loading ? 'Uploading…' : 'Upload Text' }}
+        </button>
+      </div>
+
+      <div v-if="uploadProgress" class="upload-progress" data-testid="upload-progress">
+        <div class="progress-row">
+          <span>{{ uploadProgress.phase === 'encrypting' ? 'Encrypting' : uploadProgress.phase === 'complete' ? 'Complete' : 'Uploading' }}</span>
+          <span>{{ uploadProgress.percent }}%</span>
         </div>
-        <div class="share-actions">
-          <button class="btn-ghost" type="button" @click="copyShareUrl(share.previewUrl).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
-            Copy
-          </button>
+        <div class="progress-track" role="progressbar" :aria-valuenow="uploadProgress.percent" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" :style="{ width: `${uploadProgress.percent}%` }"></div>
         </div>
       </div>
-    </div>
+
+      <div v-if="shareLinks.length" class="share-result">
+        <div class="share-label">Latest share link</div>
+        <div v-for="share in shareLinks" :key="share.id" class="share-row" data-testid="share-row">
+          <div class="share-link-block">
+            <span class="share-file">{{ share.name }}</span>
+            <a :href="share.previewUrl" target="_blank" rel="noopener">{{ share.previewUrl }}</a>
+          </div>
+          <div class="share-actions">
+            <button class="btn-ghost" type="button" @click="copyShareUrl(share.previewUrl).then((ok) => showToast(ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'))">
+              Copy
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
 
   </div>
 </template>
 
 <style scoped>
 .files-tab { display: flex; flex-direction: column; gap: 12px; padding-bottom: 18px; }
-.security-strip {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: linear-gradient(90deg, var(--bg1), var(--subtle-grad-end));
-  color: var(--text2);
+.upload-panel {
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 38%),
+    linear-gradient(145deg, color-mix(in srgb, var(--bg1) 90%, transparent), color-mix(in srgb, var(--bg) 74%, transparent));
+  box-shadow: 0 24px 70px color-mix(in srgb, #000 22%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: visible;
+  padding: 22px;
+}
+.upload-panel-head {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  justify-content: space-between;
+  gap: 18px;
 }
-.security-strip svg {
-  color: var(--accent);
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.security-title {
+.upload-panel h1 {
   color: var(--text);
-  font-size: 12px;
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 760;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  margin: 0;
 }
-.security-copy {
+.upload-panel p {
   color: var(--text3);
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 8px 0 0;
 }
 .upload-options {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: min(100%, 360px);
 }
-.encrypt-toggle {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg1);
+.encrypt-toggle,
+.name-toggle {
+  border: 1px solid color-mix(in srgb, var(--border2) 82%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg1) 84%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
   display: inline-flex;
   align-items: center;
   gap: 9px;
-   min-height: 36px;
-   padding: 0 10px;
-   color: var(--text2);
-   font-size: 12px;
-   width: fit-content;
-   box-sizing: border-box;
+  min-height: 38px;
+  padding: 0 13px;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  width: fit-content;
+  box-sizing: border-box;
 }
 .encrypt-btn {
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
 }
 .encrypt-btn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
-.encrypt-btn:hover { border-color: var(--text3); }
+.encrypt-btn:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--text);
+  transform: translateY(-1px);
+}
 .encrypt-btn.active-encrypt {
   border-color: var(--accent);
   color: var(--accent);
@@ -448,45 +468,46 @@ function onPasteAreaLongPressCancel() {
   color: var(--orange-h, #f0963a);
   background: color-mix(in srgb, var(--orange-h, #f0963a) 10%, transparent);
 }
-.encrypt-toggle input {
+.name-toggle input {
   appearance: none;
   width: 16px;
   height: 16px;
   padding: 0;
   border: 1px solid var(--border2);
-  border-radius: 2px;
+  border-radius: 5px;
   background: var(--bg);
   display: inline-block;
   flex-shrink: 0;
   position: relative;
 }
-.encrypt-toggle input:checked {
+.name-toggle input:checked {
   border-color: var(--accent);
   background: var(--checked-bg);
 }
-.encrypt-toggle input:checked::after {
+.name-toggle input:checked::after {
   content: "";
   position: absolute;
-  inset: 2px;
+  inset: 3px;
   background: var(--accent);
-  border-radius: 1px;
+  border-radius: 2px;
 }
 .pw-input {
-   width: 140px;
-   min-height: 36px;
-   font-size: 12px;
-   padding: 0 10px;
-   box-sizing: border-box;
+  width: 150px;
+  min-height: 38px;
+  font-size: 12px;
+  padding: 0 12px;
+  border-radius: 999px;
+  box-sizing: border-box;
 }
 .password-wrap {
   position: relative;
 }
 .password-wrap .pw-input {
-  padding-right: 36px;
+  padding-right: 38px;
 }
 .password-toggle {
   position: absolute;
-  right: 8px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   width: 24px;
@@ -506,7 +527,7 @@ function onPasteAreaLongPressCancel() {
 .pw-field-leave-active {
   transition: opacity 0.18s ease, max-width 0.22s ease;
   overflow: hidden;
-  max-width: 160px;
+  max-width: 170px;
 }
 .pw-field-enter-from,
 .pw-field-leave-to {
@@ -515,12 +536,12 @@ function onPasteAreaLongPressCancel() {
 }
 .share-result {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg1);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg1) 82%, transparent);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 .share-label {
   color: var(--text3);
@@ -561,17 +582,99 @@ function onPasteAreaLongPressCancel() {
   align-items: center;
   gap: 8px;
 }
+.upload-zone {
+  border: 1px dashed color-mix(in srgb, var(--border2) 90%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--bg) 52%, transparent);
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 180px;
+  padding: 34px 22px;
+  text-align: center;
+  transition: border-color 0.16s, background 0.16s, transform 0.16s;
+}
+.upload-zone svg {
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.upload-zone:hover,
+.upload-zone.drag-over {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  transform: translateY(-1px);
+}
+.upload-zone-title {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.upload-zone p {
+  color: var(--text3);
+  font-size: 13px;
+  margin: 0;
+}
+.paste-area {
+  border: 1px solid color-mix(in srgb, var(--border2) 76%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg1) 72%, transparent);
+  color: var(--text3);
+  padding: 11px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.paste-area span {
+  font-size: 12px;
+  font-weight: 650;
+}
+.paste-area:hover {
+  border-color: var(--text3);
+  color: var(--text2);
+}
+.paste-area.pressing {
+  border-color: var(--accent);
+  background: var(--checked-bg);
+  color: var(--accent);
+}
+.divider {
+  color: var(--text3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.text-paste-input {
+  width: 100%;
+  min-height: 156px;
+  resize: vertical;
+  border-radius: 18px;
+  padding: 14px 16px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
 .text-actions-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 10px;
+  margin-top: 0;
   gap: 8px;
 }
 .upload-progress {
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg1);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg1) 82%, transparent);
   padding: 10px 12px;
 }
 .progress-row {
@@ -594,28 +697,25 @@ function onPasteAreaLongPressCancel() {
   background: linear-gradient(90deg, var(--accent), var(--accent-h));
   transition: width 0.12s ease;
 }
-.paste-area {
-  border: 1px dashed var(--border2);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  touch-action: manipulation;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-.paste-area:hover { border-color: var(--text3); }
-.paste-area.pressing {
-  border-color: var(--accent);
-  background: var(--bg1);
-}
-.divider { text-align: center; color: var(--text3); font-size: 12px; }
 @media (max-width: 600px) {
   .files-tab {
     padding-bottom: 112px;
+  }
+  .upload-panel {
+    border-radius: 22px;
+    padding: 16px;
+  }
+  .upload-panel-head {
+    flex-direction: column;
+  }
+  .upload-options {
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
+  }
+  .upload-zone {
+    min-height: 150px;
+    padding: 26px 16px;
   }
   .text-actions-row {
     align-items: stretch;

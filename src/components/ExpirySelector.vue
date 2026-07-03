@@ -73,7 +73,7 @@ onUnmounted(() => {
     <div class="expiry-panel" data-testid="expiry-panel">
       <div class="expiry-panel-top">
         <div class="expiry-headings">
-          <div class="expiry-label">Keep for · max {{ maxExpiryDays }} days</div>
+          <div class="expiry-label">KEEP FOR · MAX {{ maxExpiryDays }} DAYS</div>
           <div class="expiry-tip">To use Forever, hold <kbd>Shift</kbd> and click.</div>
         </div>
         <button
@@ -123,99 +123,144 @@ onUnmounted(() => {
 
 <style scoped>
 .expiry-menu {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
+  position: relative;
   z-index: 60;
-  width: 178px;
-  border: 1px solid var(--border2);
-  border-radius: var(--radius);
-  background: var(--bg1);
-  padding: 9px;
-  box-shadow: 0 8px 24px var(--shadow);
+  width: 100%;
 }
 .expiry-mobile-toggle,
 .expiry-collapse {
   display: none;
 }
+.expiry-panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  min-height: 76px;
+  border: 1px solid color-mix(in srgb, var(--border2) 82%, transparent);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--bg1) 86%, transparent), color-mix(in srgb, var(--subtle-grad-end) 88%, transparent)),
+    color-mix(in srgb, var(--bg) 72%, transparent);
+  padding: 15px 16px 15px 18px;
+  box-shadow: 0 18px 46px color-mix(in srgb, var(--shadow) 72%, transparent);
+  backdrop-filter: blur(16px);
+}
 .expiry-panel-top {
-  display: block;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1 1 auto;
 }
 .expiry-headings {
+  min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 5px;
 }
 .expiry-label {
-  color: var(--text3);
+  color: var(--accent-h);
   font-size: 10px;
-  margin-bottom: 5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
   text-transform: uppercase;
 }
 .expiry-tip {
   color: var(--text3);
-  font-size: 10px;
-  margin-bottom: 5px;
+  font-size: 11px;
+  line-height: 1.35;
 }
 .expiry-tip kbd {
-  border: 1px solid var(--border2);
-  border-radius: 2px;
-  background: var(--bg2);
+  border: 1px solid color-mix(in srgb, var(--border2) 84%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg2) 78%, transparent);
   color: var(--text2);
   font-size: 10px;
-  padding: 0 4px;
+  line-height: 1;
+  padding: 1px 5px 2px;
 }
 .expiry-trigger {
-  width: 100%;
-  border: 1px solid var(--border2);
-  background: linear-gradient(90deg, var(--bg2), var(--subtle-grad-end));
+  flex: 0 0 204px;
+  min-height: 44px;
+  border: 1px solid color-mix(in srgb, var(--border2) 90%, transparent);
+  border-radius: 15px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--bg2) 86%, transparent), color-mix(in srgb, var(--subtle-grad-end) 92%, transparent)),
+    var(--bg1);
   color: var(--text);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 7px 9px;
+  gap: 10px;
+  padding: 0 13px 0 15px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 7%, transparent);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.expiry-trigger:hover,
+.expiry-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border2));
+}
+.expiry-trigger svg {
+  flex: 0 0 auto;
+  color: var(--text3);
 }
 .expiry-value {
-  color: var(--accent-h);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .expiry-options {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 6px);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius);
-  background: var(--bg1);
-  padding: 5px;
+  top: calc(100% + 8px);
+  right: 16px;
+  z-index: 70;
+  width: 204px;
+  border: 1px solid color-mix(in srgb, var(--border2) 88%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg1) 94%, transparent);
+  padding: 6px;
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--shadow) 82%, transparent);
+  backdrop-filter: blur(16px);
 }
 .expiry-options::before {
   content: "";
   position: absolute;
-  left: 16px;
-  top: 10px;
-  bottom: 10px;
+  left: 18px;
+  top: 12px;
+  bottom: 12px;
   width: 1px;
-  background: var(--border);
+  background: color-mix(in srgb, var(--border) 82%, transparent);
 }
 .expiry-options button {
   position: relative;
   width: 100%;
+  min-height: 34px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text2);
   text-align: left;
-  padding: 6px 8px 6px 24px;
+  padding: 7px 9px 7px 28px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
 }
 .expiry-options button:hover,
 .expiry-options button.active {
-  background: var(--bg2);
+  background: color-mix(in srgb, var(--bg2) 86%, transparent);
   color: var(--text);
 }
 .option-dot {
   position: absolute;
-  left: 8px;
+  left: 10px;
   width: 7px;
   height: 7px;
   border: 1px solid var(--text3);
@@ -225,6 +270,7 @@ onUnmounted(() => {
 .expiry-options button.active .option-dot {
   border-color: var(--accent);
   background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 .expiry-options button.danger .option-dot {
   border-color: var(--red);
@@ -234,14 +280,15 @@ onUnmounted(() => {
   background: var(--danger-bg);
   color: var(--red-h);
 }
-
 @media (max-width: 600px) {
   .expiry-menu {
+    position: fixed;
+    z-index: 60;
     left: auto;
     right: 10px;
     bottom: 10px;
     width: min(220px, calc(100vw - 20px));
-    padding: 8px;
+    padding: 0;
   }
   .expiry-menu.mobile-collapsed {
     width: auto;
@@ -266,6 +313,12 @@ onUnmounted(() => {
   }
   .expiry-panel {
     display: block;
+    min-height: auto;
+    border-radius: var(--radius);
+    background: var(--bg1);
+    padding: 9px;
+    box-shadow: 0 8px 24px var(--shadow);
+    backdrop-filter: none;
   }
   .expiry-menu.mobile-collapsed .expiry-panel {
     display: none;
@@ -276,6 +329,21 @@ onUnmounted(() => {
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 5px;
+  }
+  .expiry-trigger {
+    width: 100%;
+    min-height: auto;
+    flex: 0 1 auto;
+    border-radius: var(--radius);
+    padding: 7px 9px;
+  }
+  .expiry-options {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: calc(100% + 6px);
+    width: auto;
+    border-radius: var(--radius);
   }
   .expiry-label {
     margin-bottom: 0;
