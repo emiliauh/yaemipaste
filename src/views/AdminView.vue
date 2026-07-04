@@ -563,6 +563,11 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+.actions .btn-red:not(.btn-red ~ .btn-red) {
+  margin-left: var(--space-1);
+  padding-left: calc(var(--space-2) + var(--space-1));
+  border-left: 1px solid var(--border);
+}
 .eyebrow {
   color: var(--accent);
   font-size: var(--fs-xs);
@@ -706,12 +711,26 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   min-width: 720px;
   font-size: var(--fs-body);
 }
+.admin-table tbody tr {
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.admin-table tbody tr:hover {
+  background: color-mix(in srgb, var(--bg2) 42%, transparent);
+}
+.admin-table tbody tr:has(input[type="checkbox"]:checked) {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 .card {
   overflow-x: auto;
   border-radius: var(--radius-md);
   padding: var(--space-5);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   box-shadow: 0 16px 32px color-mix(in srgb, var(--shadow) 12%, transparent);
+}
+@media (max-width: 700px) {
+  .card:has(.admin-table) {
+    box-shadow: 0 16px 32px color-mix(in srgb, var(--shadow) 12%, transparent), inset -18px 0 14px -14px color-mix(in srgb, black 35%, transparent);
+  }
 }
 .error-box {
   border: 1px solid var(--error-border);
@@ -726,8 +745,28 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   color: var(--red);
 }
 .info-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text2);
+  font-size: var(--fs-body);
   background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+.info-box::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: adminLoadingPulse 1.1s ease-in-out infinite;
+}
+@keyframes adminLoadingPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
 }
 .danger-card {
   position: relative;
