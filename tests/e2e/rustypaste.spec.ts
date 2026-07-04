@@ -426,7 +426,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   expired = true
   await page.reload()
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByText('No files.')).toBeVisible()
+  await expect(page.getByText('No files yet')).toBeVisible()
 })
 
 test('upload shows progress and leaves a share link', async ({ page }) => {
@@ -641,14 +641,14 @@ for (const viewport of [
     await signInWithToken(page)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await page.goto('/#/files')
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('encrypt?')
-    await expect(page.getByTestId('keep-name-toggle')).toContainText('keep file name?')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encryption off')
+    await expect(page.getByTestId('keep-name-toggle')).toContainText('Keep original name')
     await page.getByTestId('encrypt-toggle').click()
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encrypt')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encrypted link')
     await page.getByTestId('encrypt-toggle').click()
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('Password encrypt')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Password protected')
     await page.getByTestId('encrypt-toggle').click()
-    await expect(page.getByTestId('encrypt-toggle')).toContainText('encrypt?')
+    await expect(page.getByTestId('encrypt-toggle')).toContainText('Encryption off')
   })
 }
 
@@ -1074,7 +1074,7 @@ test('upload preview download and delete work as one public-file flow', async ({
 
   await page.reload()
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByText('No files.')).toBeVisible()
+  await expect(page.getByText('No files yet')).toBeVisible()
 })
 
 test('preview open action prefers app-open download for sxcu files', async ({ page }) => {
@@ -1396,11 +1396,10 @@ test('history delete-all notifications stay capped at five', async ({ page }) =>
     await route.fulfill({ status: 200, body: '' })
   })
 
-  page.on('dialog', (dialog) => dialog.accept())
-
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByRole('button', { name: 'Delete All' }).click()
+  await page.getByRole('button', { name: 'Confirm delete' }).click()
 
   await expect(page.getByTestId('notification-row')).toHaveCount(5)
   await expect(page.getByTestId('notification-list')).toContainText('history-file-6.txt')
@@ -2714,7 +2713,6 @@ test('history actions menu closes when clicking outside', async ({ page }) => {
 test('history supports multi-select delete selected', async ({ page }) => {
   await signInWithToken(page)
   const deleted = new Set<string>()
-  page.on('dialog', (dialog) => dialog.accept())
 
   await page.route('**/api/list', async (route) => {
     await route.fulfill({
@@ -2747,6 +2745,7 @@ test('history supports multi-select delete selected', async ({ page }) => {
   await page.getByLabel('Select bulk-delete-b.txt').check()
   await page.getByRole('button', { name: 'Actions' }).click()
   await page.getByRole('button', { name: 'Delete Selected' }).click()
+  await page.getByRole('button', { name: 'Confirm delete' }).click()
 
   await expect.poll(() => deleted.size).toBe(2)
   await expect(page.getByText('bulk-delete-a.txt')).toBeHidden()

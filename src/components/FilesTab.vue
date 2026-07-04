@@ -762,7 +762,8 @@ function onPasteAreaLongPressCancel() {
     justify-content: flex-end;
   }
   .share-result {
-    padding: var(--space-3);
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
   }
 }
 .files-tab .btn-ghost,

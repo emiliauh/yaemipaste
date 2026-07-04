@@ -169,7 +169,7 @@ function dismiss(id: number) {
     gap: var(--space-2);
   }
   .notification-stack-row.expanded {
-    width: 100%;
+    width: min(320px, 100%);
   }
   .notification-message {
     max-width: 100%;

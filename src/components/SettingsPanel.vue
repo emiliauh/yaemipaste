@@ -50,7 +50,6 @@ const logoutAllAfterPasswordChange = ref(false)
 async function save() {
   try {
     setPasteApiBase(apiBase.value)
-    apiBase.value = getPasteApiBase()
     await refreshPublicSettings(true)
     saved.value = true
     setTimeout(() => { saved.value = false; emit('close') }, 800)
@@ -364,6 +363,7 @@ async function submitPasswordChange() {
   margin-bottom: var(--space-3);
 }
 .passkey-backdrop {
+  pointer-events: auto;
   position: fixed;
   inset: 0;
   background: var(--modal-bg);

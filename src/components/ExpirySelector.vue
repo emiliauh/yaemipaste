@@ -289,7 +289,7 @@ onUnmounted(() => {
 @media (max-width: 600px) {
   .expiry-menu {
     position: fixed;
-    z-index: 60;
+    z-index: 120;
     left: auto;
     right: 10px;
     bottom: 10px;
