@@ -321,6 +321,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <p v-if="!dashboard.recent_uploads.length" class="empty-state">No uploads yet.</p>
       </div>
       <div class="card wide">
         <h2>Recent admin actions</h2>
@@ -334,6 +335,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <p v-if="!dashboard.recent_audit.length" class="empty-state">No administrative actions recorded yet.</p>
       </div>
     </section>
 
@@ -387,9 +389,11 @@ onMounted(() => {
       <div class="card filters">
         <CustomSelect v-model="filterOwner" label="Owner" :options="ownerFilterOptions" />
         <CustomSelect v-model="filterExpired" label="Expiry" :options="expiryFilterOptions" />
-        <input v-model="filterText" placeholder="filter path or type" aria-label="Filter uploads by path or type" />
-        <button class="btn-red" type="button" :disabled="selectedUploads.size === 0" @click="runAction(() => adminBulkDeleteUploads(Array.from(selectedUploads), confirmText('Type PURGE UPLOADS') ?? ''), 'Selected uploads deleted')">Delete selected</button>
-        <button class="btn-red" type="button" @click="runAction(() => adminPurgeExpired(confirmText('Type PURGE EXPIRED') ?? ''), 'Expired uploads purged')">Purge expired</button>
+        <input v-model="filterText" class="filter-text" placeholder="filter path or type" aria-label="Filter uploads by path or type" />
+        <div class="filter-actions">
+          <button class="btn-red" type="button" :disabled="selectedUploads.size === 0" @click="runAction(() => adminBulkDeleteUploads(Array.from(selectedUploads), confirmText('Type PURGE UPLOADS') ?? ''), 'Selected uploads deleted')">Delete selected</button>
+          <button class="btn-red" type="button" @click="runAction(() => adminPurgeExpired(confirmText('Type PURGE EXPIRED') ?? ''), 'Expired uploads purged')">Purge expired</button>
+        </div>
       </div>
       <div class="card">
         <table class="file-table admin-table">
@@ -687,6 +691,15 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   gap: var(--space-2);
   align-items: center;
 }
+.filter-text {
+  flex: 1 1 220px;
+  min-height: 44px;
+}
+.filter-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
 .admin-table {
   min-width: 720px;
   font-size: var(--fs-body);
@@ -806,6 +819,14 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 @media (max-width: 600px) {
   .layout {
     display: block;
+  }
+  .filter-text,
+  .filter-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .filter-actions button {
+    flex: 1;
   }
   .settings-fields {
     grid-template-columns: 1fr;
