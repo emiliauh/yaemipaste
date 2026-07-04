@@ -276,13 +276,13 @@ onMounted(() => {
       <div class="sidebar-footer">
         <nav class="nav-stack" aria-label="Admin navigation">
           <p class="nav-section-label">Workspace</p>
-          <button type="button" @click="router.push('/files')">
+          <button type="button" aria-label="Files" @click="router.push('/files')">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/></svg>
             </span>
             <span class="nav-copy"><span>Files</span><small>Uploads</small></span>
           </button>
-          <button class="active" type="button" aria-current="page">
+          <button class="active" type="button" aria-current="page" aria-label="Admin">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12l2 2 4-4"/></svg>
             </span>
@@ -399,7 +399,7 @@ onMounted(() => {
           <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Uploads</th><th>Storage</th><th>Actions</th></tr></thead>
           <tbody>
             <tr v-for="user in pagedUsers" :key="user.username">
-              <td>{{ user.username }}<div class="subtle">{{ user.upload_token_preview ? 'token configured' : 'no token' }}</div></td>
+              <td><span>{{ user.username }}</span><div class="subtle">{{ user.upload_token_preview ? 'token configured' : 'no token' }}</div></td>
               <td>{{ user.is_admin ? 'admin' : 'user' }}</td>
               <td>{{ user.suspended_at ? `suspended ${ts(user.suspended_at)}` : 'active' }}</td>
               <td>{{ user.upload_count }}</td>
