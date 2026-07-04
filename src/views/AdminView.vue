@@ -34,8 +34,8 @@ import {
   type WebhookDelivery,
 } from '../lib/api'
 import SettingsPanel from '../components/SettingsPanel.vue'
+import AppSidebar from '../components/AppSidebar.vue'
 import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
-import { useTheme, type ThemeMode } from '../lib/theme'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -73,17 +73,11 @@ const pageByTab = ref<Record<string, number>>({
 
 
 const currentUser = getAuthUsername()
-const { themeMode, appliedTheme, setThemeMode } = useTheme()
-const { appName, refreshPublicSettings } = usePublicSettings()
-const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
-  { mode: 'system', label: 'Auto' },
-  { mode: 'light', label: 'Light' },
-  { mode: 'dark', label: 'Dark' },
-]
-const themeLabel = computed(() => {
-  if (themeMode.value === 'system') return `System theme, currently ${appliedTheme.value}`
-  return `${themeMode.value} theme`
-})
+const { refreshPublicSettings } = usePublicSettings()
+const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
+const sidebarCollapsed = ref(
+  typeof window !== 'undefined' && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
+)
 const ownerFilterOptions = computed<SelectOption[]>(() => [
   { value: '', label: 'All owners', hint: 'Every upload source' },
   ...users.value.map((user) => ({
@@ -259,56 +253,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="layout admin-shell">
-    <aside class="sidebar" aria-label="Primary">
-      <div class="sidebar-top">
-        <button class="brand-block" type="button" @click="router.push('/files')" aria-label="Back to files">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"/>
-              <path d="M12 8v8M8.5 10l3.5 2 3.5-2"/>
-            </svg>
-          </span>
-          <span class="brand-title">{{ appName }}</span>
-        </button>
-      </div>
-
-      <div class="sidebar-footer">
-        <nav class="nav-stack" aria-label="Admin navigation">
-          <p class="nav-section-label">Workspace</p>
-          <button type="button" aria-label="Files" @click="router.push('/files')">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/></svg>
-            </span>
-            <span class="nav-copy"><span>Files</span><small>Uploads</small></span>
-          </button>
-          <button class="active" type="button" aria-current="page" aria-label="Admin">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12l2 2 4-4"/></svg>
-            </span>
-            <span class="nav-copy"><span>Admin</span><small>Controls</small></span>
-          </button>
-        </nav>
-        <div class="theme-switch expanded-utilities" role="group" :aria-label="themeLabel" data-testid="theme-switch">
-          <button
-            v-for="option in themeOptions"
-            :key="option.mode"
-            type="button"
-            :class="{ active: themeMode === option.mode }"
-            :aria-pressed="themeMode === option.mode"
-            :data-testid="`theme-${option.mode}`"
-            @click="setThemeMode(option.mode)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </div>
-    </aside>
-
-    <button class="desktop-settings-edge" type="button" @click="showSettings = true">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-      <span>Settings</span>
-    </button>
+  <div class="layout admin-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+    <AppSidebar
+      active-tab="admin"
+      :show-history="false"
+      show-admin
+      show-settings
+      :collapsed="sidebarCollapsed"
+      @update:collapsed="sidebarCollapsed = $event"
+      @select-files="router.push('/files')"
+      @select-admin="router.push('/admin')"
+      @toggle-settings="showSettings = true"
+    />
 
     <main class="workspace">
       <section class="admin-layout">
@@ -319,9 +275,7 @@ onMounted(() => {
             <p class="subtle">Signed in as {{ currentUser }}</p>
           </div>
           <div class="header-actions">
-            <button class="btn-ghost" type="button" @click="router.push('/files')">Files</button>
-            <button class="btn-ghost" type="button" @click="showSettings = true">Account</button>
-            <button class="btn-red" type="button" @click="logout">Logout</button>
+            <button class="btn-ghost" type="button" @click="logout">Logout</button>
           </div>
         </header>
 
@@ -418,6 +372,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <p v-if="!pagedUsers.length && !loading" class="empty-state">No users yet.</p>
         <div class="pagination-bar" aria-label="User pagination">
           <span>{{ pageLabel('Users', users.length) }}</span>
           <div>
@@ -461,15 +416,32 @@ onMounted(() => {
       </div>
     </section>
 
-    <section v-if="tab === 'Settings'" class="card form-grid">
-      <h2>Safe global settings</h2>
-      <label>App name<input v-model="settingsForm.app_name" /></label>
-      <label>Public title<input v-model="settingsForm.public_title" /></label>
-      <label>Base API URL<input v-model="settingsForm.base_api_url" placeholder="https://papi.example.com" /></label>
-      <label>Storage warning bytes<input v-model.number="settingsForm.storage_warning_bytes" type="number" min="0" /></label>
-      <label class="inline-check"><input v-model="settingsForm.registration_enabled" type="checkbox" /> registration enabled</label>
-      <button class="btn-orange" type="button" @click="saveSettings">Save settings</button>
-      <p class="subtle">Secrets are never displayed here. Sensitive values must be replaced through server-side configuration.</p>
+    <section v-if="tab === 'Settings'" class="card settings-page">
+      <div class="settings-intro">
+        <h2>Safe global settings</h2>
+        <p class="subtle">Public branding and operational limits. Secrets are never displayed here; sensitive values must be replaced through server-side configuration.</p>
+      </div>
+
+      <div class="settings-group">
+        <p class="settings-group-label">Branding</p>
+        <div class="settings-fields">
+          <label>App name<input v-model="settingsForm.app_name" /></label>
+          <label>Public title<input v-model="settingsForm.public_title" /></label>
+          <label class="span-2">Base API URL<input v-model="settingsForm.base_api_url" placeholder="https://papi.example.com" /></label>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <p class="settings-group-label">Operational limits</p>
+        <div class="settings-fields">
+          <label>Storage warning bytes<input v-model.number="settingsForm.storage_warning_bytes" type="number" min="0" /></label>
+          <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> registration enabled</label>
+        </div>
+      </div>
+
+      <div class="settings-footer">
+        <button class="btn-orange" type="button" @click="saveSettings">Save settings</button>
+      </div>
     </section>
 
     <section v-if="tab === 'Webhooks'" class="stack">
@@ -514,6 +486,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <p v-if="!deliveries.length && !loading" class="empty-state">No webhook deliveries recorded yet.</p>
       </div>
     </section>
 
@@ -527,6 +500,7 @@ onMounted(() => {
           </tr>
         </tbody>
       </table>
+      <p v-if="!pagedAudit.length && !loading" class="empty-state">No audit entries yet.</p>
       <div class="pagination-bar" aria-label="Audit pagination">
         <span>{{ pageLabel('Audit', audit.length) }}</span>
         <div>
@@ -537,26 +511,6 @@ onMounted(() => {
     </section>
       </section>
     </main>
-
-    <nav class="mobile-tabbar" aria-label="Mobile navigation">
-      <div class="mobile-tabbar-main">
-        <button type="button" @click="router.push('/files')">
-          <span class="nav-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/></svg>
-          </span>
-          Files
-        </button>
-        <button class="active" type="button" aria-current="page">
-          <span class="nav-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12l2 2 4-4"/></svg>
-          </span>
-          Admin
-        </button>
-      </div>
-      <button class="mobile-tabbar-settings" type="button" aria-label="Settings" @click="showSettings = true">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-      </button>
-    </nav>
 
     <div v-if="showSettings" class="settings-layer">
       <div class="overlay" @click="showSettings = false" />
@@ -622,11 +576,12 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   font-size: var(--fs-xs);
 }
 .admin-tabs {
-  margin: 0 0 16px;
+  margin: 0 0 20px;
   max-width: 100%;
   overflow-x: auto;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--shadow) 14%, transparent);
+  border-color: color-mix(in srgb, var(--border2) 70%, transparent);
+  background: transparent;
+  box-shadow: none;
 }
 .admin-tabs button {
   position: relative;
@@ -675,6 +630,51 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   gap: var(--space-1);
   color: var(--text2);
   font-size: var(--fs-xs);
+}
+.settings-page {
+  max-width: 720px;
+  display: grid;
+  gap: var(--space-6);
+}
+.settings-intro h2 {
+  margin-bottom: var(--space-1);
+}
+.settings-intro p {
+  max-width: 56ch;
+  line-height: var(--lh-body);
+}
+.settings-group {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+.settings-group-label {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-3);
+}
+.settings-fields label,
+.settings-fields .inline-check {
+  margin: 0;
+}
+.span-2 {
+  grid-column: 1 / -1;
+}
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+}
+.settings-footer .btn-orange {
+  min-width: 160px;
 }
 .inline-check {
   display: flex !important;
@@ -749,6 +749,12 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .admin-layout button:not(:disabled):active {
   transform: translateY(0) scale(0.96);
 }
+.empty-state {
+  padding: var(--space-4) 0 0;
+  color: var(--text3);
+  font-size: var(--fs-body);
+  text-align: center;
+}
 .pagination-bar {
   display: flex;
   align-items: center;
@@ -767,9 +773,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .pagination-bar button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-.mobile-tabbar {
-  display: none;
 }
 .settings-layer {
   position: fixed;
@@ -804,9 +807,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .layout {
     display: block;
   }
-  .sidebar,
-  .desktop-settings-edge {
-    display: none;
+  .settings-fields {
+    grid-template-columns: 1fr;
   }
   .workspace {
     padding: var(--space-3) var(--space-3) 104px;
@@ -835,61 +837,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .admin-table td,
   .admin-table th {
     padding: var(--space-2) var(--space-3);
-  }
-  .mobile-tabbar {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
-    z-index: 110;
-    display: flex;
-    align-items: stretch;
-    gap: 10px;
-    background: transparent;
-  }
-  .mobile-tabbar-main {
-    min-width: 0;
-    flex: auto;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-    padding: 6px;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    box-shadow: 0 18px 36px var(--shadow);
-    backdrop-filter: blur(16px);
-  }
-  .mobile-tabbar-main button,
-  .mobile-tabbar-settings {
-    min-height: 46px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text2);
-    font-weight: 600;
-    touch-action: manipulation;
-  }
-  .mobile-tabbar-main button.active {
-    border-color: var(--border);
-    background: var(--surface2);
-    color: var(--text);
-  }
-  .mobile-tabbar .nav-icon {
-    width: 22px;
-    height: 22px;
-  }
-  .mobile-tabbar-settings {
-    flex: 0 0 52px;
-    padding: 0;
-    border-color: var(--border);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    box-shadow: 0 18px 36px var(--shadow);
-    backdrop-filter: blur(16px);
   }
   .settings-layer :deep(.settings-panel) {
     left: 12px;
