@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
   authChangePassword,
   authLogout,
@@ -21,6 +21,7 @@ import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/
 import { useNotificationStore } from '../stores/notifications'
 import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
+import { useTheme, type ThemeMode } from '../lib/theme'
 
 const emit = defineEmits<{ close: [], logout: [] }>()
 const notificationStore = useNotificationStore()
@@ -32,6 +33,13 @@ const sharexEnabled = isShareXEnabled()
 const apiBase = ref(getPasteApiBase())
 const defaultApiBase = getDefaultPasteApiBase()
 const { appName, refreshPublicSettings } = usePublicSettings()
+const { themeMode, appliedTheme, setThemeMode } = useTheme()
+const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
+  { mode: 'system', label: 'Auto' },
+  { mode: 'light', label: 'Light' },
+  { mode: 'dark', label: 'Dark' },
+]
+const themeLabel = computed(() => `Theme, currently ${appliedTheme.value}`)
 const downloading = ref(false)
 const saved = ref(false)
 const passkeyModalOpen = ref(false)
@@ -225,6 +233,23 @@ async function submitPasswordChange() {
     </div>
 
     <div class="field">
+      <label>Theme</label>
+      <div class="theme-switch settings-theme-switch" role="group" :aria-label="themeLabel" data-testid="settings-theme-switch">
+        <button
+          v-for="option in themeOptions"
+          :key="option.mode"
+          type="button"
+          :class="{ active: themeMode === option.mode }"
+          :aria-pressed="themeMode === option.mode"
+          :data-testid="`settings-theme-${option.mode}`"
+          @click="setThemeMode(option.mode)"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+    </div>
+
+    <div class="field">
       <label for="api-base-url">Upload API base URL</label>
       <input id="api-base-url" v-model="apiBase" type="text" autocomplete="off" :placeholder="defaultApiBase" aria-label="Upload API base URL" />
       <p class="field-hint">Used for uploads and history requests. Leave blank for this deployment's default.</p>
@@ -342,6 +367,36 @@ async function submitPasswordChange() {
 .field label { color: var(--text2); font-size: var(--fs-xs); }
 .field input { width: 100%; font-size: var(--fs-sm); }
 .field-hint { color: var(--text2); font-size: var(--fs-xs); margin-bottom: var(--space-2); }
+.settings-theme-switch {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface, var(--bg1));
+}
+.settings-theme-switch button {
+  flex: 1;
+  min-height: 34px;
+  padding: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  background: transparent;
+  border-radius: calc(var(--radius-sm) - 3px);
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.settings-theme-switch button.active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface3, var(--bg3)) 82%, var(--accent-soft, var(--bg2)));
+}
+.settings-theme-switch button:hover:not(.active) {
+  color: var(--text);
+  background: var(--bg1);
+}
+.settings-theme-switch button:active {
+  transform: scale(0.96);
+}
 .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: var(--space-3) 0; }
 .account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }

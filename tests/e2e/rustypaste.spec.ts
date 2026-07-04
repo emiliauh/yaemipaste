@@ -671,18 +671,26 @@ test('theme controls persist explicit choices and system mode follows the OS pre
   await page.emulateMedia({ colorScheme: 'dark' })
 
   await page.goto('/#/files')
-  await expect(page.getByTestId('theme-system')).toHaveAttribute('aria-pressed', 'true')
+  const isCompact = (page.viewportSize()?.width ?? 1280) <= 600
+  const themeTestId = (mode: string) => (isCompact ? `settings-theme-${mode}` : `theme-${mode}`)
+  const openThemeControls = async () => {
+    if (isCompact) await page.getByRole('button', { name: 'Settings' }).click()
+  }
+
+  await openThemeControls()
+  await expect(page.getByTestId(themeTestId('system'))).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
-  await page.getByTestId('theme-light').click()
+  await page.getByTestId(themeTestId('light')).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_theme_mode'))).toBe('light')
 
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expect(page.getByTestId('theme-light')).toHaveAttribute('aria-pressed', 'true')
+  await openThemeControls()
+  await expect(page.getByTestId(themeTestId('light'))).toHaveAttribute('aria-pressed', 'true')
 
-  await page.getByTestId('theme-system').click()
+  await page.getByTestId(themeTestId('system')).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
@@ -3157,8 +3165,9 @@ test('admin route is guarded and sidebar entry only appears for admins', async (
   await signInAsAdmin(page)
   await mockAdminApi(page)
   await page.goto('/#/files')
-  await expect(page.getByTestId('desktop-nav-admin')).toBeVisible()
-  await page.getByTestId('desktop-nav-admin').click()
+  const adminNavTestId = (page.viewportSize()?.width ?? 1280) <= 600 ? 'mobile-nav-admin' : 'desktop-nav-admin'
+  await expect(page.getByTestId(adminNavTestId)).toBeVisible()
+  await page.getByTestId(adminNavTestId).click()
   await expect(page).toHaveURL(/\/admin$/)
   await expect(page.getByRole('heading', { name: 'Admin panel' })).toBeVisible()
 })

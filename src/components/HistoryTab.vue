@@ -2366,6 +2366,14 @@ onBeforeUnmount(() => {
   }
 }
 
+@media (min-width: 601px) and (max-width: 820px) {
+  .table-wrap { overflow-x: hidden; }
+  .file-table { table-layout: fixed; width: 100%; }
+  .file-table th:last-child,
+  .file-table td.actions { width: 150px; }
+  .filename { width: 100%; min-width: 0; }
+}
+
 @keyframes skeletonPulse {
   0% { background-position: 120% 0; }
   100% { background-position: -120% 0; }
