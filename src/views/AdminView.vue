@@ -37,6 +37,7 @@ import SettingsPanel from '../components/SettingsPanel.vue'
 import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
 import { useTheme, type ThemeMode } from '../lib/theme'
 import { useNotificationStore } from '../stores/notifications'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const router = useRouter()
 const notifications = useNotificationStore()
@@ -58,13 +59,22 @@ const audit = ref<AdminAuditEntry[]>([])
 
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
-const settingsForm = ref({ app_name: '', public_title: '', registration_enabled: true, storage_warning_bytes: 0 })
+const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, storage_warning_bytes: 0 })
 const filterOwner = ref('')
 const filterText = ref('')
 const filterExpired = ref<'all' | 'expired' | 'active'>('all')
+const PAGE_SIZE = 10
+const pageByTab = ref<Record<string, number>>({
+  Users: 1,
+  Uploads: 1,
+  Webhooks: 1,
+  Audit: 1,
+})
+
 
 const currentUser = getAuthUsername()
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
+const { appName, refreshPublicSettings } = usePublicSettings()
 const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
   { mode: 'system', label: 'Auto' },
   { mode: 'light', label: 'Light' },
@@ -94,6 +104,50 @@ const filteredUploads = computed(() => uploads.value.filter((upload) => {
   const expiryOk = filterExpired.value === 'all' || (filterExpired.value === 'expired' ? upload.expired : !upload.expired)
   return ownerOk && textOk && expiryOk
 }))
+const pagedUsers = computed(() => paginate(users.value, 'Users'))
+const pagedUploads = computed(() => paginate(filteredUploads.value, 'Uploads'))
+const pagedWebhooks = computed(() => paginate(webhooks.value, 'Webhooks'))
+const pagedAudit = computed(() => paginate(audit.value, 'Audit'))
+const usersPageCount = computed(() => pageCount(users.value.length))
+const uploadsPageCount = computed(() => pageCount(filteredUploads.value.length))
+const webhooksPageCount = computed(() => pageCount(webhooks.value.length))
+const auditPageCount = computed(() => pageCount(audit.value.length))
+
+function pageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / PAGE_SIZE))
+}
+
+function pageFor(key: string, total: number): number {
+  const max = pageCount(total)
+  const current = pageByTab.value[key] ?? 1
+  if (current > max) {
+    pageByTab.value = { ...pageByTab.value, [key]: max }
+    return max
+  }
+  if (current < 1) {
+    pageByTab.value = { ...pageByTab.value, [key]: 1 }
+    return 1
+  }
+  return current
+}
+
+function paginate<T>(items: T[], key: string): T[] {
+  const page = pageFor(key, items.length)
+  return items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+}
+
+function setPage(key: string, next: number, total: number) {
+  const max = pageCount(total)
+  pageByTab.value = { ...pageByTab.value, [key]: Math.min(max, Math.max(1, next)) }
+}
+
+function pageLabel(key: string, total: number): string {
+  if (total === 0) return 'No items'
+  const page = pageFor(key, total)
+  const start = (page - 1) * PAGE_SIZE + 1
+  const end = Math.min(total, page * PAGE_SIZE)
+  return `${start}-${end} of ${total}`
+}
 
 function ts(value: number | null | undefined): string {
   if (!value) return 'N/A'
@@ -127,6 +181,7 @@ async function refreshAll() {
     settingsForm.value = {
       app_name: nextSettings.app_name ?? 'yaemipaste',
       public_title: nextSettings.public_title ?? 'yaemipaste',
+      base_api_url: nextSettings.base_api_url ?? '',
       registration_enabled: nextSettings.registration_enabled !== 'false',
       storage_warning_bytes: Number(nextSettings.storage_warning_bytes ?? 0) || 0,
     }
@@ -135,6 +190,23 @@ async function refreshAll() {
   } finally {
     loading.value = false
   }
+}
+
+async function saveSettings() {
+  await runAction(async () => {
+    await adminUpdateSettings(settingsForm.value)
+    await refreshPublicSettings(true)
+  }, 'Settings updated')
+}
+
+async function deleteUploadWithConfirmation(path: string) {
+  if (confirmText(`Type ${path} to delete this upload`) !== path) return
+  await runAction(() => adminDeleteUpload(path), 'Upload deleted')
+}
+
+async function deleteWebhookWithConfirmation(hook: AdminWebhook) {
+  if (confirmText(`Type ${hook.url} to delete this webhook`) !== hook.url) return
+  await runAction(() => adminDeleteWebhook(hook.id), 'Webhook deleted')
 }
 
 async function runAction(work: () => Promise<unknown>, success: string) {
@@ -180,7 +252,10 @@ function toggleSelection(path: string, checked: boolean) {
   selectedUploads.value = next
 }
 
-onMounted(refreshAll)
+onMounted(() => {
+  void refreshPublicSettings()
+  void refreshAll()
+})
 </script>
 
 <template>
@@ -194,24 +269,24 @@ onMounted(refreshAll)
               <path d="M12 8v8M8.5 10l3.5 2 3.5-2"/>
             </svg>
           </span>
-          <span class="brand-title">yaemipaste</span>
+          <span class="brand-title">{{ appName }}</span>
         </button>
       </div>
 
       <div class="sidebar-footer">
         <nav class="nav-stack" aria-label="Admin navigation">
-          <p class="nav-section-label">workspace</p>
+          <p class="nav-section-label">Workspace</p>
           <button type="button" @click="router.push('/files')">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H10l2 2h5.5A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z"/></svg>
             </span>
-            <span class="nav-copy">Files<small>uploads</small></span>
+            <span class="nav-copy"><span>Files</span><small>Uploads</small></span>
           </button>
           <button class="active" type="button" aria-current="page">
             <span class="nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12l2 2 4-4"/></svg>
             </span>
-            <span class="nav-copy">Admin<small>controls</small></span>
+            <span class="nav-copy"><span>Admin</span><small>Controls</small></span>
           </button>
         </nav>
         <div class="theme-switch expanded-utilities" role="group" :aria-label="themeLabel" data-testid="theme-switch">
@@ -323,7 +398,7 @@ onMounted(refreshAll)
         <table class="file-table admin-table">
           <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Uploads</th><th>Storage</th><th>Actions</th></tr></thead>
           <tbody>
-            <tr v-for="user in users" :key="user.username">
+            <tr v-for="user in pagedUsers" :key="user.username">
               <td>{{ user.username }}<div class="subtle">{{ user.upload_token_preview ? 'token configured' : 'no token' }}</div></td>
               <td>{{ user.is_admin ? 'admin' : 'user' }}</td>
               <td>{{ user.suspended_at ? `suspended ${ts(user.suspended_at)}` : 'active' }}</td>
@@ -343,6 +418,13 @@ onMounted(refreshAll)
             </tr>
           </tbody>
         </table>
+        <div class="pagination-bar" aria-label="User pagination">
+          <span>{{ pageLabel('Users', users.length) }}</span>
+          <div>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Users', users.length) <= 1" @click="setPage('Users', pageFor('Users', users.length) - 1, users.length)">Previous</button>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Users', users.length) >= usersPageCount" @click="setPage('Users', pageFor('Users', users.length) + 1, users.length)">Next</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -358,17 +440,24 @@ onMounted(refreshAll)
         <table class="file-table admin-table">
           <thead><tr><th aria-label="Select"></th><th>Path</th><th>Owner</th><th>Size</th><th>Created</th><th>Expires</th><th>Actions</th></tr></thead>
           <tbody>
-            <tr v-for="upload in filteredUploads" :key="upload.path">
+            <tr v-for="upload in pagedUploads" :key="upload.path">
               <td><input type="checkbox" :checked="selectedUploads.has(upload.path)" :aria-label="`Select ${upload.path}`" @change="toggleSelection(upload.path, ($event.target as HTMLInputElement).checked)" /></td>
               <td>{{ upload.path }}</td>
               <td>{{ upload.owner ?? 'anonymous' }}</td>
               <td>{{ formatBytes(upload.size_bytes) }}</td>
               <td>{{ ts(upload.created_at) }}</td>
               <td>{{ upload.expired ? 'expired' : ts(upload.expires_at) }}</td>
-              <td><button class="btn-red" type="button" @click="runAction(() => adminDeleteUpload(upload.path), 'Upload deleted')">Delete</button></td>
+              <td><button class="btn-red" type="button" @click="deleteUploadWithConfirmation(upload.path)">Delete</button></td>
             </tr>
           </tbody>
         </table>
+        <div class="pagination-bar" aria-label="Upload pagination">
+          <span>{{ pageLabel('Uploads', filteredUploads.length) }}</span>
+          <div>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Uploads', filteredUploads.length) <= 1" @click="setPage('Uploads', pageFor('Uploads', filteredUploads.length) - 1, filteredUploads.length)">Previous</button>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Uploads', filteredUploads.length) >= uploadsPageCount" @click="setPage('Uploads', pageFor('Uploads', filteredUploads.length) + 1, filteredUploads.length)">Next</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -376,9 +465,10 @@ onMounted(refreshAll)
       <h2>Safe global settings</h2>
       <label>App name<input v-model="settingsForm.app_name" /></label>
       <label>Public title<input v-model="settingsForm.public_title" /></label>
+      <label>Base API URL<input v-model="settingsForm.base_api_url" placeholder="https://papi.example.com" /></label>
       <label>Storage warning bytes<input v-model.number="settingsForm.storage_warning_bytes" type="number" min="0" /></label>
       <label class="inline-check"><input v-model="settingsForm.registration_enabled" type="checkbox" /> registration enabled</label>
-      <button class="btn-orange" type="button" @click="runAction(() => adminUpdateSettings(settingsForm), 'Settings updated')">Save settings</button>
+      <button class="btn-orange" type="button" @click="saveSettings">Save settings</button>
       <p class="subtle">Secrets are never displayed here. Sensitive values must be replaced through server-side configuration.</p>
     </section>
 
@@ -395,18 +485,25 @@ onMounted(refreshAll)
         <h2>Endpoints</h2>
         <table class="file-table admin-table">
           <tbody>
-            <tr v-for="hook in webhooks" :key="hook.id">
+            <tr v-for="hook in pagedWebhooks" :key="hook.id">
               <td>{{ hook.url }}<div class="subtle">{{ hook.events.join(', ') }}</div></td>
               <td>{{ hook.enabled ? 'enabled' : 'disabled' }}</td>
               <td>{{ hook.secret_configured ? 'secret configured' : 'unsigned' }}</td>
               <td class="actions">
                 <button class="btn-ghost" type="button" @click="runAction(() => adminUpdateWebhook(hook.id, { enabled: !hook.enabled }), 'Webhook updated')">{{ hook.enabled ? 'Disable' : 'Enable' }}</button>
                 <button class="btn-ghost" type="button" @click="runAction(() => adminTestWebhook(hook.id), 'Webhook test queued')">Test</button>
-                <button class="btn-red" type="button" @click="runAction(() => adminDeleteWebhook(hook.id), 'Webhook deleted')">Delete</button>
+                <button class="btn-red" type="button" @click="deleteWebhookWithConfirmation(hook)">Delete</button>
               </td>
             </tr>
           </tbody>
         </table>
+        <div class="pagination-bar" aria-label="Webhook pagination">
+          <span>{{ pageLabel('Webhooks', webhooks.length) }}</span>
+          <div>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Webhooks', webhooks.length) <= 1" @click="setPage('Webhooks', pageFor('Webhooks', webhooks.length) - 1, webhooks.length)">Previous</button>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Webhooks', webhooks.length) >= webhooksPageCount" @click="setPage('Webhooks', pageFor('Webhooks', webhooks.length) + 1, webhooks.length)">Next</button>
+          </div>
+        </div>
       </div>
       <div class="card">
         <h2>Recent deliveries</h2>
@@ -425,11 +522,18 @@ onMounted(refreshAll)
       <table class="file-table admin-table">
         <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Status</th><th>Reason</th></tr></thead>
         <tbody>
-          <tr v-for="entry in audit" :key="entry.id">
+          <tr v-for="entry in pagedAudit" :key="entry.id">
             <td>{{ ts(entry.created_at) }}</td><td>{{ entry.actor ?? 'system' }}</td><td>{{ entry.action }}</td><td>{{ entry.target ?? 'N/A' }}</td><td>{{ entry.status }}</td><td>{{ entry.reason ?? 'N/A' }}</td>
           </tr>
         </tbody>
       </table>
+      <div class="pagination-bar" aria-label="Audit pagination">
+        <span>{{ pageLabel('Audit', audit.length) }}</span>
+        <div>
+          <button class="btn-ghost" type="button" :disabled="pageFor('Audit', audit.length) <= 1" @click="setPage('Audit', pageFor('Audit', audit.length) - 1, audit.length)">Previous</button>
+          <button class="btn-ghost" type="button" :disabled="pageFor('Audit', audit.length) >= auditPageCount" @click="setPage('Audit', pageFor('Audit', audit.length) + 1, audit.length)">Next</button>
+        </div>
+      </div>
     </section>
       </section>
     </main>
@@ -644,6 +748,25 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .admin-layout button:not(:disabled):active {
   transform: translateY(0) scale(0.96);
+}
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  color: var(--text2);
+  font-size: var(--fs-small);
+}
+.pagination-bar > div {
+  display: flex;
+  gap: var(--space-2);
+}
+.pagination-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .mobile-tabbar {
   display: none;

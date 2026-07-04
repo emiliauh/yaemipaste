@@ -2031,7 +2031,17 @@ mod tests {
             .to_request();
         let reused_claim_response = test::call_service(&app, reused_claim).await;
         assert_eq!(StatusCode::CONFLICT, reused_claim_response.status());
-
+        let claim_connection = rusqlite::Connection::open(&db_path).expect("claim db should open");
+        let (stored_claim_hash, used_at): (String, Option<i64>) = claim_connection
+            .query_row(
+                "SELECT token_hash, used_at FROM admin_claims ORDER BY id DESC LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("claim row should exist");
+        assert_ne!(stored_claim_hash, claim_init_json["token"].as_str().unwrap());
+        assert!(used_at.is_some());
+        drop(claim_connection);
         let update_settings = test::TestRequest::put()
             .uri("/auth/admin/settings")
             .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
@@ -2039,6 +2049,7 @@ mod tests {
                 "app_name": "Test Paste",
                 "public_title": "Test Title",
                 "registration_enabled": false,
+                "base_api_url": "https://paste.example.test/api/",
                 "storage_warning_bytes": 1024,
             }))
             .to_request();
@@ -2046,7 +2057,18 @@ mod tests {
         assert_eq!(StatusCode::OK, update_settings_response.status());
         let settings_json: Value = test::read_body_json(update_settings_response).await;
         assert_eq!(settings_json["registration_enabled"], "false");
+        assert_eq!(settings_json["base_api_url"], "https://paste.example.test/api");
 
+        let public_settings = test::TestRequest::get()
+            .uri("/auth/admin/public-settings")
+            .to_request();
+        let public_settings_response = test::call_service(&app, public_settings).await;
+        assert_eq!(StatusCode::OK, public_settings_response.status());
+        let public_settings_json: Value = test::read_body_json(public_settings_response).await;
+        assert_eq!(
+            public_settings_json["base_api_url"],
+            "https://paste.example.test/api"
+        );
         let create_user = test::TestRequest::post()
             .uri("/auth/admin/users")
             .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
@@ -2058,7 +2080,26 @@ mod tests {
             .to_request();
         let create_user_response = test::call_service(&app, create_user).await;
         assert_eq!(StatusCode::OK, create_user_response.status());
-
+        let managed_login = test::TestRequest::post()
+            .uri("/auth/login")
+            .set_json(json!({
+                "username": "managed",
+                "password": "password123",
+                "turnstile_token": "",
+            }))
+            .to_request();
+        let managed_login_response = test::call_service(&app, managed_login).await;
+        assert_eq!(StatusCode::OK, managed_login_response.status());
+        let managed_login_json: Value = test::read_body_json(managed_login_response).await;
+        let managed_jwt = managed_login_json["access_token"]
+            .as_str()
+            .expect("managed jwt should exist");
+        let managed_dashboard = test::TestRequest::get()
+            .uri("/auth/admin/dashboard")
+            .insert_header((AUTHORIZATION, format!("Bearer {managed_jwt}")))
+            .to_request();
+        let managed_dashboard_response = test::call_service(&app, managed_dashboard).await;
+        assert_eq!(StatusCode::FORBIDDEN, managed_dashboard_response.status());
         let bad_delete = test::TestRequest::delete()
             .uri("/auth/admin/users/managed")
             .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))

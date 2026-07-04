@@ -81,6 +81,7 @@ struct BulkDeleteRequest {
 struct SettingsRequest {
     app_name: Option<String>,
     public_title: Option<String>,
+    base_api_url: Option<String>,
     registration_enabled: Option<bool>,
     storage_warning_bytes: Option<u64>,
 }
@@ -240,6 +241,7 @@ fn ensure_setting_defaults(connection: &Connection) -> rusqlite::Result<()> {
     for (key, value) in [
         ("app_name", "yaemipaste"),
         ("public_title", "yaemipaste"),
+        ("base_api_url", ""),
         ("registration_enabled", "true"),
         ("storage_warning_bytes", "0"),
     ] {
@@ -267,15 +269,33 @@ fn setting_map(connection: &Connection) -> rusqlite::Result<HashMap<String, Stri
 
 pub(crate) fn registration_enabled(connection: &Connection) -> bool {
     ensure_setting_defaults(connection).ok();
-    connection
-        .query_row(
-            "SELECT value FROM admin_settings WHERE key='registration_enabled'",
-            [],
-            |row| row.get::<_, String>(0),
-        )
+    setting_map(connection)
         .ok()
-        .map(|value| value == "true")
+        .and_then(|settings| settings.get("registration_enabled").cloned())
+        .map(|value| value != "false")
         .unwrap_or(true)
+}
+
+pub(crate) fn base_api_url_setting() -> Option<String> {
+    let auth_env = AuthEnv::from_env();
+    if !auth_env.db_path.exists() {
+        return None;
+    }
+    let connection = open_db(&auth_env.db_path).ok()?;
+    ensure_setting_defaults(&connection).ok()?;
+    let value: String = connection
+        .query_row(
+            "SELECT value FROM admin_settings WHERE key='base_api_url'",
+            [],
+            |row| row.get(0),
+        )
+        .ok()?;
+    let value = value.trim().trim_end_matches('/').to_string();
+    if value.is_empty() || !validate_url(&value) {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 pub(crate) fn audit(
@@ -1912,6 +1932,20 @@ async fn put_settings(request: HttpRequest, body: web::Json<SettingsRequest>) ->
     {
         updates.push(("public_title", value.to_string()));
     }
+    if let Some(value) = body
+        .base_api_url
+        .as_ref()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+    {
+        if !validate_url(&value) {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "Base API URL must be http(s) without credentials",
+            );
+        }
+        updates.push(("base_api_url", value));
+    }
     if let Some(value) = body.registration_enabled {
         updates.push(("registration_enabled", value.to_string()));
     }
@@ -2212,6 +2246,7 @@ async fn public_settings() -> HttpResponse {
     HttpResponse::Ok().json(json!({
         "app_name": settings.get("app_name").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "public_title": settings.get("public_title").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
+        "base_api_url": settings.get("base_api_url").cloned().unwrap_or_default(),
         "registration_enabled": registration_enabled(&connection),
     }))
 }

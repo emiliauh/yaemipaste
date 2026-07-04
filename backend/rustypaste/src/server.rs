@@ -690,19 +690,22 @@ async fn upload(
 ) -> Result<HttpResponse, Error> {
     let connection = request.connection_info().clone();
     let host = connection.realip_remote_addr().unwrap_or("unknown host");
-    let server_url = match config
-        .read()
-        .map_err(|_| error::ErrorInternalServerError("cannot acquire config"))?
-        .server
-        .url
-        .clone()
-    {
-        Some(v) => v,
-        None => env::var("PASTE_URL")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "http://localhost:8080".to_string()),
-    };
+    let server_url = crate::admin::base_api_url_setting().unwrap_or_else(|| {
+        match config
+            .read()
+            .map_err(|_| error::ErrorInternalServerError("cannot acquire config"))
+            .map(|config| config.server.url.clone())
+        {
+            Ok(Some(value)) if !value.trim().is_empty() => {
+                value.trim().trim_end_matches('/').to_string()
+            }
+            _ => env::var("PASTE_URL")
+                .ok()
+                .map(|value| value.trim().trim_end_matches('/').to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "http://localhost:8080".to_string()),
+        }
+    });
     let time = util::get_system_time()?;
     let mut expiry_date = header::parse_expiry_date(request.headers(), time)?;
     if expiry_date.is_none() {

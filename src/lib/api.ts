@@ -28,6 +28,7 @@ const API_BASE_KEY = 'rp_api_base'
 const REMEMBER_ME_KEY = 'rp_remember_me'
 const AUTH_KEYS = ['rp_jwt', 'rp_token', 'rp_username', 'rp_is_admin'] as const
 const FILE_TOKEN_MAP_KEY = 'rp_file_token_map'
+let runtimePublicSettings: PublicAdminSettings | null = null
 
 export interface UploadProgress {
   phase: 'encrypting' | 'uploading' | 'complete'
@@ -93,6 +94,23 @@ function sanitizePublicOrigin(origin: string): string | null {
   }
 }
 
+function runtimeBaseApi(): string | null {
+  const value = runtimePublicSettings?.base_api_url?.trim() ?? ''
+  return value && isSafeApiBase(value) ? normalizeApiBase(value) : null
+}
+
+function publicOriginFromApiOrigin(origin: string): string {
+  try {
+    const url = new URL(origin)
+    if (url.hostname.startsWith('papi.')) {
+      return `${url.protocol}//paste.${url.hostname.slice(5)}${url.port ? `:${url.port}` : ''}`
+    }
+  } catch {
+    // fallback to provided origin
+  }
+  return origin
+}
+
 function getRuntimeOrigin(): string | null {
   if (typeof window === 'undefined') return sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
   return sanitizePublicOrigin(window.location.origin) ?? sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
@@ -123,26 +141,32 @@ function pruneStoredApiBase() {
 
 pruneStoredApiBase()
 
+export function applyRuntimePublicSettings(settings: PublicAdminSettings) {
+  runtimePublicSettings = settings
+}
+
 export function getDefaultPasteApiBase(): string {
-  return DEFAULT_PASTE_API
+  return runtimeBaseApi() ?? DEFAULT_PASTE_API
 }
 
 export function getPasteApiBase(): string {
-  if (typeof localStorage === 'undefined') return DEFAULT_PASTE_API
+  const defaultBase = getDefaultPasteApiBase()
+  if (typeof localStorage === 'undefined') return defaultBase
   const configured = localStorage.getItem(API_BASE_KEY)
-  if (!configured) return DEFAULT_PASTE_API
+  if (!configured) return defaultBase
   if (shouldIgnoreStoredApiBase(configured)) {
     localStorage.removeItem(API_BASE_KEY)
-    return DEFAULT_PASTE_API
+    return defaultBase
   }
-  return isSafeApiBase(configured) ? normalizeApiBase(configured) : DEFAULT_PASTE_API
+  return isSafeApiBase(configured) ? normalizeApiBase(configured) : defaultBase
 }
 
 export function setPasteApiBase(value: string) {
   if (typeof localStorage === 'undefined') return
   if (!isSafeApiBase(value)) throw new Error('Invalid API base URL. Use a relative path or http(s) URL.')
   const normalized = normalizeApiBase(value)
-  if (!value.trim() || normalized === DEFAULT_PASTE_API) localStorage.removeItem(API_BASE_KEY)
+  const defaultBase = getDefaultPasteApiBase()
+  if (!value.trim() || normalized === defaultBase) localStorage.removeItem(API_BASE_KEY)
   else localStorage.setItem(API_BASE_KEY, normalized)
 }
 
@@ -971,15 +995,9 @@ export function publicSiteOrigin(origin = window.location.origin): string {
     const configured = sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
     if (configured) return configured
   }
-  try {
-    const url = new URL(origin)
-    if (url.hostname.startsWith('papi.')) {
-      return `${url.protocol}//paste.${url.hostname.slice(5)}${url.port ? `:${url.port}` : ''}`
-    }
-  } catch {
-    // fallback to provided origin
-  }
-  return origin
+  const runtimeApi = runtimeBaseApi()
+  if (runtimeApi) return publicOriginFromApiOrigin(sanitizePublicOrigin(runtimeApi) ?? origin)
+  return publicOriginFromApiOrigin(origin)
 }
 
 export function publicShortFileUrl(fileName: string, origin = publicSiteOrigin()): string {
@@ -1132,6 +1150,14 @@ export interface AdminSettings {
   public_title?: string
   registration_enabled?: string
   storage_warning_bytes?: string
+  base_api_url?: string
+}
+
+export interface PublicAdminSettings {
+  app_name: string
+  public_title: string
+  registration_enabled: boolean
+  base_api_url?: string
 }
 
 export interface AdminWebhook {
@@ -1187,6 +1213,12 @@ async function adminRequest<T>(path: string, options: RequestInit = {}, fallback
   const response = await fetch(`${AUTH_API}/admin${path}`, { ...options, headers })
   if (!response.ok) throw new Error(await responseDetail(response, fallback))
   return readJson<T>(response, fallback)
+}
+
+export async function adminPublicSettings(): Promise<PublicAdminSettings> {
+  const response = await fetch(`${AUTH_API}/admin/public-settings`, { cache: 'no-store' })
+  if (!response.ok) throw new Error(await responseDetail(response, 'Could not load public settings'))
+  return readJson<PublicAdminSettings>(response, 'Could not load public settings')
 }
 
 export async function adminClaimStatus(): Promise<AdminClaimStatus> {
@@ -1284,7 +1316,7 @@ export function adminSettings() {
   return adminRequest<AdminSettings>('/settings', {}, 'Could not load settings')
 }
 
-export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; registration_enabled?: boolean; storage_warning_bytes?: number }) {
+export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; storage_warning_bytes?: number }) {
   return adminRequest<AdminSettings>('/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),

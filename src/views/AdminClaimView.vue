@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminClaim, adminClaimStatus, type AdminClaimStatus } from '../lib/api'
+import { usePublicSettings } from '../lib/publicSettings'
 import { useNotificationStore } from '../stores/notifications'
 
 const router = useRouter()
@@ -14,6 +15,7 @@ const username = ref('')
 const password = ref('')
 const uploadToken = ref('')
 const error = ref('')
+const { appName, refreshPublicSettings } = usePublicSettings()
 
 async function loadStatus() {
   loading.value = true
@@ -45,7 +47,10 @@ async function submitClaim() {
   }
 }
 
-onMounted(loadStatus)
+onMounted(() => {
+  void refreshPublicSettings()
+  void loadStatus()
+})
 </script>
 
 <template>
@@ -53,7 +58,7 @@ onMounted(loadStatus)
     <section class="card claim-card">
       <div class="claim-header">
         <div>
-          <p class="eyebrow">yaemipaste admin</p>
+          <p class="eyebrow">{{ appName }} admin</p>
           <h1>Claim administrator access</h1>
         </div>
         <button class="btn-ghost" type="button" @click="router.push('/login')">Login</button>

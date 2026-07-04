@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import FilesTab from '../components/FilesTab.vue'
 import HistoryTab from '../components/HistoryTab.vue'
@@ -7,6 +7,7 @@ import SettingsPanel from '../components/SettingsPanel.vue'
 import { useTheme, type ThemeMode } from '../lib/theme'
 import { isAuthEnabled } from '../lib/features'
 import { isAuthAdmin } from '../lib/api'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
 const HISTORY_REFRESH_EVENT = 'rp:history-refresh'
@@ -20,6 +21,7 @@ const sidebarCollapsed = ref(
   typeof window !== 'undefined' && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
 )
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
+const { appName, refreshPublicSettings } = usePublicSettings()
 const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
   { mode: 'system', label: 'Auto' },
   { mode: 'light', label: 'Light' },
@@ -52,6 +54,9 @@ function toggleSidebar() {
 function toggleCompactTheme() {
   setThemeMode(appliedTheme.value === 'dark' ? 'light' : 'dark')
 }
+onMounted(() => {
+  void refreshPublicSettings()
+})
 </script>
 
 <template>
@@ -76,7 +81,7 @@ function toggleCompactTheme() {
             </svg>
           </span>
           <div>
-            <div class="brand-title">yaemipaste</div>
+            <div class="brand-title">{{ appName }}</div>
           </div>
         </button>
       </div>

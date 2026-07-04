@@ -123,6 +123,197 @@ async function mockWebAuthn(page: Page) {
   })
 }
 
+async function signInAsAdmin(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('rp_token', 'admin-paste-token')
+    localStorage.setItem('rp_username', 'admin-user')
+    localStorage.setItem('rp_jwt', 'admin-jwt')
+    localStorage.setItem('rp_is_admin', '1')
+  })
+}
+
+async function mockAdminApi(page: Page) {
+  const users = Array.from({ length: 12 }, (_, index) => ({
+    username: `user-${index + 1}`,
+    created_at: 1_775_000_000 + index,
+    is_admin: index === 0,
+    suspended_at: index === 2 ? 1_775_010_000 : null,
+    suspended_reason: index === 2 ? 'policy' : null,
+    upload_token_preview: index % 2 === 0 ? 'tok…abcd' : '',
+    upload_count: index + 1,
+    disk_usage_bytes: 2048 * (index + 1),
+  }))
+  const uploads = Array.from({ length: 12 }, (_, index) => ({
+    path: `files/upload-${index + 1}.txt`,
+    owner: index % 2 === 0 ? 'user-1' : 'user-2',
+    file_name: `upload-${index + 1}.txt`,
+    size_bytes: 1024 * (index + 1),
+    created_at: 1_775_100_000 + index,
+    expires_at: index % 3 === 0 ? 1_775_200_000 + index : null,
+    expired: index === 3,
+    content_type: index % 2 === 0 ? 'text/plain' : 'image/png',
+  }))
+  const audit = Array.from({ length: 12 }, (_, index) => ({
+    id: index + 1,
+    created_at: 1_775_300_000 + index,
+    actor: index % 2 === 0 ? 'admin-user' : null,
+    action: index % 2 === 0 ? 'settings.update' : 'upload.delete',
+    target: `target-${index + 1}`,
+    status: 'success',
+    reason: null,
+  }))
+  const webhooks = [{
+    id: 1,
+    url: 'https://example.test/webhook',
+    events: ['file.uploaded', 'file.deleted'],
+    enabled: true,
+    secret_configured: true,
+    secret_preview: 'whsec…1234',
+    created_at: 1_775_400_000,
+    updated_at: 1_775_400_010,
+    updated_by: 'admin-user',
+  }]
+  const deliveries = [{
+    id: 1,
+    webhook_id: 1,
+    event: 'file.uploaded',
+    status: 'failed',
+    status_code: 500,
+    error: 'timeout',
+    created_at: 1_775_500_000,
+    delivered_at: null,
+  }]
+  const settings = {
+    app_name: 'yaemipaste',
+    public_title: 'yaemipaste',
+    registration_enabled: 'true',
+    storage_warning_bytes: '1073741824',
+  }
+
+  await page.route('**/auth/admin/dashboard', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        total_disk_usage_bytes: uploads.reduce((total, upload) => total + upload.size_bytes, 0),
+        upload_count: uploads.length,
+        user_count: users.length,
+        suspended_user_count: 1,
+        admin_count: 1,
+        users,
+        recent_uploads: uploads.slice(0, 2),
+        recent_audit: audit.slice(0, 2),
+        failed_webhook_deliveries: deliveries,
+        config_status: { registration_enabled: true },
+        warnings: ['Storage usage is above warning threshold'],
+      }),
+    })
+  })
+  await page.route('**/auth/admin/users', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'created', username: 'new-user', upload_token: 'one-time-upload-token' }),
+      })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(users) })
+  })
+  await page.route('**/auth/admin/users/*/token', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'rotated', upload_token: 'rotated-token' }),
+    })
+  })
+  await page.route('**/auth/admin/users/*/purge', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    expect(route.request().postDataJSON()).toEqual({ confirmation: 'PURGE UPLOADS' })
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'purged', bytes_removed: 4096 }),
+    })
+  })
+  await page.route('**/auth/admin/users/*', async (route) => {
+    if (/\/(token|purge)$/.test(new URL(route.request().url()).pathname)) {
+      await route.fallback()
+      return
+    }
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ detail: 'updated' }) })
+  })
+  await page.route('**/auth/admin/uploads', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'deleted', bytes_removed: 1024 }),
+      })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(uploads) })
+  })
+  await page.route('**/auth/admin/uploads/bulk-delete', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    expect(route.request().postDataJSON()).toEqual({ paths: ['files/upload-1.txt'], confirmation: 'PURGE UPLOADS' })
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ deleted: 1, bytes_removed: 1024, errors: [] }),
+    })
+  })
+  await page.route('**/auth/admin/uploads/purge-expired', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    expect(route.request().postDataJSON()).toEqual({ confirmation: 'PURGE EXPIRED' })
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ deleted: 1, bytes_removed: 4096 }),
+    })
+  })
+  await page.route('**/auth/admin/settings', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    if (route.request().method() === 'PUT') {
+      expect(route.request().postDataJSON()).toEqual({
+        app_name: 'Verified Paste',
+        public_title: 'Verified public title',
+        registration_enabled: false,
+        storage_warning_bytes: 2048,
+      })
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          app_name: 'Verified Paste',
+          public_title: 'Verified public title',
+          registration_enabled: 'false',
+          storage_warning_bytes: '2048',
+        }),
+      })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
+  })
+  await page.route('**/auth/admin/webhooks/deliveries', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(deliveries) })
+  })
+  await page.route('**/auth/admin/webhooks', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(webhooks) })
+  })
+  await page.route('**/auth/admin/audit', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(audit) })
+  })
+}
+
 async function expandExpiryIfCollapsed(page: Page) {
   await page.getByTestId('expiry-menu').waitFor({ state: 'attached' })
   const toggle = page.getByTestId('expiry-mobile-toggle')
@@ -2946,4 +3137,138 @@ test('token login mode blocks tokens already used by accounts', async ({ page })
   await expect(page.getByText('Token already used.')).toBeVisible()
   await page.getByRole('button', { name: 'Do you have an account?' }).click()
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible()
+})
+
+test('admin route is guarded and sidebar entry only appears for admins', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('rp_token', 'user-paste-token')
+    localStorage.setItem('rp_username', 'regular-user')
+    localStorage.setItem('rp_jwt', 'regular-jwt')
+    localStorage.setItem('rp_is_admin', '0')
+  })
+
+  await page.goto('/#/files')
+  await expect(page.getByTestId('desktop-nav-admin')).toHaveCount(0)
+
+  await page.goto('/admin')
+  await expect(page).toHaveURL(/\/files$/)
+  await expect(page.getByRole('heading', { name: 'Admin panel' })).toHaveCount(0)
+
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/#/files')
+  await expect(page.getByTestId('desktop-nav-admin')).toBeVisible()
+  await page.getByTestId('desktop-nav-admin').click()
+  await expect(page).toHaveURL(/\/admin$/)
+  await expect(page.getByRole('heading', { name: 'Admin panel' })).toBeVisible()
+})
+
+test('admin claim submits one-time token and stores admin session', async ({ page }) => {
+  let claimPayload: Record<string, unknown> | null = null
+
+  await page.route('**/auth/admin/claim/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ admin_exists: false, pending_claim: true, claim_available: true }),
+    })
+  })
+  await page.route('**/auth/admin/claim', async (route) => {
+    claimPayload = route.request().postDataJSON()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        access_token: 'claimed-jwt',
+        paste_token: 'claimed-paste-token',
+        username: 'claimed-admin',
+        is_admin: true,
+      }),
+    })
+  })
+
+  await page.goto('/admin/claim')
+  await expect(page.getByRole('heading', { name: 'Claim administrator access' })).toBeVisible()
+  await page.getByLabel('Claim token').fill('one-time-claim-token')
+  await page.getByLabel('Admin username').fill('claimed-admin')
+  await page.getByLabel('Admin password').fill('strong-password')
+  await page.getByLabel(/Custom upload token/).fill('custom-upload-token')
+  await page.getByRole('button', { name: 'Claim admin' }).click()
+
+  await expect.poll(() => claimPayload).toEqual({
+    claim_token: 'one-time-claim-token',
+    username: 'claimed-admin',
+    password: 'strong-password',
+    upload_token: 'custom-upload-token',
+  })
+  await expect(page).toHaveURL(/\/admin$/)
+  await expect.poll(() => page.evaluate(() => ({
+    jwt: localStorage.getItem('rp_jwt'),
+    token: localStorage.getItem('rp_token'),
+    username: localStorage.getItem('rp_username'),
+    isAdmin: localStorage.getItem('rp_is_admin'),
+  }))).toEqual({
+    jwt: 'claimed-jwt',
+    token: 'claimed-paste-token',
+    username: 'claimed-admin',
+    isAdmin: '1',
+  })
+})
+
+test('admin dashboard paginates users and uploads, filters uploads, and saves safe settings', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Admin panel' })).toBeVisible()
+  await expect(page.getByText('Storage usage is above warning threshold')).toBeVisible()
+  await expect(page.getByText('files/upload-1.txt')).toBeVisible()
+  await expect(page.getByText('settings.update')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Users' }).click()
+  await expect(page.getByText('1-10 of 12')).toBeVisible()
+  await expect(page.getByText('user-1', { exact: true })).toBeVisible()
+  await expect(page.getByText('user-11', { exact: true })).toHaveCount(0)
+  await page.locator('[aria-label="User pagination"]').getByRole('button', { name: 'Next' }).click()
+  await expect(page.getByText('11-12 of 12')).toBeVisible()
+  await expect(page.getByText('user-11', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Uploads' }).click()
+  await expect(page.getByText('1-10 of 12')).toBeVisible()
+  await page.getByLabel('Filter uploads by path or type').fill('upload-12')
+  await expect(page.getByText('1-1 of 1')).toBeVisible()
+  await expect(page.getByText('files/upload-12.txt')).toBeVisible()
+
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Settings' }).click()
+  await page.getByLabel('App name').fill('Verified Paste')
+  await page.getByLabel('Public title').fill('Verified public title')
+  await page.getByLabel('Storage warning bytes').fill('2048')
+  await page.getByLabel('registration enabled').uncheck()
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('admin destructive actions send explicit confirmations', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  page.on('dialog', async (dialog) => {
+    if (dialog.message().includes('PURGE EXPIRED')) {
+      await dialog.accept('PURGE EXPIRED')
+      return
+    }
+    await dialog.accept('PURGE UPLOADS')
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads' }).click()
+  await page.getByLabel('Select files/upload-1.txt').check()
+  await page.getByRole('button', { name: 'Delete selected' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Selected uploads deleted')
+
+  await page.getByRole('button', { name: 'Purge expired' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Expired uploads purged')
+
+  await page.getByRole('button', { name: 'Users' }).click()
+  await page.locator('tr', { hasText: 'user-1' }).getByRole('button', { name: 'Purge uploads' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Uploads purged')
 })

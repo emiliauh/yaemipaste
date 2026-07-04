@@ -20,6 +20,7 @@ import {
 import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/passkeys'
 import { useNotificationStore } from '../stores/notifications'
 import { isAuthEnabled } from '../lib/features'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const emit = defineEmits<{ close: [], logout: [] }>()
 const notificationStore = useNotificationStore()
@@ -30,6 +31,7 @@ const hasAccount = hasAccountAuth()
 const sharexEnabled = isShareXEnabled()
 const apiBase = ref(getPasteApiBase())
 const defaultApiBase = getDefaultPasteApiBase()
+const { appName, refreshPublicSettings } = usePublicSettings()
 const downloading = ref(false)
 const saved = ref(false)
 const passkeyModalOpen = ref(false)
@@ -45,15 +47,21 @@ const nextPassword = ref('')
 const confirmPassword = ref('')
 const logoutAllAfterPasswordChange = ref(false)
 
-function save() {
+async function save() {
   try {
     setPasteApiBase(apiBase.value)
     apiBase.value = getPasteApiBase()
+    await refreshPublicSettings(true)
     saved.value = true
     setTimeout(() => { saved.value = false; emit('close') }, 800)
   } catch (e: any) {
     notificationStore.push(e.message ?? 'Could not save API base URL', 'error')
   }
+}
+
+function shareXFileName(): string {
+  const safeName = appName.value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+  return `${safeName || 'yaemipaste'}.sxcu`
 }
 
 async function downloadShareX() {
@@ -63,7 +71,7 @@ async function downloadShareX() {
     const a = document.createElement('a')
     const url = URL.createObjectURL(blob)
     a.href = url
-    a.download = 'yaemipaste.sxcu'
+    a.download = shareXFileName()
     a.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (e: any) {
@@ -218,9 +226,9 @@ async function submitPasswordChange() {
     </div>
 
     <div class="field">
-      <label for="api-base-url">API Base URL</label>
-      <input id="api-base-url" v-model="apiBase" type="text" autocomplete="off" :placeholder="defaultApiBase" aria-label="API Base URL" />
-      <p class="field-hint">Leave blank to use this deployment's default.</p>
+      <label for="api-base-url">Upload API base URL</label>
+      <input id="api-base-url" v-model="apiBase" type="text" autocomplete="off" :placeholder="defaultApiBase" aria-label="Upload API base URL" />
+      <p class="field-hint">Used for uploads and history requests. Leave blank for this deployment's default.</p>
     </div>
 
     <div v-if="hasAccount" class="field">
@@ -235,8 +243,7 @@ async function submitPasswordChange() {
     <div v-if="hasAccount" class="field">
       <label>Passkeys</label>
       <button class="btn-primary passkey-open-btn" type="button" data-testid="open-passkey-modal" @click="openPasskeyModal">
-        <span aria-hidden="true">🔒</span>
-        <span>add passkey</span>
+        <span>Add passkey</span>
       </button>
     </div>
 
@@ -260,7 +267,7 @@ async function submitPasswordChange() {
     </div>
 
     <div style="margin-top:var(--space-2); color:var(--text2); font-size:var(--fs-xs); text-align:center">
-      yaemipaste + rustypaste
+      {{ appName }} + rustypaste
     </div>
   </div>
 

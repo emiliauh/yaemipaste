@@ -14,7 +14,9 @@ REPO_URL="$DEFAULT_REPO_URL"
 BRANCH="$DEFAULT_BRANCH"
 ACTION="menu"
 YES=0
-DRY_RUN=0
+ACTION_SET=0
+INTERACTIVE_REQUESTED=0
+TUI_REQUESTED=0
 
 COMPOSE_CMD=()
 HTTP_STATUS=""
@@ -210,7 +212,11 @@ generate_secret() {
     openssl rand -hex 32
     return 0
   fi
-  date +%s%N | sha256sum | awk '{print $1}'
+  if [[ -r /dev/urandom ]] && command_exists od; then
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+    return 0
+  fi
+  die "Unable to generate a secure secret. Install openssl or provide /dev/urandom + od."
 }
 
 detect_host_address() {
@@ -418,11 +424,15 @@ upsert_env() {
   local key="$1"
   local value="$2"
   local file="${INSTALL_DIR}/${ENV_FILE}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    local display_value="$value"
+    case "$key" in
+      JWT_SECRET|TURNSTILE_SECRET_KEY|AUTH_ADMIN_BEARER|*PASSWORD*|*SECRET*) display_value="<redacted>" ;;
+    esac
+    printf '[DRY-RUN] set %s=%s in %s\n' "$key" "$display_value" "$file"
+    return 0
+  fi
   if [[ ! -f "$file" ]]; then
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      run bash -c "printf '\n%s=%s\n' '$key' '$value' >> '$file'"
-      return 0
-    fi
     run cp "${INSTALL_DIR}/.env.example" "$file"
   fi
   local escaped
@@ -481,6 +491,15 @@ extract_token_from_json() {
     return 0
   fi
   sed -nE 's/.*"(token|paste_token|value)"[[:space:]]*:[[:space:]]*"([^"]+)".*/\2/p' <<<"$body" | head -n 1
+}
+
+extract_detail_from_json() {
+  local body="$1"
+  if command_exists jq; then
+    jq -r '.detail // .error // .message // empty' <<<"$body" 2>/dev/null
+    return 0
+  fi
+  sed -nE 's/.*"(detail|error|message)"[[:space:]]*:[[:space:]]*"([^"]+)".*/\2/p' <<<"$body" | head -n 1
 }
 
 wait_for_http() {
@@ -824,13 +843,24 @@ init_admin_claim() {
     ensure_repo_present
   fi
   read_auth_settings
-  local admin_bearer claim_url payload
+  local admin_bearer claim_url payload detail
   admin_bearer="$(read_admin_bearer)"
   claim_url="${AUTH_ADMIN_BASE_URL_VALUE%/}/${AUTH_ADMIN_CLAIM_INIT_PATH_VALUE#/}"
   payload="{\"reset\":$([[ "$reset" -eq 1 ]] && printf true || printf false)}"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "[DRY-RUN] would request admin claim initialization at ${claim_url}"
+    log "[DRY-RUN] reset=$([[ "$reset" -eq 1 ]] && printf true || printf false); existing admin/pending claim state would be preserved unless reset is true."
+    print_admin_claim_instructions "dry-run-claim-token-not-valid"
+    return 0
+  fi
   http_json POST "$claim_url" "$payload" "$admin_bearer"
   if [[ "$HTTP_STATUS" == "409" ]]; then
-    warn "Admin claim token was not generated: ${HTTP_BODY}"
+    detail="$(extract_detail_from_json "$HTTP_BODY")"
+    [[ -n "$detail" ]] || detail="$HTTP_BODY"
+    warn "Admin claim token was not generated: ${detail}"
+    if [[ "$reset" -eq 0 ]]; then
+      warn "Existing admin/claim state was left unchanged. Use --action reset-admin-claim only if you intentionally need a fresh one-time token."
+    fi
     return 0
   fi
   expect_2xx || die "Admin claim initialization failed."
@@ -895,6 +925,41 @@ print_menu() {
 EOF
 }
 
+run_tui_action_picker() {
+  local script_dir tui_dir picked
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  tui_dir="${script_dir}/tools/install-tui"
+  if [[ ! -f "${tui_dir}/Cargo.toml" ]]; then
+    warn "Ratatui action picker is not present; falling back to the shell menu."
+    ACTION="menu"
+    return 0
+  fi
+  if ! command_exists cargo; then
+    warn "cargo is not installed, so the Ratatui action picker cannot be built; falling back to the shell menu."
+    ACTION="menu"
+    return 0
+  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "[DRY-RUN] would launch optional Ratatui action picker from ${tui_dir}."
+    ACTION="menu"
+    return 0
+  fi
+  picked="$(cargo run --quiet --manifest-path "${tui_dir}/Cargo.toml" 2>/dev/tty || true)"
+  case "$picked" in
+    install|init-user|create-token|revoke-token|admin-claim|reset-admin-claim|start|stop|restart|status|uninstall)
+      ACTION="$picked"
+      ACTION_SET=1
+      ;;
+    menu|"")
+      ACTION="menu"
+      ;;
+    *)
+      warn "Ratatui picker returned an unknown action (${picked}); falling back to the shell menu."
+      ACTION="menu"
+      ;;
+  esac
+}
+
 run_action() {
   case "$1" in
     install) stack_install_or_update ;;
@@ -944,12 +1009,20 @@ Usage: $0 [options]
 
 Options:
   --action <install|init-user|create-token|revoke-token|admin-claim|reset-admin-claim|start|stop|restart|status|uninstall|menu>
+  --interactive          Launch the guided shell menu (default when no action is supplied)
+  --tui                  Launch optional Ratatui action picker, falling back to shell menu
   --install-dir <path>   Default: ${DEFAULT_INSTALL_DIR}
   --repo-url <url>       Default: ${DEFAULT_REPO_URL}
   --branch <name>        Default: ${DEFAULT_BRANCH}
-  --yes                  Non-interactive confirmations (best effort)
+  --yes                  Non-interactive confirmations; requires a non-menu action
   --dry-run              Print actions without changing system state
   -h, --help             Show this help
+
+Interactive mode:
+  The shell menu remains the stable installer path because it works before Rust
+  tooling is available. If cargo is installed, --tui runs the companion Ratatui
+  action picker in tools/install-tui and then dispatches the selected install.sh
+  action; otherwise it falls back cleanly to the shell menu.
 EOF
 }
 
@@ -959,6 +1032,7 @@ parse_args() {
       --action)
         [[ $# -ge 2 ]] || die "--action requires a value"
         ACTION="$2"
+        ACTION_SET=1
         shift 2
         ;;
       --install-dir)
@@ -976,6 +1050,19 @@ parse_args() {
         BRANCH="$2"
         shift 2
         ;;
+      --interactive)
+        ACTION="menu"
+        ACTION_SET=1
+        INTERACTIVE_REQUESTED=1
+        shift
+        ;;
+      --tui)
+        ACTION="menu"
+        ACTION_SET=1
+        INTERACTIVE_REQUESTED=1
+        TUI_REQUESTED=1
+        shift
+        ;;
       --yes)
         YES=1
         shift
@@ -990,6 +1077,7 @@ parse_args() {
         ;;
       install|init-user|create-token|revoke-token|admin-claim|reset-admin-claim|start|stop|restart|status|uninstall|menu)
         ACTION="$1"
+        ACTION_SET=1
         shift
         ;;
       *)
@@ -1002,6 +1090,18 @@ parse_args() {
 main() {
   setup_ui
   parse_args "$@"
+  if [[ "$YES" -eq 1 && "$TUI_REQUESTED" -eq 1 ]]; then
+    die "--yes cannot run the Ratatui picker. Pass --action <name> for non-interactive use."
+  fi
+  if [[ "$TUI_REQUESTED" -eq 1 ]]; then
+    run_tui_action_picker
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      return 0
+    fi
+  fi
+  if [[ "$YES" -eq 1 && "$ACTION" == "menu" ]]; then
+    die "--yes cannot run the interactive menu. Pass --action install (or another non-menu action), or use --interactive without --yes."
+  fi
   if [[ "$YES" -eq 0 ]]; then
     print_banner
   fi
