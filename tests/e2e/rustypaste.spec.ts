@@ -283,6 +283,7 @@ async function mockAdminApi(page: Page) {
       expect(route.request().postDataJSON()).toEqual({
         app_name: 'Verified Paste',
         public_title: 'Verified public title',
+        base_api_url: '',
         registration_enabled: false,
         storage_warning_bytes: 2048,
       })
