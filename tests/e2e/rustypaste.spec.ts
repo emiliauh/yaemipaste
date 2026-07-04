@@ -3233,7 +3233,7 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await expect(page.getByText('11-12 of 12')).toBeVisible()
   await expect(page.getByText('user-11', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Uploads' }).click()
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Uploads', exact: true }).click()
   await expect(page.getByText('1-10 of 12')).toBeVisible()
   await page.getByLabel('Filter uploads by path or type').fill('upload-12')
   await expect(page.getByText('1-1 of 1')).toBeVisible()
@@ -3260,7 +3260,7 @@ test('admin destructive actions send explicit confirmations', async ({ page }) =
   })
 
   await page.goto('/admin')
-  await page.getByRole('button', { name: 'Uploads' }).click()
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Uploads', exact: true }).click()
   await page.getByLabel('Select files/upload-1.txt').check()
   await page.getByRole('button', { name: 'Delete selected' }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Selected uploads deleted')
@@ -3269,6 +3269,6 @@ test('admin destructive actions send explicit confirmations', async ({ page }) =
   await expect(page.getByTestId('notification-list')).toContainText('Expired uploads purged')
 
   await page.getByRole('button', { name: 'Users' }).click()
-  await page.locator('tr', { hasText: 'user-1' }).getByRole('button', { name: 'Purge uploads' }).click()
+  await page.locator('tr').filter({ has: page.getByText('user-1', { exact: true }) }).getByRole('button', { name: 'Purge uploads' }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Uploads purged')
 })
