@@ -410,6 +410,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <p v-if="!pagedUploads.length && !loading" class="empty-state">No uploads match the current filters.</p>
         <div class="pagination-bar" aria-label="Upload pagination">
           <span>{{ pageLabel('Uploads', filteredUploads.length) }}</span>
           <div>
@@ -473,6 +474,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <p v-if="!pagedWebhooks.length && !loading" class="empty-state">No webhooks configured yet.</p>
         <div class="pagination-bar" aria-label="Webhook pagination">
           <span>{{ pageLabel('Webhooks', webhooks.length) }}</span>
           <div>
