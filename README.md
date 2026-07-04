@@ -121,10 +121,12 @@ browse and purge uploads, edit safe global settings, configure webhooks, and
 review an audit log of admin actions. Full details:
 `docs/wiki/User-and-Token-Management.md`.
 
-The installer's interactive menu (`./install.sh` with no flags) covers the
-same actions; a Ratatui TUI was evaluated but not added since the existing
-shell menu already meets the guided-install/admin-claim needs without a new
-Rust binary to build, ship, and keep in sync with `install.sh`.
+The installer's interactive menu (`./install.sh --interactive`, or bare
+`./install.sh`) is the stable guided-install/admin-claim path and works even
+before Rust tooling is present. If `cargo` is already installed, `./install.sh
+--tui` launches an optional Ratatui action picker (`tools/install-tui`) that
+dispatches into the same install.sh actions; it falls back to the shell menu
+automatically when cargo or the companion binary is unavailable.
 
 ## Manual Docker Run
 
