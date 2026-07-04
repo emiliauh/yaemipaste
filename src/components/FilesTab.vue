@@ -763,7 +763,7 @@ function onPasteAreaLongPressCancel() {
   }
   .share-result {
     gap: var(--space-1);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--space-3);
   }
 }
 .files-tab .btn-ghost,

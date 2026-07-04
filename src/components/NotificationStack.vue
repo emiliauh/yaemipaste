@@ -165,11 +165,8 @@ function dismiss(id: number) {
   .notification-stack-row {
     grid-template-columns: 1fr;
     justify-items: start;
-    width: 100%;
-    gap: var(--space-2);
-  }
-  .notification-stack-row.expanded {
     width: min(320px, 100%);
+    gap: var(--space-2);
   }
   .notification-message {
     max-width: 100%;
