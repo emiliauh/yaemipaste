@@ -198,10 +198,10 @@ code {
   .claim-wrap { padding: var(--space-3); }
   .claim-card { padding: var(--space-4); }
   .claim-header { flex-direction: column; align-items: stretch; gap: var(--space-3); }
-  .claim-header .btn-ghost { width: 100%; min-height: 40px; }
+  .claim-header .btn-ghost { width: 100%; min-height: calc(var(--space-6) + var(--space-2)); }
   .claim-form input,
   .btn-orange {
-    min-height: 40px;
+    min-height: calc(var(--space-6) + var(--space-2));
   }
 }
 </style>

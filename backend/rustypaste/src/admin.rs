@@ -506,6 +506,34 @@ fn metadata_path(upload_path: &Path, file_name: &str) -> PathBuf {
         .join(format!("{}.json", file_name.replace('/', "_")))
 }
 
+/// Resolves the uploader for a stored file.
+///
+/// The `.rpmeta/<file>.json` sidecar written at upload time (see
+/// `persist_upload_metadata` in server.rs) records the authenticated
+/// uploader's username regardless of whether the file's storage directory is
+/// sharded per-token, so it is the accurate source of truth. Directory-based
+/// attribution (matching the file's parent directory name to a user's
+/// token) is kept only as a fallback for uploads that predate metadata
+/// tracking or that never carried a `meta` field, such as raw API/ShareX
+/// uploads made without the web UI's uploader hint.
+fn resolve_upload_owner(
+    containing_dir: &Path,
+    file_name: &str,
+    dir_owner: Option<&String>,
+) -> Option<String> {
+    #[derive(Deserialize)]
+    struct UploadSidecarMeta {
+        uploader: Option<String>,
+    }
+    let from_metadata = fs::read_to_string(metadata_path(containing_dir, file_name))
+        .ok()
+        .and_then(|contents| serde_json::from_str::<UploadSidecarMeta>(&contents).ok())
+        .and_then(|meta| meta.uploader)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && value != "Unknown (token user)");
+    from_metadata.or_else(|| dir_owner.cloned())
+}
+
 fn remove_upload_file(upload_root: &Path, relative_path: &str) -> Result<u64, String> {
     let safe = safe_path_join(upload_root, relative_path).map_err(|e| e.to_string())?;
     let metadata = fs::metadata(&safe).map_err(|_| "File not found".to_string())?;
@@ -565,7 +593,7 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
                 .replace('\\', "/");
             let mut segments = relative.split('/');
             let first = segments.next().unwrap_or_default();
-            let owner = owner_by_dir.get(first).cloned();
+            let owner = resolve_upload_owner(current, &name, owner_by_dir.get(first));
             let expires_at = expires_at_from_name(&name);
             let now = now_seconds();
             let content_type = None;
@@ -1558,8 +1586,22 @@ async fn delete_user(
         Ok(root) => root,
         Err(response) => return response,
     };
+    let users_before_delete = match db_users(&connection) {
+        Ok(users) => users,
+        Err(response) => return response,
+    };
     let upload_dir = root.join(token_to_dir_name(&token));
     let _ = fs::remove_dir_all(upload_dir);
+    // Remove any additional uploads attributed to this user outside the
+    // per-token directory (identified via `.rpmeta` sidecar metadata rather
+    // than directory layout) so deletion is not silently incomplete.
+    let leftover: Vec<_> = collect_uploads(&root, &users_before_delete)
+        .into_iter()
+        .filter(|upload| upload.owner.as_deref() == Some(username.as_str()))
+        .collect();
+    for upload in leftover {
+        let _ = remove_upload_file(&root, &upload.path);
+    }
     if let Err(error) = connection.execute("DELETE FROM users WHERE username=?1", params![username])
     {
         error!("cannot delete user: {}", error);
@@ -1625,14 +1667,30 @@ async fn purge_user_uploads(
         Ok(root) => root,
         Err(response) => return response,
     };
+    let users = match db_users(&connection) {
+        Ok(users) => users,
+        Err(response) => return response,
+    };
     let upload_dir = root.join(token_to_dir_name(&token));
-    let size = util::get_dir_size(&upload_dir).unwrap_or(0);
+    let mut size = util::get_dir_size(&upload_dir).unwrap_or(0);
     let _ = fs::remove_dir_all(&upload_dir);
     if let Err(error) = fs::create_dir_all(&upload_dir) {
         error!(
             "cannot recreate user upload directory after purge: {}",
             error
         );
+    }
+    // Remove any additional uploads attributed to this user outside the
+    // per-token directory (identified via `.rpmeta` sidecar metadata rather
+    // than directory layout) so the purge is not silently incomplete.
+    let leftover: Vec<_> = collect_uploads(&root, &users)
+        .into_iter()
+        .filter(|upload| upload.owner.as_deref() == Some(username.as_str()))
+        .collect();
+    for upload in leftover {
+        if let Ok(removed) = remove_upload_file(&root, &upload.path) {
+            size += removed;
+        }
     }
     audit(
         &connection,
@@ -2278,4 +2336,277 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(webhook_deliveries)
         .service(audit_log)
         .service(public_settings);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account_auth::configure_routes as configure_auth_routes;
+    use actix_web::http::header::AUTHORIZATION;
+    use actix_web::test;
+    use actix_web::web::Data;
+    use actix_web::App;
+    use serde_json::json;
+    use std::env;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_path(name: &str, suffix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        env::temp_dir().join(format!("rustypaste-admin-test-{name}-{nanos}{suffix}"))
+    }
+
+    fn test_config(upload_path: PathBuf) -> Config {
+        let mut config = Config::default();
+        config.server.tokens = Some(["seed-token".to_string(), "spare-token".to_string()].into());
+        config.server.upload_path = upload_path;
+        config
+    }
+
+    fn set_auth_test_env(path: &Path) {
+        unsafe {
+            env::set_var("DB_PATH", path);
+            env::set_var("JWT_SECRET", "test-secret");
+            env::set_var("AUTH_ADMIN_BEARER", "admin-token");
+            env::set_var("TURNSTILE_SECRET_KEY", "");
+            env::set_var("PASTE_API", "http://localhost:8080/api");
+            env::set_var("VITE_ENABLE_SHAREX", "1");
+            env::set_var("PASSKEYS_ENABLED", "1");
+            env::remove_var("PASSKEY_RP_ID");
+            env::remove_var("PASSKEY_ORIGINS");
+        }
+    }
+
+    fn clear_auth_test_env() {
+        unsafe {
+            env::remove_var("DB_PATH");
+            env::remove_var("JWT_SECRET");
+            env::remove_var("AUTH_ADMIN_BEARER");
+            env::remove_var("TURNSTILE_SECRET_KEY");
+            env::remove_var("PASTE_API");
+            env::remove_var("VITE_ENABLE_SHAREX");
+            env::remove_var("PASSKEYS_ENABLED");
+            env::remove_var("PASSKEY_RP_ID");
+            env::remove_var("PASSKEY_ORIGINS");
+        }
+    }
+
+    fn write_sidecar(upload_dir: &Path, file_name: &str, username: &str) -> PathBuf {
+        let sidecar = metadata_path(upload_dir, file_name);
+        fs::create_dir_all(sidecar.parent().expect("sidecar should have parent"))
+            .expect("sidecar dir should be created");
+        fs::write(
+            &sidecar,
+            json!({
+                "display_name": file_name,
+                "uploader": username,
+                "source": "WebUI",
+            })
+            .to_string(),
+        )
+        .expect("sidecar should be written");
+        sidecar
+    }
+
+    macro_rules! claim_admin {
+        ($app:expr) => {{
+            let claim_init_request = test::TestRequest::post()
+                .uri("/auth/admin/claim/init")
+                .insert_header((AUTHORIZATION, "Bearer admin-token"))
+                .set_json(json!({}))
+                .to_request();
+            let claim_init_response = test::call_service($app, claim_init_request).await;
+            assert_eq!(StatusCode::OK, claim_init_response.status());
+            let claim_init_json: Value = test::read_body_json(claim_init_response).await;
+            let claim_token = claim_init_json["token"]
+                .as_str()
+                .expect("claim token should exist")
+                .to_string();
+
+            let claim_request = test::TestRequest::post()
+                .uri("/auth/admin/claim")
+                .set_json(json!({
+                    "claim_token": claim_token,
+                    "username": "admin",
+                    "password": "password123",
+                    "upload_token": "seed-token",
+                }))
+                .to_request();
+            let claim_response = test::call_service($app, claim_request).await;
+            assert_eq!(StatusCode::OK, claim_response.status());
+            let claim_json: Value = test::read_body_json(claim_response).await;
+            claim_json["access_token"]
+                .as_str()
+                .expect("admin jwt should exist")
+                .to_string()
+        }};
+    }
+
+    macro_rules! create_managed_user {
+        ($app:expr, $admin_jwt:expr) => {{
+            let create_user_request = test::TestRequest::post()
+                .uri("/auth/admin/users")
+                .insert_header((AUTHORIZATION, format!("Bearer {}", $admin_jwt)))
+                .set_json(json!({
+                    "username": "managed",
+                    "password": "password123",
+                    "upload_token": "spare-token",
+                }))
+                .to_request();
+            let create_user_response = test::call_service($app, create_user_request).await;
+            assert_eq!(StatusCode::OK, create_user_response.status());
+            let create_user_json: Value = test::read_body_json(create_user_response).await;
+            create_user_json["upload_token"]
+                .as_str()
+                .expect("created user should have upload token")
+                .to_string()
+        }};
+    }
+
+    fn write_upload_fixture(upload_root: &Path, username: &str, token: &str) -> (PathBuf, PathBuf) {
+        fs::create_dir_all(upload_root).expect("upload root should be created");
+        let flat_file = upload_root.join("flat-owned.txt");
+        fs::write(&flat_file, "metadata-owned").expect("flat upload should be written");
+        write_sidecar(upload_root, "flat-owned.txt", username);
+
+        let token_dir = upload_root.join(token_to_dir_name(token));
+        fs::create_dir_all(&token_dir).expect("token dir should be created");
+        let sharded_file = token_dir.join("dir-owned.txt");
+        fs::write(&sharded_file, "directory-owned").expect("sharded upload should be written");
+        (flat_file, sharded_file)
+    }
+
+    #[actix_web::test]
+    async fn uploads_listing_resolves_sidecar_metadata_before_directory_fallback() {
+        let db_path = unique_test_path("listing", ".sqlite");
+        let upload_root = unique_test_path("listing-uploads", "");
+        set_auth_test_env(&db_path);
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config(upload_root.clone()))))
+                .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
+                .service(web::scope("/auth").configure(configure_auth_routes)),
+        )
+        .await;
+        let admin_jwt = claim_admin!(&app);
+        let managed_token = create_managed_user!(&app, &admin_jwt);
+        let (_flat_file, _sharded_file) =
+            write_upload_fixture(&upload_root, "managed", &managed_token);
+
+        let list_uploads_request = test::TestRequest::get()
+            .uri("/auth/admin/uploads")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .to_request();
+        let list_response = test::call_service(&app, list_uploads_request).await;
+        assert_eq!(StatusCode::OK, list_response.status());
+        let uploads: Value = test::read_body_json(list_response).await;
+        let uploads = uploads.as_array().expect("uploads should be an array");
+        assert_eq!(
+            Some("managed"),
+            uploads
+                .iter()
+                .find(|upload| upload["path"] == "flat-owned.txt")
+                .and_then(|upload| upload["owner"].as_str())
+        );
+        assert_eq!(
+            Some("managed"),
+            uploads
+                .iter()
+                .find(|upload| upload["path"].as_str().is_some_and(|path| path.ends_with("/dir-owned.txt")))
+                .and_then(|upload| upload["owner"].as_str())
+        );
+
+        let _ = fs::remove_file(db_path);
+        let _ = fs::remove_dir_all(upload_root);
+        clear_auth_test_env();
+    }
+
+    #[actix_web::test]
+    async fn purge_user_uploads_removes_flat_sidecar_attributed_uploads() {
+        let db_path = unique_test_path("purge", ".sqlite");
+        let upload_root = unique_test_path("purge-uploads", "");
+        set_auth_test_env(&db_path);
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config(upload_root.clone()))))
+                .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
+                .service(web::scope("/auth").configure(configure_auth_routes)),
+        )
+        .await;
+        let admin_jwt = claim_admin!(&app);
+        let managed_token = create_managed_user!(&app, &admin_jwt);
+        let (flat_file, _sharded_file) = write_upload_fixture(&upload_root, "managed", &managed_token);
+        let flat_sidecar = metadata_path(&upload_root, "flat-owned.txt");
+
+        let purge = test::TestRequest::post()
+            .uri("/auth/admin/users/managed/purge")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({ "confirmation": CONFIRM_PURGE_UPLOADS }))
+            .to_request();
+        let purge_response = test::call_service(&app, purge).await;
+        assert_eq!(StatusCode::OK, purge_response.status());
+        assert!(!flat_file.exists());
+        assert!(!flat_sidecar.exists());
+
+        let list_uploads_request = test::TestRequest::get()
+            .uri("/auth/admin/uploads")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .to_request();
+        let list_response = test::call_service(&app, list_uploads_request).await;
+        assert_eq!(StatusCode::OK, list_response.status());
+        let uploads: Value = test::read_body_json(list_response).await;
+        assert!(!uploads
+            .as_array()
+            .expect("uploads should be an array")
+            .iter()
+            .any(|upload| upload["path"] == "flat-owned.txt"));
+
+        let _ = fs::remove_file(db_path);
+        let _ = fs::remove_dir_all(upload_root);
+        clear_auth_test_env();
+    }
+
+    #[actix_web::test]
+    async fn delete_user_removes_flat_sidecar_attributed_uploads() {
+        let db_path = unique_test_path("delete", ".sqlite");
+        let upload_root = unique_test_path("delete-uploads", "");
+        set_auth_test_env(&db_path);
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config(upload_root.clone()))))
+                .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
+                .service(web::scope("/auth").configure(configure_auth_routes)),
+        )
+        .await;
+        let admin_jwt = claim_admin!(&app);
+        let managed_token = create_managed_user!(&app, &admin_jwt);
+        let (flat_file, _sharded_file) = write_upload_fixture(&upload_root, "managed", &managed_token);
+
+        let delete_user_request = test::TestRequest::delete()
+            .uri("/auth/admin/users/managed")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({ "confirmation": CONFIRM_DELETE_USER }))
+            .to_request();
+        let delete_response = test::call_service(&app, delete_user_request).await;
+        assert_eq!(StatusCode::OK, delete_response.status());
+        assert!(!flat_file.exists());
+
+        let _ = fs::remove_file(db_path);
+        let _ = fs::remove_dir_all(upload_root);
+        clear_auth_test_env();
+    }
+
+    #[actix_web::test]
+    async fn db_users_returns_error_when_schema_is_missing() {
+        let connection = Connection::open_in_memory().expect("in-memory db should open");
+        assert!(db_users(&connection).is_err());
+    }
 }

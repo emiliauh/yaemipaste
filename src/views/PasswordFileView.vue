@@ -353,9 +353,19 @@ onBeforeUnmount(clearObjectUrl)
 }
 
 @media (max-width: 560px) {
+  .pw-page {
+    align-items: flex-start;
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .pw-panel {
+    padding: 16px;
+  }
+
   .details-grid { grid-template-columns: 1fr; }
-  .preview-frame img,
-  .preview-frame video { max-height: 46vh; }
+  .pw-page .preview-frame,
+  .pw-page .preview-frame img,
+  .pw-page .preview-frame video { max-height: 58dvh; }
   .actions { flex-direction: column; align-items: stretch; }
 }
 </style>

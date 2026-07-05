@@ -726,6 +726,44 @@ function onPasteAreaLongPressCancel() {
   background: linear-gradient(90deg, var(--accent), var(--accent-h));
   transition: width 0.12s ease;
 }
+@media (min-width: 601px) and (max-height: 820px) {
+  .files-tab {
+    gap: 8px;
+  }
+
+  .upload-panel {
+    gap: 10px;
+    padding: 16px 18px;
+  }
+
+  .upload-panel h1 {
+    font-size: clamp(22px, 3vw, 28px);
+  }
+
+  .upload-panel p {
+    margin-top: 5px;
+  }
+
+  .upload-zone {
+    padding: 28px 18px;
+  }
+
+  .paste-area {
+    min-height: 38px;
+    padding: 9px 12px;
+  }
+
+  textarea[data-testid="text-paste"],
+  .text-paste-input {
+    height: clamp(124px, 21dvh, 180px);
+    min-height: clamp(124px, 21dvh, 180px);
+  }
+
+  .text-actions-row {
+    margin-top: 0;
+  }
+}
+
 @media (max-width: 600px) {
   .files-tab {
     padding-bottom: 112px;

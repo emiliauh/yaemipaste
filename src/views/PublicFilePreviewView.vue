@@ -346,17 +346,27 @@ h1 {
 }
 
 @media (max-width: 620px) {
+  .preview-page {
+    align-items: flex-start;
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .preview-card {
+    padding: 16px;
+  }
+
   .meta-grid {
     grid-template-columns: 1fr;
   }
 
+  .preview-frame,
   .preview-frame img,
   .preview-frame video {
-    max-height: 46vh;
+    max-height: 58dvh;
   }
 
   .preview-pdf {
-    min-height: 50vh;
+    min-height: 58dvh;
   }
 
   .actions {

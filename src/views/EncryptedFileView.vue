@@ -457,12 +457,23 @@ h1 {
 }
 
 @media (max-width: 560px) {
+  .decrypt-page {
+    align-items: flex-start;
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .decrypt-panel {
+    padding: 16px;
+  }
+
   .details-grid {
     grid-template-columns: 1fr;
   }
-  .preview-frame img,
-  .preview-frame video {
-    max-height: 46vh;
+
+  .decrypt-page .preview-frame,
+  .decrypt-page .preview-frame img,
+  .decrypt-page .preview-frame video {
+    max-height: 58dvh;
   }
   .actions {
     align-items: stretch;

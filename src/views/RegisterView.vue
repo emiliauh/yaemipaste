@@ -179,7 +179,7 @@ async function submit() {
   padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   text-decoration: none;
-  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .inline-link:hover {
   border-color: var(--text3);
@@ -202,7 +202,7 @@ async function submit() {
   .field input,
   .form-footer button,
   .inline-link {
-    min-height: 40px;
+    min-height: calc(var(--space-6) + var(--space-2));
   }
   .form-footer { flex-direction: column; align-items: stretch; }
   .form-footer > * { width: 100%; text-align: center; justify-content: center; }

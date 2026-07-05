@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   adminAuditLog,
@@ -86,6 +86,11 @@ const ownerFilterOptions = computed<SelectOption[]>(() => [
     hint: user.is_admin ? 'Administrator' : 'User',
   })),
 ])
+watch(ownerFilterOptions, (options) => {
+  if (filterOwner.value && !options.some((option) => option.value === filterOwner.value)) {
+    filterOwner.value = ''
+  }
+})
 const expiryFilterOptions: SelectOption[] = [
   { value: 'all', label: 'All expiry states', hint: 'Active and expired' },
   { value: 'active', label: 'Active', hint: 'Still available' },
@@ -256,12 +261,13 @@ onMounted(() => {
   <div class="layout admin-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <AppSidebar
       active-tab="admin"
-      :show-history="false"
+      show-history
       show-admin
       show-settings
       :collapsed="sidebarCollapsed"
       @update:collapsed="sidebarCollapsed = $event"
       @select-files="router.push('/files')"
+      @select-history="router.push('/files?tab=history')"
       @select-admin="router.push('/admin')"
       @toggle-settings="showSettings = true"
     />
@@ -310,31 +316,41 @@ onMounted(() => {
         <p v-for="warning in dashboard.warnings" :key="warning">{{ warning }}</p>
       </div>
       <div class="card wide">
-        <h2>Recent uploads</h2>
-        <table class="file-table admin-table">
-          <tbody>
-            <tr v-for="upload in dashboard.recent_uploads" :key="upload.path">
-              <td>{{ upload.path }}</td>
-              <td>{{ upload.owner ?? 'anonymous' }}</td>
-              <td>{{ formatBytes(upload.size_bytes) }}</td>
-              <td>{{ ts(upload.created_at) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="card-heading">
+          <h2>Recent uploads</h2>
+          <button v-if="dashboard.recent_uploads.length > 6" class="btn-ghost btn-sm" type="button" @click="tab = 'Uploads'">View all uploads</button>
+        </div>
+        <div class="table-scroll">
+          <table class="file-table admin-table">
+            <tbody>
+              <tr v-for="upload in dashboard.recent_uploads.slice(0, 6)" :key="upload.path">
+                <td>{{ upload.path }}</td>
+                <td>{{ upload.owner ?? 'anonymous' }}</td>
+                <td>{{ formatBytes(upload.size_bytes) }}</td>
+                <td>{{ ts(upload.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <p v-if="!dashboard.recent_uploads.length" class="empty-state">No uploads yet.</p>
       </div>
       <div class="card wide">
-        <h2>Recent admin actions</h2>
-        <table class="file-table admin-table">
-          <tbody>
-            <tr v-for="entry in dashboard.recent_audit" :key="entry.id">
-              <td>{{ ts(entry.created_at) }}</td>
-              <td>{{ entry.actor ?? 'system' }}</td>
-              <td>{{ entry.action }}</td>
-              <td>{{ entry.status }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="card-heading">
+          <h2>Recent admin actions</h2>
+          <button v-if="dashboard.recent_audit.length > 6" class="btn-ghost btn-sm" type="button" @click="tab = 'Audit'">View all activity</button>
+        </div>
+        <div class="table-scroll">
+          <table class="file-table admin-table">
+            <tbody>
+              <tr v-for="entry in dashboard.recent_audit.slice(0, 6)" :key="entry.id">
+                <td>{{ ts(entry.created_at) }}</td>
+                <td>{{ entry.actor ?? 'system' }}</td>
+                <td>{{ entry.action }}</td>
+                <td>{{ entry.status }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <p v-if="!dashboard.recent_audit.length" class="empty-state">No administrative actions recorded yet.</p>
       </div>
     </section>
@@ -351,6 +367,7 @@ onMounted(() => {
 
       <div class="card">
         <h2>Users</h2>
+        <div class="table-scroll">
         <table class="file-table admin-table">
           <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Uploads</th><th>Storage</th><th>Actions</th></tr></thead>
           <tbody>
@@ -374,6 +391,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        </div>
         <p v-if="!pagedUsers.length && !loading" class="empty-state">No users yet.</p>
         <div class="pagination-bar" aria-label="User pagination">
           <span>{{ pageLabel('Users', users.length) }}</span>
@@ -396,6 +414,7 @@ onMounted(() => {
         </div>
       </div>
       <div class="card">
+        <div class="table-scroll">
         <table class="file-table admin-table">
           <thead><tr><th aria-label="Select"></th><th>Path</th><th>Owner</th><th>Size</th><th>Created</th><th>Expires</th><th>Actions</th></tr></thead>
           <tbody>
@@ -410,6 +429,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        </div>
         <p v-if="!pagedUploads.length && !loading" class="empty-state">No uploads match the current filters.</p>
         <div class="pagination-bar" aria-label="Upload pagination">
           <span>{{ pageLabel('Uploads', filteredUploads.length) }}</span>
@@ -460,6 +480,7 @@ onMounted(() => {
       </form>
       <div class="card">
         <h2>Endpoints</h2>
+        <div class="table-scroll">
         <table class="file-table admin-table">
           <tbody>
             <tr v-for="hook in pagedWebhooks" :key="hook.id">
@@ -474,6 +495,7 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        </div>
         <p v-if="!pagedWebhooks.length && !loading" class="empty-state">No webhooks configured yet.</p>
         <div class="pagination-bar" aria-label="Webhook pagination">
           <span>{{ pageLabel('Webhooks', webhooks.length) }}</span>
@@ -485,6 +507,7 @@ onMounted(() => {
       </div>
       <div class="card">
         <h2>Recent deliveries</h2>
+        <div class="table-scroll">
         <table class="file-table admin-table">
           <tbody>
             <tr v-for="delivery in deliveries" :key="delivery.id">
@@ -492,12 +515,14 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        </div>
         <p v-if="!deliveries.length && !loading" class="empty-state">No webhook deliveries recorded yet.</p>
       </div>
     </section>
 
     <section v-if="tab === 'Audit'" class="card">
       <h2>Audit log</h2>
+      <div class="table-scroll">
       <table class="file-table admin-table">
         <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Status</th><th>Reason</th></tr></thead>
         <tbody>
@@ -506,6 +531,7 @@ onMounted(() => {
           </tr>
         </tbody>
       </table>
+      </div>
       <p v-if="!pagedAudit.length && !loading" class="empty-state">No audit entries yet.</p>
       <div class="pagination-bar" aria-label="Audit pagination">
         <span>{{ pageLabel('Audit', audit.length) }}</span>
@@ -530,11 +556,19 @@ onMounted(() => {
 
 <style scoped>
 .layout {
+  width: 100%;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  overflow-x: hidden;
   --surface: var(--bg1);
   --surface2: var(--bg2);
   --surface3: var(--bg3);
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   background: transparent;
+}
+.layout.sidebar-collapsed {
+  grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
 }
 .workspace {
   min-width: 0;
@@ -721,15 +755,33 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .card {
-  overflow-x: auto;
   border-radius: var(--radius-md);
   padding: var(--space-5);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   box-shadow: 0 16px 32px color-mix(in srgb, var(--shadow) 12%, transparent);
 }
+.card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.card-heading h2 {
+  margin-bottom: 0;
+}
+.btn-sm {
+  min-height: 32px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-xs);
+}
+.table-scroll {
+  overflow-x: auto;
+}
 @media (max-width: 700px) {
-  .card:has(.admin-table) {
-    box-shadow: 0 16px 32px color-mix(in srgb, var(--shadow) 12%, transparent), inset -18px 0 14px -14px color-mix(in srgb, black 35%, transparent);
+  .table-scroll {
+    box-shadow: inset -18px 0 14px -14px color-mix(in srgb, black 35%, transparent);
   }
 }
 .error-box {
@@ -789,7 +841,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   transition: transform var(--duration-fast) var(--ease-out);
 }
 .admin-layout input[type="checkbox"]:hover:not(:disabled) {
-  transform: scale(1.12);
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline-offset: 1px;
 }
 .admin-layout input[type="checkbox"]:active:not(:disabled) {
   transform: scale(0.92);
@@ -818,7 +871,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
   color: var(--text2);
-  font-size: var(--fs-small);
+  font-size: var(--fs-sm);
 }
 .pagination-bar > div {
   display: flex;
@@ -843,19 +896,38 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .settings-layer :deep(.settings-panel) {
   pointer-events: auto;
   z-index: 1;
-  left: 82px;
+  position: fixed;
+  left: calc(var(--sidebar-w) + 26px);
   right: auto;
   top: auto;
-  bottom: 18px;
-  width: min(380px, calc(100vw - 108px));
-  max-height: calc(100dvh - 36px);
+  bottom: 74px;
+  width: min(380px, calc(100vw - var(--sidebar-w) - 50px));
+  height: auto;
+  min-height: 0;
+  max-height: calc(100dvh - 92px);
   overflow: auto;
+}
+.sidebar-collapsed .settings-layer :deep(.settings-panel) {
+  left: calc(var(--sidebar-w-collapsed) + 24px);
+  width: min(380px, calc(100vw - var(--sidebar-w-collapsed) - 48px));
 }
 @media (max-width: 760px) {
   .workspace { padding: var(--space-4); }
   .admin-header { flex-direction: column; }
   .admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tabs button { padding: var(--space-2) var(--space-4); }
+}
+@media (min-width: 601px) and (max-width: 960px) {
+  .layout {
+    grid-template-columns: var(--sidebar-w-tablet) minmax(0, 1fr);
+  }
+  .layout.sidebar-collapsed {
+    grid-template-columns: var(--sidebar-w-collapsed-tablet) minmax(0, 1fr);
+  }
+  .settings-layer :deep(.settings-panel) {
+    left: calc(var(--sidebar-w-tablet) + 26px);
+    width: min(380px, calc(100vw - var(--sidebar-w-tablet) - 50px));
+  }
 }
 @media (max-width: 600px) {
   .layout {
@@ -873,7 +945,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     grid-template-columns: 1fr;
   }
   .workspace {
-    padding: var(--space-3) var(--space-3) 104px;
+    min-height: 100dvh;
+    padding: var(--space-3) var(--space-3) calc(var(--mobile-bar-space) + 22px);
   }
   .admin-header {
     padding: var(--space-4);
@@ -903,9 +976,10 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .settings-layer :deep(.settings-panel) {
     left: 12px;
     right: 12px;
-    bottom: 88px;
+    top: auto;
+    bottom: calc(var(--mobile-bar-space) + 14px);
     width: auto;
-    max-height: calc(100dvh - 118px);
+    max-height: calc(100dvh - var(--mobile-bar-space) - 30px);
   }
 }
 @media (max-width: 480px) {

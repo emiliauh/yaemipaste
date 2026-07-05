@@ -1955,13 +1955,14 @@ onBeforeUnmount(() => {
 }
 
 .table-wrap {
-  overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg);
 }
 
 .file-table {
+  width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -1975,6 +1976,15 @@ onBeforeUnmount(() => {
 
 .file-table th:last-child,
 .file-table td:last-child { padding-right: var(--space-3); }
+
+.file-table th.col-size,
+.file-table td.size { width: 112px; }
+
+.file-table th.col-expiry,
+.file-table td.expiry { width: 168px; }
+
+.file-table th:last-child,
+.file-table td.actions { width: 248px; }
 
 .file-table td {
   height: 48px;
@@ -2343,8 +2353,7 @@ onBeforeUnmount(() => {
     justify-content: center;
   }
 
-  .table-wrap { overflow-x: hidden; }
-  .file-table { table-layout: fixed; width: 100%; }
+  .file-table { width: 100%; }
   .file-table th:last-child,
   .file-table td.actions { width: 118px; }
   .filename { width: 100%; min-width: 0; }
@@ -2367,8 +2376,7 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 601px) and (max-width: 820px) {
-  .table-wrap { overflow-x: hidden; }
-  .file-table { table-layout: fixed; width: 100%; }
+  .file-table { width: 100%; }
   .file-table th:last-child,
   .file-table td.actions { width: 150px; }
   .filename { width: 100%; min-width: 0; }

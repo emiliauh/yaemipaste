@@ -162,6 +162,20 @@ function toggleCompactTheme() {
             {{ option.label }}
           </button>
         </div>
+        <button
+          v-if="showSettings"
+          type="button"
+          class="preferences-btn"
+          aria-label="Preferences"
+          data-testid="desktop-preferences"
+          @click="emit('toggle-settings')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+          </svg>
+          <span>Preferences</span>
+        </button>
       </div>
       <div class="collapsed-utilities" aria-label="Compact utilities">
         <button
@@ -186,25 +200,22 @@ function toggleCompactTheme() {
             <path d="M20.5 14.5A7.5 7.5 0 0 1 9.5 3.5 9 9 0 1 0 20.5 14.5Z" />
           </svg>
         </button>
+        <button
+          v-if="showSettings"
+          type="button"
+          class="compact-icon-btn"
+          aria-label="Preferences"
+          data-testid="collapsed-preferences"
+          @click="emit('toggle-settings')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+          </svg>
+        </button>
       </div>
     </div>
   </aside>
-
-  <button
-    v-if="showSettings"
-    class="desktop-settings-edge"
-    :class="{ 'sidebar-collapsed': collapsed }"
-    type="button"
-    aria-label="Settings"
-    data-testid="desktop-settings-edge"
-    @click="emit('toggle-settings')"
-  >
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
-    </svg>
-    <span>Preferences</span>
-  </button>
 
   <nav class="mobile-tabbar" aria-label="Primary mobile">
     <div class="mobile-tabbar-main" :class="{ 'has-admin': showAdmin }">
@@ -616,40 +627,34 @@ function toggleCompactTheme() {
   stroke-linejoin: round;
 }
 
-.desktop-settings-edge {
-  z-index: 80;
-  position: fixed;
-  bottom: 18px;
-  left: 268px;
-  max-width: 170px;
-  min-height: 42px;
+.preferences-btn {
+  width: 100%;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
   color: var(--text2);
   font-family: var(--font);
   font-size: var(--fs-xs);
   font-weight: 600;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface2, var(--bg2)) 88%, transparent);
-  box-shadow: 0 12px 26px color-mix(in srgb, var(--shadow) 24%, transparent);
-  transition: left var(--duration-base) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  background: var(--surface, var(--bg1));
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
-.desktop-settings-edge:hover {
+.preferences-btn:hover {
   color: var(--text);
   border-color: var(--border2);
   background: color-mix(in srgb, var(--surface3, var(--bg3)) 84%, transparent);
-  box-shadow: 0 16px 34px color-mix(in srgb, var(--shadow) 28%, transparent), 0 0 0 1px color-mix(in srgb, var(--text) 4%, transparent) inset;
 }
 
-.desktop-settings-edge:active {
-  transform: translateY(1px) scale(0.98);
+.preferences-btn:active {
+  transform: scale(0.98);
 }
 
-.desktop-settings-edge svg {
+.preferences-btn svg {
   width: 16px;
   height: 16px;
   flex: none;
@@ -660,36 +665,12 @@ function toggleCompactTheme() {
   stroke-linejoin: round;
 }
 
-.desktop-settings-edge.sidebar-collapsed {
-  left: 96px;
-  bottom: 22px;
-  width: 40px;
-  min-height: 40px;
-  justify-content: center;
-  padding: 0;
-}
-
-.desktop-settings-edge.sidebar-collapsed span {
-  display: none;
-}
-
 .mobile-tabbar {
   display: none;
 }
 
-@media (min-width: 601px) and (max-width: 960px) {
-  .desktop-settings-edge {
-    left: 248px;
-  }
-
-  .desktop-settings-edge.sidebar-collapsed {
-    left: 96px;
-  }
-}
-
 @media (max-width: 600px) {
-  .sidebar,
-  .desktop-settings-edge {
+  .sidebar {
     display: none;
   }
 
@@ -697,7 +678,7 @@ function toggleCompactTheme() {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     z-index: 110;
     display: flex;
     align-items: stretch;

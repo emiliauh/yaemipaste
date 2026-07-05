@@ -341,7 +341,7 @@ async function loginWithPasskey() {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 2px;
+  height: calc(var(--space-1) / 2);
   border-radius: var(--radius-full);
   background: var(--accent);
 }
@@ -349,7 +349,7 @@ async function loginWithPasskey() {
 .login-tabs button:active { transform: scale(0.98); }
 .field { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
 .field label { color: var(--text); font-size: var(--fs-sm); line-height: var(--lh-tight); }
-.field-hint { color: var(--text2); font-size: var(--fs-xs); line-height: var(--lh-body); margin-top: -2px; }
+.field-hint { color: var(--text2); font-size: var(--fs-xs); line-height: var(--lh-body); margin-top: calc(var(--space-1) / -2); }
 .field input {
   width: 100%;
   border-radius: var(--radius-sm);
@@ -359,15 +359,15 @@ async function loginWithPasskey() {
   position: relative;
 }
 .password-wrap input {
-  padding-right: 40px;
+  padding-right: calc(var(--space-6) + var(--space-2));
 }
 .password-toggle {
   position: absolute;
   right: var(--space-1);
   top: 50%;
   transform: translateY(-50%);
-  width: 32px;
-  height: 32px;
+  width: var(--space-6);
+  height: var(--space-6);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -384,7 +384,7 @@ async function loginWithPasskey() {
   transform: translateY(-50%) translateY(-1px);
 }
 .password-toggle:active {
-  transform: translateY(-50%) scale(0.9);
+  transform: translateY(-50%) scale(0.96);
 }
 .remember-toggle {
   display: inline-flex;
@@ -398,11 +398,11 @@ async function loginWithPasskey() {
 }
 .remember-toggle input {
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: var(--space-4);
+  height: var(--space-4);
   padding: 0;
   border: 1px solid var(--border2);
-  border-radius: 3px;
+  border-radius: calc(var(--radius-sm) / 2);
   background: var(--bg);
   display: inline-block;
   flex-shrink: 0;
@@ -418,9 +418,9 @@ async function loginWithPasskey() {
 .remember-toggle input:checked::after {
   content: "";
   position: absolute;
-  inset: 2px;
+  inset: calc(var(--space-1) / 2);
   background: var(--accent);
-  border-radius: 1px;
+  border-radius: calc(var(--radius-sm) / 5);
 }
 .turnstile-container {
   margin-bottom: var(--space-3);
@@ -456,7 +456,7 @@ async function loginWithPasskey() {
   color: var(--text2);
   padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
-  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 .inline-link:hover {
   border-color: var(--text3);
@@ -480,10 +480,10 @@ async function loginWithPasskey() {
   .login-tabs button,
   .form-footer button,
   .inline-link {
-    min-height: 40px;
+    min-height: calc(var(--space-6) + var(--space-2));
   }
-  .password-toggle { width: 40px; height: 40px; }
-  .password-wrap input { padding-right: 48px; }
+  .password-toggle { width: calc(var(--space-6) + var(--space-2)); height: calc(var(--space-6) + var(--space-2)); }
+  .password-wrap input { padding-right: var(--space-7); }
   .form-footer { flex-direction: column; align-items: stretch; }
   .form-footer > * { width: 100%; text-align: center; justify-content: center; }
 }

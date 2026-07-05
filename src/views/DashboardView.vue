@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import FilesTab from '../components/FilesTab.vue'
 import HistoryTab from '../components/HistoryTab.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
@@ -13,6 +13,7 @@ const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
 const HISTORY_REFRESH_EVENT = 'rp:history-refresh'
 
 const router = useRouter()
+const route = useRoute()
 const tab = ref<'files' | 'history'>('files')
 const showSettings = ref(false)
 const authEnabled = isAuthEnabled()
@@ -32,11 +33,27 @@ function setTab(next: 'files' | 'history') {
   tab.value = next
   showSettings.value = false
   if (next === 'history') window.dispatchEvent(new CustomEvent(HISTORY_REFRESH_EVENT))
+  const nextQuery = { ...route.query }
+  if (next === 'history') nextQuery.tab = 'history'
+  else delete nextQuery.tab
+  if (route.query.tab !== nextQuery.tab) {
+    void router.replace({ path: '/files', query: nextQuery })
+  }
+}
+
+// Deep-link support so other views (e.g. the admin sidebar) can navigate
+// straight into the History tab via `/files?tab=history` instead of needing
+// a dedicated route for what is otherwise client-side tab state.
+function syncTabFromQuery() {
+  if (authEnabled && route.query.tab === 'history' && tab.value !== 'history') setTab('history')
 }
 
 onMounted(() => {
   void refreshPublicSettings()
+  syncTabFromQuery()
 })
+
+watch(() => route.query.tab, syncTabFromQuery)
 </script>
 
 <template>
@@ -76,15 +93,16 @@ onMounted(() => {
 <style scoped>
 .layout {
   width: 100%;
-  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
-  grid-template-columns: 228px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   position: relative;
+  overflow-x: hidden;
   transition: grid-template-columns 0.18s;
 }
 
 .layout.sidebar-collapsed {
-  grid-template-columns: 70px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
 }
 
 .workspace {
@@ -140,10 +158,21 @@ onMounted(() => {
 .settings-layer :deep(.settings-panel) {
   pointer-events: auto;
   z-index: 1;
+  position: fixed;
+  left: calc(var(--sidebar-w) + 26px);
+  right: auto;
+  top: auto;
+  bottom: 74px;
+  width: min(380px, calc(100vw - var(--sidebar-w) - 50px));
+  height: auto;
+  min-height: 0;
+  max-height: calc(100dvh - 92px);
+  overflow: auto;
 }
 
 .sidebar-collapsed .settings-layer :deep(.settings-panel) {
-  left: 104px;
+  left: calc(var(--sidebar-w-collapsed) + 24px);
+  width: min(380px, calc(100vw - var(--sidebar-w-collapsed) - 48px));
 }
 
 @media (max-width: 600px) {
@@ -153,22 +182,36 @@ onMounted(() => {
   }
 
   .workspace {
-    padding: 18px 12px 104px;
+    min-height: 100dvh;
+    padding: 18px 12px calc(var(--mobile-bar-space) + 22px);
+  }
+
+  .settings-layer :deep(.settings-panel) {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: calc(var(--mobile-bar-space) + 14px);
+    width: auto;
+    max-height: calc(100dvh - var(--mobile-bar-space) - 30px);
   }
 }
 
 @media (min-width: 601px) and (max-width: 960px) {
   .layout {
-    grid-template-columns: 208px minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-w-tablet) minmax(0, 1fr);
   }
 
   .layout.sidebar-collapsed {
-    grid-template-columns: 70px minmax(0, 1fr);
+    grid-template-columns: var(--sidebar-w-collapsed-tablet) minmax(0, 1fr);
   }
 
   .workspace {
     padding: 18px;
   }
 
+  .settings-layer :deep(.settings-panel) {
+    left: calc(var(--sidebar-w-tablet) + 26px);
+    width: min(380px, calc(100vw - var(--sidebar-w-tablet) - 50px));
+  }
 }
 </style>
