@@ -328,6 +328,20 @@ async fn read_multipart_field_bytes(field: &mut Field) -> Result<Vec<u8>, Error>
     Ok(bytes)
 }
 
+/// Computes the actual on-disk file name for a stored paste, including the
+/// expiry timestamp suffix that `Paste::store_file` appends to the path it
+/// writes (see its `if let Some(timestamp) = expiry_date` branch) while
+/// still *returning* the pre-suffix name to its caller. Anything that keys
+/// off the file's identity after upload - metadata sidecars, admin listing,
+/// delete - must use this same suffixed form, since that's the name the
+/// file actually exists under on disk.
+fn stored_file_name(file_name: &str, expiry_date: Option<u128>) -> String {
+    match expiry_date {
+        Some(timestamp) => format!("{file_name}.{timestamp}"),
+        None => file_name.to_string(),
+    }
+}
+
 fn persist_upload_metadata(
     upload_path: &Path,
     file_name: &str,
@@ -884,10 +898,11 @@ async fn upload(
                 paste_type,
                 PasteType::File | PasteType::RemoteFile | PasteType::Oneshot
             ) {
+                let stored_name = stored_file_name(&file_name, expiry_date);
                 if let Err(e) =
-                    persist_upload_metadata(&token_upload_path, &file_name, &upload_meta)
+                    persist_upload_metadata(&token_upload_path, &stored_name, &upload_meta)
                 {
-                    warn!("cannot store upload metadata for {}: {}", file_name, e);
+                    warn!("cannot store upload metadata for {}: {}", stored_name, e);
                 }
             }
             crate::admin::dispatch_webhook(
@@ -1046,6 +1061,18 @@ mod tests {
     use actix_web::App;
     use awc::ClientBuilder;
     use glob::glob;
+
+    #[test]
+    fn test_stored_file_name_matches_store_file_suffixing() {
+        // No expiry: the on-disk name is exactly the returned name.
+        assert_eq!("ZSlZjhsX.jpg", stored_file_name("ZSlZjhsX.jpg", None));
+        // With expiry: `Paste::store_file` writes `<name>.<millis>` to disk
+        // while still returning `<name>` - metadata must key off the former.
+        assert_eq!(
+            "ZSlZjhsX.jpg.1784356059807",
+            stored_file_name("ZSlZjhsX.jpg", Some(1784356059807))
+        );
+    }
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
@@ -1795,6 +1822,72 @@ mod tests {
         } else if PathBuf::from(&file_name).exists() {
             fs::remove_file(&file_name)?;
         }
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_upload_expiring_file_metadata_uses_on_disk_name() -> Result<(), Error> {
+        let mut config = Config::default();
+        config.server.upload_path = env::current_dir()?;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(config.clone())))
+                .app_data(Data::new(Client::default()))
+                .configure(configure_routes),
+        )
+        .await;
+
+        let timestamp = util::get_system_time()?.as_secs().to_string();
+        let file_name = format!("expiring-owned-{timestamp}.txt");
+        let response = test::call_service(
+            &app,
+            get_multipart_request_with_fields(
+                &timestamp,
+                "file",
+                &file_name,
+                &[("uploader", "regression-user"), ("source", "WebUI")],
+            )
+            .insert_header((
+                header::HeaderName::from_static("expire"),
+                header::HeaderValue::from_static("1h"),
+            ))
+            .to_request(),
+        )
+        .await;
+        assert_eq!(StatusCode::OK, response.status());
+
+        // The file on disk carries an expiry timestamp suffix that the
+        // response body (and `store_file`'s return value) does not - the
+        // metadata sidecar must be keyed by the suffixed on-disk name, or
+        // the admin panel can never find it and reports the upload as
+        // unowned/anonymous even though an uploader was provided.
+        let saved = glob(&format!("{file_name}.[0-9]*"))
+            .map_err(error::ErrorInternalServerError)?
+            .next()
+            .transpose()
+            .map_err(error::ErrorInternalServerError)?
+            .expect("expiring upload should be saved with a timestamp suffix");
+        let saved_name = saved
+            .file_name()
+            .and_then(|v| v.to_str())
+            .expect("saved file should have a name")
+            .to_string();
+        assert_ne!(saved_name, file_name, "on-disk name should carry the expiry suffix");
+
+        let metadata_path = metadata_file_path(&config.server.upload_path, &saved_name);
+        assert!(
+            metadata_path.exists(),
+            "metadata sidecar should exist at the on-disk (suffixed) name"
+        );
+        let stored: StoredUploadMeta =
+            serde_json::from_str(&fs::read_to_string(&metadata_path)?)
+                .map_err(error::ErrorInternalServerError)?;
+        assert_eq!(stored.uploader.as_deref(), Some("regression-user"));
+
+        fs::remove_file(metadata_path)?;
+        fs::remove_file(saved)?;
 
         Ok(())
     }
