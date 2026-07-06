@@ -31,7 +31,7 @@ async function signInWithAccount(page: Page) {
 }
 
 async function openSettings(page: Page) {
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await expect(page.locator('.settings-panel')).toBeVisible()
 }
 
@@ -613,17 +613,17 @@ test('mobile upload feedback stays inside the viewport and away from bottom cont
   await expect(page.getByTestId('expiry-panel')).toBeHidden()
   const shareBox = await page.getByTestId('share-row').boundingBox()
   const notificationBox = await page.getByTestId('notification-row').boundingBox()
-  const expiryBox = await page.getByTestId('expiry-mobile-toggle').boundingBox()
+  const tabbarBox = await page.getByTestId('mobile-tabbar').boundingBox()
   expect(shareBox).not.toBeNull()
   expect(notificationBox).not.toBeNull()
-  expect(expiryBox).not.toBeNull()
-  if (shareBox && notificationBox && expiryBox) {
+  expect(tabbarBox).not.toBeNull()
+  if (shareBox && notificationBox && tabbarBox) {
     expect(shareBox.x).toBeGreaterThanOrEqual(0)
     expect(shareBox.x + shareBox.width).toBeLessThanOrEqual(390)
     expect(notificationBox.x).toBeGreaterThanOrEqual(0)
     expect(notificationBox.x + notificationBox.width).toBeLessThanOrEqual(390)
-    expect(notificationBox.y + notificationBox.height).toBeLessThan(expiryBox.y)
-    expect(shareBox.y + shareBox.height).toBeLessThan(expiryBox.y)
+    expect(notificationBox.y + notificationBox.height).toBeLessThan(tabbarBox.y)
+    expect(shareBox.y + shareBox.height).toBeLessThan(tabbarBox.y)
   }
 
   await page.getByTestId('expiry-mobile-toggle').click()
@@ -674,7 +674,7 @@ test('theme controls persist explicit choices and system mode follows the OS pre
   const isCompact = (page.viewportSize()?.width ?? 1280) <= 600
   const themeTestId = (mode: string) => (isCompact ? `settings-theme-${mode}` : `theme-${mode}`)
   const openThemeControls = async () => {
-    if (isCompact) await page.getByRole('button', { name: 'Settings' }).click()
+    if (isCompact) await page.getByRole('button', { name: 'Preferences' }).click()
   }
 
   await openThemeControls()
@@ -1512,14 +1512,14 @@ test('history actions and settings buttons work', async ({ page }) => {
   await expect(page.locator('.modal-backdrop')).toHaveCount(0)
   await expect(page.locator('tr.file-row', { hasText: 'history-check.txt' })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await expect(page.getByLabel('API Base URL')).toBeVisible()
   await page.getByLabel('API Base URL').fill('https://papi.example.test/')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_api_base'))).toBe('https://papi.example.test')
   await expect(page.locator('.settings-panel')).toBeHidden()
 
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.locator('.settings-panel')).toBeHidden()
 })
@@ -2821,7 +2821,7 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
   })
 
   await page.goto('/#/files')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await expect(page.getByText('yaemipaste + rustypaste')).toBeVisible()
   await expect(page.getByTestId('open-passkey-modal')).toBeVisible()
   await expect(page.getByTestId('open-change-password')).toBeVisible()
@@ -2853,7 +2853,7 @@ test('settings password modal changes password and supports logout-all option', 
   })
 
   await page.goto('/#/files')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await page.getByTestId('open-change-password').click()
   await expect(page.getByTestId('password-modal')).toBeVisible()
 
@@ -2886,7 +2886,7 @@ test('passkey modal surfaces non-JSON API errors without JSON parse crashes', as
   })
 
   await page.goto('/#/files')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await page.getByTestId('open-passkey-modal').click()
   await expect(page.getByTestId('passkey-modal')).toBeVisible()
   const error = page.locator('.passkey-error')
@@ -2931,7 +2931,7 @@ test('passkey registration accepts wrapped browser options', async ({ page }) =>
   })
 
   await page.goto('/#/files')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await page.getByTestId('open-passkey-modal').click()
   await page.getByTestId('passkey-add-btn').click()
 
@@ -2963,7 +2963,7 @@ test('passkey registration reports malformed options clearly', async ({ page }) 
   })
 
   await page.goto('/#/files')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Preferences' }).click()
   await page.getByTestId('open-passkey-modal').click()
   await page.getByTestId('passkey-add-btn').click()
 
@@ -2990,7 +2990,7 @@ for (const viewport of [
       await expect(page.getByTestId('expiry-trigger')).toContainText('7 days')
     }
 
-    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('button', { name: 'Preferences' }).click()
     await expect(page.getByText('Settings')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
 

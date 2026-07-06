@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
 import { supportsBrowserEncryption } from '../lib/e2ee'
 import ExpirySelector from './ExpirySelector.vue'
@@ -85,6 +85,9 @@ function pushShareLink(name: string, previewUrl: string, _fileName: string) {
     entry,
     ...shareLinks.value.filter((item) => item.previewUrl !== entry.previewUrl),
   ].slice(0, 20)
+  nextTick(() => {
+    document.querySelector('.share-result')?.scrollIntoView({ block: 'nearest', behavior: 'instant' as ScrollBehavior })
+  })
 }
 
 async function copyShareUrl(url: string): Promise<boolean> {
@@ -802,6 +805,7 @@ function onPasteAreaLongPressCancel() {
   .share-result {
     gap: var(--space-1);
     padding: var(--space-1) var(--space-3);
+    scroll-margin-bottom: 100px;
   }
 }
 .files-tab .btn-ghost,

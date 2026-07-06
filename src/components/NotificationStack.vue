@@ -160,7 +160,9 @@ function dismiss(id: number) {
   .notification-stack {
     left: var(--space-3);
     right: var(--space-3);
-    bottom: 58px;
+    /* Clear the fixed mobile tab bar (72px incl. its own bottom offset)
+       plus a visible gap, so the toast never renders behind it. */
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
   .notification-stack-row {
     grid-template-columns: 1fr;

@@ -217,7 +217,7 @@ function toggleCompactTheme() {
     </div>
   </aside>
 
-  <nav class="mobile-tabbar" aria-label="Primary mobile">
+  <nav class="mobile-tabbar" aria-label="Primary mobile" data-testid="mobile-tabbar">
     <div class="mobile-tabbar-main" :class="{ 'has-admin': showAdmin }">
       <button
         type="button"
@@ -273,8 +273,8 @@ function toggleCompactTheme() {
       v-if="showSettings"
       class="mobile-tabbar-settings"
       type="button"
-      aria-label="Settings"
-      data-testid="mobile-nav-settings"
+      aria-label="Preferences"
+      data-testid="mobile-nav-preferences"
       @click="emit('toggle-settings')"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">

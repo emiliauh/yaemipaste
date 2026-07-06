@@ -288,16 +288,11 @@ onUnmounted(() => {
 }
 @media (max-width: 600px) {
   .expiry-menu {
-    position: fixed;
-    z-index: 120;
-    left: auto;
-    right: 10px;
-    bottom: 10px;
-    width: min(220px, calc(100vw - 20px));
-    padding: 0;
+    width: 100%;
   }
   .expiry-menu.mobile-collapsed {
     width: auto;
+    align-self: flex-start;
     padding: 0;
     border-color: var(--border);
     background: transparent;
@@ -354,8 +349,6 @@ onUnmounted(() => {
   .expiry-options {
     left: 0;
     right: 0;
-    top: auto;
-    bottom: calc(100% + 6px);
     width: auto;
     border-radius: var(--radius-md);
   }
