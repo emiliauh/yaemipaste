@@ -506,6 +506,16 @@ fn metadata_path(upload_path: &Path, file_name: &str) -> PathBuf {
         .join(format!("{}.json", file_name.replace('/', "_")))
 }
 
+/// If `file_name` carries the numeric expiry-timestamp suffix that
+/// `stored_file_name` (server.rs) appends to the on-disk name (e.g.
+/// `foo.jpg.1784356059807`), returns the pre-suffix name (`foo.jpg`) the
+/// file was originally uploaded under.
+fn strip_expiry_suffix(file_name: &str) -> Option<&str> {
+    let dot = file_name.rfind('.')?;
+    let digits = &file_name[dot + 1..];
+    (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then(|| &file_name[..dot])
+}
+
 /// Resolves the uploader for a stored file.
 ///
 /// The `.rpmeta/<file>.json` sidecar written at upload time (see
@@ -525,12 +535,22 @@ fn resolve_upload_owner(
     struct UploadSidecarMeta {
         uploader: Option<String>,
     }
-    let from_metadata = fs::read_to_string(metadata_path(containing_dir, file_name))
-        .ok()
-        .and_then(|contents| serde_json::from_str::<UploadSidecarMeta>(&contents).ok())
-        .and_then(|meta| meta.uploader)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty() && value != "Unknown (token user)");
+    fn read_uploader(path: PathBuf) -> Option<String> {
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|contents| serde_json::from_str::<UploadSidecarMeta>(&contents).ok())
+            .and_then(|meta| meta.uploader)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty() && value != "Unknown (token user)")
+    }
+    // Uploads made before the metadata sidecar was keyed by the on-disk
+    // (expiry-suffixed) file name wrote it under the pre-suffix name
+    // instead; fall back to that legacy path so those uploads don't
+    // silently show up as owned by nobody.
+    let from_metadata = read_uploader(metadata_path(containing_dir, file_name)).or_else(|| {
+        strip_expiry_suffix(file_name)
+            .and_then(|base| read_uploader(metadata_path(containing_dir, base)))
+    });
     from_metadata.or_else(|| dir_owner.cloned())
 }
 
@@ -543,8 +563,10 @@ fn remove_upload_file(upload_root: &Path, relative_path: &str) -> Result<u64, St
     let size = metadata.len();
     let parent = safe.parent().unwrap_or(upload_root);
     if let Some(name) = safe.file_name().and_then(|value| value.to_str()) {
-        let meta = metadata_path(parent, name);
-        let _ = fs::remove_file(meta);
+        let _ = fs::remove_file(metadata_path(parent, name));
+        if let Some(base) = strip_expiry_suffix(name) {
+            let _ = fs::remove_file(metadata_path(parent, base));
+        }
     }
     fs::remove_file(&safe).map_err(|e| e.to_string())?;
     Ok(size)
@@ -2517,6 +2539,63 @@ mod tests {
             uploads
                 .iter()
                 .find(|upload| upload["path"].as_str().is_some_and(|path| path.ends_with("/dir-owned.txt")))
+                .and_then(|upload| upload["owner"].as_str())
+        );
+
+        let _ = fs::remove_file(db_path);
+        let _ = fs::remove_dir_all(upload_root);
+        clear_auth_test_env();
+    }
+
+    #[actix_web::test]
+    async fn strip_expiry_suffix_recovers_pre_suffix_name() {
+        assert_eq!(
+            Some("ZSlZjhsX.jpg"),
+            strip_expiry_suffix("ZSlZjhsX.jpg.1784356059807")
+        );
+        assert_eq!(None, strip_expiry_suffix("ZSlZjhsX.jpg"));
+        assert_eq!(None, strip_expiry_suffix("no-dot-here"));
+    }
+
+    #[actix_web::test]
+    async fn uploads_listing_resolves_legacy_pre_suffix_sidecar_metadata() {
+        // Simulates an upload made before the metadata sidecar was keyed by
+        // the on-disk (expiry-suffixed) file name: the file itself carries
+        // the `.<millis>` expiry suffix `stored_file_name` appends, but its
+        // `.rpmeta` sidecar was written under the pre-suffix name.
+        let db_path = unique_test_path("legacy-listing", ".sqlite");
+        let upload_root = unique_test_path("legacy-listing-uploads", "");
+        set_auth_test_env(&db_path);
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config(upload_root.clone()))))
+                .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
+                .service(web::scope("/auth").configure(configure_auth_routes)),
+        )
+        .await;
+        let admin_jwt = claim_admin!(&app);
+        let _managed_token = create_managed_user!(&app, &admin_jwt);
+
+        fs::create_dir_all(&upload_root).expect("upload root should be created");
+        let on_disk_name = "legacy-expiring.txt.1784356059807";
+        fs::write(upload_root.join(on_disk_name), "legacy").expect("legacy upload should be written");
+        write_sidecar(&upload_root, "legacy-expiring.txt", "managed");
+
+        let list_uploads_request = test::TestRequest::get()
+            .uri("/auth/admin/uploads")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .to_request();
+        let list_response = test::call_service(&app, list_uploads_request).await;
+        assert_eq!(StatusCode::OK, list_response.status());
+        let uploads: Value = test::read_body_json(list_response).await;
+        let uploads = uploads.as_array().expect("uploads should be an array");
+        assert_eq!(
+            Some("managed"),
+            uploads
+                .iter()
+                .find(|upload| upload["path"] == on_disk_name)
                 .and_then(|upload| upload["owner"].as_str())
         );
 
