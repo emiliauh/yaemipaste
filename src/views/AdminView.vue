@@ -755,6 +755,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .card {
+  min-width: 0;
   border-radius: var(--radius-md);
   padding: var(--space-5);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
@@ -983,6 +984,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
 }
 @media (max-width: 480px) {
-  .admin-grid { grid-template-columns: 1fr; }
+  .admin-grid { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
