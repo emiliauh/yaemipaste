@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   authLogin,
@@ -12,12 +12,26 @@ import {
 } from '../lib/api'
 import { credentialToJson, isPasskeySupported, toRequestOptions } from '../lib/passkeys'
 import { isAuthEnabled } from '../lib/features'
+import { usePublicSettings } from '../lib/publicSettings'
+import { useTurnstile } from '../lib/turnstile'
 
 const router = useRouter()
-const TURNSTILE_SITE_KEY = (
-  import.meta.env.VITE_TURNSTILE_SITE_KEY
-  ?? ''
-).trim()
+const { publicSettings, refreshPublicSettings } = usePublicSettings()
+// The backend is the sole source of truth at runtime (see
+// /auth/admin/public-settings): TURNSTILE_SECRET_KEY and
+// VITE_TURNSTILE_SITE_KEY can both change via `.env` + `docker compose up
+// -d` without rebuilding the UI image, and `mount`/`ensureToken` below
+// always await this fetch first, so there is no benefit - and a real
+// staleness hazard - in ever falling back to the build-time-baked
+// `import.meta.env.VITE_TURNSTILE_SITE_KEY`. If the backend says Turnstile
+// isn't required, never mount the widget, even if an old bundle has a
+// leftover build-time key baked in.
+const TURNSTILE_SITE_KEY = computed(() => (
+  publicSettings.value.turnstile_required ? (publicSettings.value.turnstile_site_key ?? '') : ''
+))
+// True when the backend requires a Turnstile token but no site key is
+// available - a deployment misconfiguration, not a visitor error.
+const turnstileMisconfigured = computed(() => publicSettings.value.turnstile_required && !TURNSTILE_SITE_KEY.value)
 
 // mode: 'account' = username+password, 'token' = raw token (legacy)
 const mode = ref<'account' | 'token'>('account')
@@ -32,23 +46,9 @@ const rememberMe = ref(getRememberPreference())
 const showPassword = ref(false)
 const tokenUsed = ref(false)
 const turnstileContainer = ref<HTMLElement | null>(null)
-const turnstileToken = ref('')
-const turnstileWidgetId = ref<string | number | null>(null)
+const turnstile = useTurnstile()
 let restoreBodyOverflow = ''
 let restoreHtmlOverflow = ''
-
-type TurnstileWidgetId = string | number
-interface TurnstileApi {
-  render: (container: HTMLElement, options: Record<string, unknown>) => TurnstileWidgetId
-  execute: (id: TurnstileWidgetId) => void
-  reset: (id: TurnstileWidgetId) => void
-}
-
-declare global {
-  interface Window {
-    turnstile?: TurnstileApi
-  }
-}
 
 watch(rememberMe, (value) => setRememberPreference(value))
 watch(mode, () => {
@@ -61,57 +61,16 @@ function setError(message: string, usedToken = false) {
   tokenUsed.value = usedToken
 }
 
-async function ensureTurnstileToken(): Promise<string> {
-  if (!TURNSTILE_SITE_KEY) return ''
-  if (!window.turnstile || turnstileWidgetId.value == null) throw new Error('Security check is not ready.')
-  if (!turnstileToken.value) throw new Error('Please complete the security check before logging in.')
-  return turnstileToken.value
-}
-
-function resetTurnstileToken() {
-  if (!TURNSTILE_SITE_KEY || !window.turnstile || turnstileWidgetId.value == null) return
-  window.turnstile.reset(turnstileWidgetId.value)
-  turnstileToken.value = ''
-}
-
-async function mountTurnstile() {
-  if (!TURNSTILE_SITE_KEY || !turnstileContainer.value) return
-  if (!document.querySelector('script[data-turnstile]')) {
-    await new Promise<void>((resolve, reject) => {
-      const script = document.createElement('script')
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
-      script.async = true
-      script.defer = true
-      script.dataset.turnstile = '1'
-      script.onload = () => resolve()
-      script.onerror = () => reject(new Error('Security check failed to load'))
-      document.head.appendChild(script)
-    })
-  } else if (!window.turnstile) {
-    await new Promise<void>((resolve, reject) => {
-      const start = Date.now()
-      const check = () => {
-        if (window.turnstile) resolve()
-        else if (Date.now() - start > 5_000) reject(new Error('Security check failed to initialize'))
-        else setTimeout(check, 50)
-      }
-      check()
-    })
+async function mountTurnstileWhenReady() {
+  await refreshPublicSettings()
+  if (!TURNSTILE_SITE_KEY.value) return
+  await nextTick()
+  if (!turnstileContainer.value) return
+  try {
+    await turnstile.mount(turnstileContainer.value, TURNSTILE_SITE_KEY.value)
+  } catch (e: any) {
+    setError(e?.message ?? 'Security check failed to load')
   }
-  if (!window.turnstile || turnstileWidgetId.value != null) return
-  turnstileWidgetId.value = window.turnstile.render(turnstileContainer.value, {
-    sitekey: TURNSTILE_SITE_KEY,
-    callback: (tokenValue: string) => {
-      turnstileToken.value = tokenValue
-    },
-    'expired-callback': () => {
-      turnstileToken.value = ''
-    },
-    'error-callback': () => {
-      turnstileToken.value = ''
-      setError('Security check failed. Reload and try again.')
-    },
-  })
 }
 
 function goToAccountLogin() {
@@ -127,9 +86,7 @@ onMounted(() => {
   restoreHtmlOverflow = document.documentElement.style.overflow
   document.body.style.overflow = 'hidden'
   document.documentElement.style.overflow = 'hidden'
-  void mountTurnstile().catch((e: any) => {
-    setError(e?.message ?? 'Security check failed to load')
-  })
+  void mountTurnstileWhenReady()
 })
 
 onBeforeUnmount(() => {
@@ -139,15 +96,19 @@ onBeforeUnmount(() => {
 
 async function submit() {
   setError('')
+  if (mode.value === 'account' && turnstileMisconfigured.value) {
+    setError('Security check is misconfigured on the server (Turnstile is required but no site key is set). Contact the site administrator.')
+    return
+  }
   loading.value = true
   try {
     if (mode.value === 'account') {
-      const captchaToken = await ensureTurnstileToken()
+      const captchaToken = await turnstile.ensureToken(TURNSTILE_SITE_KEY.value)
       await authLogin(username.value.trim(), password.value, {
         rememberMe: rememberMe.value,
         turnstileToken: captchaToken,
       })
-      resetTurnstileToken()
+      turnstile.reset()
     } else {
       if (!token.value.trim()) throw new Error('Token is required')
       const status = await authTokenStatus(token.value.trim())
@@ -161,7 +122,7 @@ async function submit() {
     router.push('/files')
   } catch (e: any) {
     setError(e.message ?? 'Login failed')
-    resetTurnstileToken()
+    turnstile.reset()
   } finally {
     loading.value = false
   }

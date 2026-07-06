@@ -1158,6 +1158,8 @@ export interface PublicAdminSettings {
   public_title: string
   registration_enabled: boolean
   base_api_url?: string
+  turnstile_site_key?: string
+  turnstile_required?: boolean
 }
 
 export interface AdminWebhook {
@@ -1364,6 +1366,11 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+}
+
+export function formatTimestamp(value: number | null | undefined): string {
+  if (!value) return 'N/A'
+  return new Date(value * 1000).toLocaleString()
 }
 
 export function isLoggedIn(): boolean {

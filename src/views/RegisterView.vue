@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authRegister, authLogin } from '../lib/api'
 import { isAuthEnabled } from '../lib/features'
+import { usePublicSettings } from '../lib/publicSettings'
+import { useTurnstile } from '../lib/turnstile'
 
 const router = useRouter()
+const { publicSettings, refreshPublicSettings } = usePublicSettings()
+// See LoginView.vue for why this is gated purely on the backend's
+// `turnstile_required` truth rather than falling back to the build-time
+// `import.meta.env.VITE_TURNSTILE_SITE_KEY`.
+const TURNSTILE_SITE_KEY = () => (publicSettings.value.turnstile_required ? (publicSettings.value.turnstile_site_key ?? '') : '')
 
 const username = ref('')
 const password = ref('')
@@ -13,6 +20,8 @@ const token = ref('')
 const error = ref('')
 const loading = ref(false)
 const tokenUsed = ref(false)
+const turnstileContainer = ref<HTMLElement | null>(null)
+const turnstile = useTurnstile()
 let restoreBodyOverflow = ''
 let restoreHtmlOverflow = ''
 
@@ -25,6 +34,17 @@ onMounted(() => {
   restoreHtmlOverflow = document.documentElement.style.overflow
   document.body.style.overflow = 'hidden'
   document.documentElement.style.overflow = 'hidden'
+  void (async () => {
+    await refreshPublicSettings()
+    if (!TURNSTILE_SITE_KEY()) return
+    await nextTick()
+    if (!turnstileContainer.value) return
+    try {
+      await turnstile.mount(turnstileContainer.value, TURNSTILE_SITE_KEY())
+    } catch (e: any) {
+      error.value = e?.message ?? 'Security check failed to load'
+    }
+  })()
 })
 
 onBeforeUnmount(() => {
@@ -43,11 +63,17 @@ async function submit() {
     error.value = 'Password must be at least 6 characters'
     return
   }
+  if (publicSettings.value.turnstile_required && !TURNSTILE_SITE_KEY()) {
+    error.value = 'Security check is misconfigured on the server (Turnstile is required but no site key is set). Contact the site administrator.'
+    return
+  }
   loading.value = true
   try {
     await authRegister(username.value.trim(), password.value, token.value.trim())
-    // Auto-login after register
-    await authLogin(username.value.trim(), password.value)
+    // Auto-login after register - the login endpoint enforces the same
+    // Turnstile check, so this needs its own token.
+    const captchaToken = await turnstile.ensureToken(TURNSTILE_SITE_KEY())
+    await authLogin(username.value.trim(), password.value, { turnstileToken: captchaToken })
     router.push('/files')
   } catch (e: any) {
     const message = e.message ?? 'Registration failed'
@@ -57,6 +83,7 @@ async function submit() {
     } else {
       error.value = message
     }
+    turnstile.reset()
   } finally {
     loading.value = false
   }
@@ -91,6 +118,8 @@ async function submit() {
             <input id="register-token" v-model="token" type="text" autocomplete="off" placeholder="your-token" required />
           </div>
 
+          <div v-if="TURNSTILE_SITE_KEY()" ref="turnstileContainer" class="turnstile-container"></div>
+
           <div v-if="error" class="error-msg" role="alert">
             <span>{{ error }}</span>
             <router-link v-if="tokenUsed" to="/login" class="inline-link">Do you have an account?</router-link>
@@ -117,6 +146,9 @@ async function submit() {
   justify-content: center;
   padding: var(--space-4);
   overflow-y: auto;
+}
+.turnstile-container {
+  margin-bottom: var(--space-3);
 }
 .center {
   width: min(420px, 100%);

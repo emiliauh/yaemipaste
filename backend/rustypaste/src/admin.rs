@@ -21,6 +21,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -2323,11 +2324,23 @@ async fn public_settings() -> HttpResponse {
         Err(response) => return response,
     };
     let settings = setting_map(&connection).unwrap_or_default();
+    // VITE_TURNSTILE_SITE_KEY is baked into the frontend bundle at build
+    // time, but TURNSTILE_SECRET_KEY is read at backend runtime - an admin
+    // can change the secret via `.env` + `docker compose up -d` without
+    // rebuilding the UI image. Serving the site key here too lets the
+    // frontend pick up the current value without needing a rebuild, so the
+    // two never drift out of sync and silently lock login out.
+    let turnstile_site_key = env::var("VITE_TURNSTILE_SITE_KEY")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     HttpResponse::Ok().json(json!({
         "app_name": settings.get("app_name").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "public_title": settings.get("public_title").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "base_api_url": settings.get("base_api_url").cloned().unwrap_or_default(),
         "registration_enabled": registration_enabled(&connection),
+        "turnstile_site_key": turnstile_site_key,
+        "turnstile_required": !auth_env.turnstile_secret_key.trim().is_empty(),
     }))
 }
 

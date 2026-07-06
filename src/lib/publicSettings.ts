@@ -6,6 +6,8 @@ const FALLBACK_SETTINGS: PublicAdminSettings = {
   public_title: 'yaemipaste',
   registration_enabled: true,
   base_api_url: '',
+  turnstile_site_key: '',
+  turnstile_required: false,
 }
 
 const publicSettings = ref<PublicAdminSettings>({ ...FALLBACK_SETTINGS })
