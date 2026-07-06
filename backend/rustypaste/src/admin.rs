@@ -2324,12 +2324,14 @@ async fn public_settings() -> HttpResponse {
         Err(response) => return response,
     };
     let settings = setting_map(&connection).unwrap_or_default();
-    // VITE_TURNSTILE_SITE_KEY is baked into the frontend bundle at build
-    // time, but TURNSTILE_SECRET_KEY is read at backend runtime - an admin
-    // can change the secret via `.env` + `docker compose up -d` without
-    // rebuilding the UI image. Serving the site key here too lets the
-    // frontend pick up the current value without needing a rebuild, so the
-    // two never drift out of sync and silently lock login out.
+    // Despite the VITE_ prefix (kept for .env naming continuity), the
+    // frontend no longer reads VITE_TURNSTILE_SITE_KEY at build time at
+    // all - it fetches the live value from this endpoint on every page
+    // load, and the login page gates on `turnstile_required` (derived from
+    // TURNSTILE_SECRET_KEY below), never a build-time-baked value. This
+    // means both keys can be set/changed/cleared via `.env` + `docker
+    // compose up -d` alone, no rebuild, and the two can never drift out of
+    // sync and silently lock login out.
     let turnstile_site_key = env::var("VITE_TURNSTILE_SITE_KEY")
         .unwrap_or_default()
         .trim()

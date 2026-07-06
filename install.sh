@@ -607,10 +607,10 @@ configure_env() {
     success "Generated admin bearer automatically."
   fi
   if [[ -n "$turnstile_key" && -z "$turnstile_secret" ]]; then
-    warn "Turnstile site key set but TURNSTILE_SECRET_KEY is empty; login challenges will fail."
+    warn "Turnstile site key set but TURNSTILE_SECRET_KEY is empty; the secret is what enables enforcement, so the widget will not run and logins will succeed without any challenge. Set a secret to actually enable Turnstile."
   fi
   if [[ -n "$turnstile_secret" && -z "$turnstile_key" ]]; then
-    warn "TURNSTILE_SECRET_KEY is set but no Turnstile site key is configured; the login form has no widget to solve, so every login will be rejected with 'Security check failed'. Set a site key or clear TURNSTILE_SECRET_KEY."
+    warn "TURNSTILE_SECRET_KEY is set but no Turnstile site key is configured; the login form has no widget to solve, so the login page will show 'Security check is misconfigured on the server' and no one can log in. Set a site key or clear TURNSTILE_SECRET_KEY."
   fi
   if [[ -z "$jwt_secret" ]]; then
     jwt_secret="$(generate_secret)"
