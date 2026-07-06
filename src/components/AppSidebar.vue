@@ -729,6 +729,16 @@ function toggleCompactTheme() {
     border: none;
     background: transparent;
   }
+  .mobile-tabbar-settings svg {
+    width: 22px;
+    height: 22px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 
   .mobile-tabbar-settings {
     flex: 0 0 52px;

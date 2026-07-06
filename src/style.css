@@ -127,16 +127,24 @@ html, body {
 body {
   background-color: var(--bg);
   background-image:
-    radial-gradient(ellipse 70% 45% at 50% -14%, color-mix(in srgb, var(--text) 5%, transparent), transparent 72%),
+    radial-gradient(ellipse 78% 48% at 16% -12%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 68%),
+    radial-gradient(ellipse 62% 42% at 104% 108%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%),
     linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
-  background-attachment: fixed, fixed;
+  background-attachment: fixed, fixed, fixed;
   background-repeat: no-repeat;
-  background-size: 100vw 100dvh, 100vw 100dvh;
+  background-size: 100vw 100dvh, 100vw 100dvh, 100vw 100dvh;
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 78% 48% at 16% -12%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 68%),
+    radial-gradient(ellipse 62% 42% at 104% 108%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 70%),
+    linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
 }
 
 #app {
