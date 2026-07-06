@@ -66,7 +66,7 @@ const passwordPromptAction = ref<'preview' | 'download'>('preview')
 const deleteConfirmOpen = ref(false)
 const deleteConfirmMode = ref<DeleteConfirmMode>('selected')
 const wsConnected = ref(false)
-const compactFileNames = ref(window.matchMedia('(max-width: 600px)').matches)
+const compactFileNames = ref(window.matchMedia('(max-width: 820px)').matches)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const notificationStore = useNotificationStore()
 let hoverToken = 0
@@ -1104,7 +1104,7 @@ function onCompactNamesMediaChange(event: MediaQueryListEvent) {
 
 onMounted(() => {
   void load()
-  compactFileNamesMediaQuery = window.matchMedia('(max-width: 600px)')
+  compactFileNamesMediaQuery = window.matchMedia('(max-width: 820px)')
   compactFileNames.value = compactFileNamesMediaQuery.matches
   compactFileNamesMediaQuery.addEventListener('change', onCompactNamesMediaChange)
   window.addEventListener('blur', hideHover)
@@ -1291,7 +1291,7 @@ onBeforeUnmount(() => {
               <th class="sortable col-expiry" @click="setSort('expires_at')">
                 Expires <span class="sort-arrow">{{ sortKey === 'expires_at' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
               </th>
-              <th style="width:1px"></th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -2377,9 +2377,24 @@ onBeforeUnmount(() => {
 
 @media (min-width: 601px) and (max-width: 820px) {
   .file-table { width: 100%; }
+  .file-table th.col-size,
+  .file-table td.size { width: 84px; }
+  .file-table th.col-expiry,
+  .file-table td.expiry { width: 110px; }
   .file-table th:last-child,
-  .file-table td.actions { width: 150px; }
+  .file-table td.actions { width: 110px; }
   .filename { width: 100%; min-width: 0; }
+  .action-label { display: none; }
+  .action-btn {
+    min-width: 30px;
+    width: 30px;
+    padding: 3px !important;
+  }
+  .row-item-menu {
+    right: 0;
+    left: auto;
+    max-width: calc(100vw - 20px);
+  }
 }
 
 @keyframes skeletonPulse {
