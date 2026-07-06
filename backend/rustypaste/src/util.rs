@@ -238,17 +238,30 @@ mod tests {
 
     #[test]
     fn test_get_expired_files() -> Result<(), ActixError> {
-        let current_dir = env::current_dir()?;
+        // Use an isolated temp directory rather than the crate's own source
+        // directory: get_expired_files() globs *every* file in base_path
+        // matching the expiry-timestamp pattern, so sharing env::current_dir()
+        // with other tests/runs means one failed cleanup (e.g. an interrupted
+        // run) permanently leaves a stray "expired" fixture behind, which
+        // then fails every subsequent run's very first (not-yet-expired)
+        // assertion - a self-perpetuating false failure unrelated to the code
+        // under test.
+        let current_dir = env::temp_dir().join(format!(
+            "rustypaste-test-expired-files-{}-{}",
+            std::process::id(),
+            get_system_time()?.as_nanos()
+        ));
+        fs::create_dir_all(&current_dir)?;
         let expiration_time = get_system_time()?.as_millis() + 50;
         let path = PathBuf::from(format!("expired.file2.{expiration_time}"));
-        fs::write(&path, String::new())?;
+        fs::write(current_dir.join(&path), String::new())?;
         assert_eq!(Vec::<PathBuf>::new(), get_expired_files(&current_dir));
         thread::sleep(Duration::from_millis(75));
         assert_eq!(
             vec![current_dir.join(&path)],
             get_expired_files(&current_dir)
         );
-        fs::remove_file(path)?;
+        fs::remove_dir_all(&current_dir)?;
         assert_eq!(Vec::<PathBuf>::new(), get_expired_files(&current_dir));
         Ok(())
     }
