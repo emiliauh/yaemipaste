@@ -61,16 +61,21 @@ function setError(message: string, usedToken = false) {
   tokenUsed.value = usedToken
 }
 
-async function mountTurnstileWhenReady() {
-  await refreshPublicSettings()
-  if (!TURNSTILE_SITE_KEY.value) return
-  await nextTick()
-  if (!turnstileContainer.value) return
-  try {
-    await turnstile.mount(turnstileContainer.value, TURNSTILE_SITE_KEY.value)
-  } catch (e: any) {
-    setError(e?.message ?? 'Security check failed to load')
-  }
+let turnstileReady: Promise<void> | null = null
+
+function mountTurnstileWhenReady(): Promise<void> {
+  turnstileReady = (async () => {
+    await refreshPublicSettings()
+    if (!TURNSTILE_SITE_KEY.value) return
+    await nextTick()
+    if (!turnstileContainer.value) return
+    try {
+      await turnstile.mount(turnstileContainer.value, TURNSTILE_SITE_KEY.value)
+    } catch (e: any) {
+      setError(e?.message ?? 'Security check failed to load')
+    }
+  })()
+  return turnstileReady
 }
 
 function goToAccountLogin() {
@@ -96,9 +101,16 @@ onBeforeUnmount(() => {
 
 async function submit() {
   setError('')
-  if (mode.value === 'account' && turnstileMisconfigured.value) {
-    setError('Security check is misconfigured on the server (Turnstile is required but no site key is set). Contact the site administrator.')
-    return
+  if (mode.value === 'account') {
+    // Close the race between this submit and the async settings fetch that
+    // decides whether Turnstile is required (see mountTurnstileWhenReady):
+    // an autofill-and-immediate-submit could otherwise read the FALLBACK
+    // "not required" default and skip a token the backend actually needs.
+    await (turnstileReady ?? mountTurnstileWhenReady())
+    if (turnstileMisconfigured.value) {
+      setError('Security check is misconfigured on the server (Turnstile is required but no site key is set). Contact the site administrator.')
+      return
+    }
   }
   loading.value = true
   try {

@@ -25,16 +25,10 @@ const turnstile = useTurnstile()
 let restoreBodyOverflow = ''
 let restoreHtmlOverflow = ''
 
-onMounted(() => {
-  if (!isAuthEnabled()) {
-    router.replace('/files')
-    return
-  }
-  restoreBodyOverflow = document.body.style.overflow
-  restoreHtmlOverflow = document.documentElement.style.overflow
-  document.body.style.overflow = 'hidden'
-  document.documentElement.style.overflow = 'hidden'
-  void (async () => {
+let turnstileReady: Promise<void> | null = null
+
+function mountTurnstileWhenReady(): Promise<void> {
+  turnstileReady = (async () => {
     await refreshPublicSettings()
     if (!TURNSTILE_SITE_KEY()) return
     await nextTick()
@@ -45,6 +39,19 @@ onMounted(() => {
       error.value = e?.message ?? 'Security check failed to load'
     }
   })()
+  return turnstileReady
+}
+
+onMounted(() => {
+  if (!isAuthEnabled()) {
+    router.replace('/files')
+    return
+  }
+  restoreBodyOverflow = document.body.style.overflow
+  restoreHtmlOverflow = document.documentElement.style.overflow
+  document.body.style.overflow = 'hidden'
+  document.documentElement.style.overflow = 'hidden'
+  void mountTurnstileWhenReady()
 })
 
 onBeforeUnmount(() => {
@@ -63,6 +70,11 @@ async function submit() {
     error.value = 'Password must be at least 6 characters'
     return
   }
+  // Close the race between this submit and the async settings fetch that
+  // decides whether Turnstile is required (see onMounted above): an
+  // impatient submit could otherwise read the FALLBACK "not required"
+  // default and skip a token the backend actually needs.
+  await (turnstileReady ?? mountTurnstileWhenReady())
   if (publicSettings.value.turnstile_required && !TURNSTILE_SITE_KEY()) {
     error.value = 'Security check is misconfigured on the server (Turnstile is required but no site key is set). Contact the site administrator.'
     return

@@ -32,7 +32,6 @@ docker compose --profile with-resolver up --build -d
 | `VITE_HISTORY_WS` | Optional history websocket override | empty |
 | `VITE_FILE_RESOLVE_BASE` | Resolver path for `/file/<token>/...` links | `/api/resolve` |
 | `VITE_TOKEN_OWNER_PATH` | Optional token-owner lookup path | `/api/token-owner` |
-| `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key. Baked into the frontend at build time as a fallback, but the backend also serves the *current* value at runtime via `/auth/admin/public-settings`, so changing it via `.env` + `docker compose up -d` (no rebuild) takes effect immediately - see the Backend Variables table below. | empty |
 | `VITE_ENABLE_SHAREX` | Enable ShareX settings UI and `/auth/sharex` config generation | `1` |
 | `VITE_ENABLE_AUTH` | Enable login/register/account UI | `1` |
 | `VITE_REPOSITORY_URL` | Footer repository link | `https://github.com/emiliauh/yaemipaste` |
@@ -45,8 +44,8 @@ docker compose --profile with-resolver up --build -d
 | `PASTE_URL` | Public site URL advertised by the bundled Rust backend | `http://localhost:8080` |
 | `DB_PATH` | Auth DB path inside the backend container | `/var/lib/rustypaste-auth/users.db` |
 | `JWT_SECRET` | Session signing secret | empty |
-| `TURNSTILE_SECRET_KEY` | Server-side Turnstile secret. If set without a matching `VITE_TURNSTILE_SITE_KEY`, login is enforced but the widget never renders - every login attempt fails with "Security check failed". Keep both empty to disable Turnstile, or set both together. | empty |
-| `VITE_TURNSTILE_SITE_KEY` | Also read by the backend at runtime (not just baked into the UI build) so `/auth/admin/public-settings` can hand the current site key to the login page without a rebuild. | empty |
+| `TURNSTILE_SECRET_KEY` | Server-side Turnstile secret. If set without a matching `VITE_TURNSTILE_SITE_KEY`, the login page shows an explicit "Security check is misconfigured on the server" message rather than blocking silently. Keep both empty to disable Turnstile, or set both together. | empty |
+| `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key. Despite the `VITE_` prefix (kept for `.env` naming continuity), this is read by the **backend** at runtime, not baked into the frontend build - the UI fetches the live value from `/auth/admin/public-settings` on every page load. Change it via `.env` + `docker compose up -d`; no rebuild needed. | empty |
 | `PASTE_PUBLIC_API` | Absolute API URL written into generated ShareX configs | `http://localhost:8080/api` |
 | `PASSKEYS_ENABLED` | Enable backend passkey routes | `0` |
 | `PASSKEY_RP_NAME` | Passkey display name | `yaemipaste` |

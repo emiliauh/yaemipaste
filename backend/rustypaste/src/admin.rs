@@ -2411,6 +2411,7 @@ mod tests {
             env::set_var("PASSKEYS_ENABLED", "1");
             env::remove_var("PASSKEY_RP_ID");
             env::remove_var("PASSKEY_ORIGINS");
+            env::remove_var("VITE_TURNSTILE_SITE_KEY");
         }
     }
 
@@ -2425,6 +2426,7 @@ mod tests {
             env::remove_var("PASSKEYS_ENABLED");
             env::remove_var("PASSKEY_RP_ID");
             env::remove_var("PASSKEY_ORIGINS");
+            env::remove_var("VITE_TURNSTILE_SITE_KEY");
         }
     }
 
@@ -2511,6 +2513,72 @@ mod tests {
         let sharded_file = token_dir.join("dir-owned.txt");
         fs::write(&sharded_file, "directory-owned").expect("sharded upload should be written");
         (flat_file, sharded_file)
+    }
+
+
+    #[actix_web::test]
+    async fn public_settings_reports_turnstile_runtime_configuration() {
+        let db_path = unique_test_path("public-settings", ".sqlite");
+        let upload_root = unique_test_path("public-settings-uploads", "");
+        set_auth_test_env(&db_path);
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config(upload_root.clone()))))
+                .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
+                .service(web::scope("/auth/admin").configure(configure_routes)),
+        )
+        .await;
+
+        macro_rules! read_public_settings {
+            () => {{
+                let request = test::TestRequest::get()
+                    .uri("/auth/admin/public-settings")
+                    .to_request();
+                let response = test::call_service(&app, request).await;
+                assert_eq!(StatusCode::OK, response.status());
+                test::read_body_json::<Value, _>(response).await
+            }};
+        }
+
+        unsafe {
+            env::remove_var("TURNSTILE_SECRET_KEY");
+            env::remove_var("VITE_TURNSTILE_SITE_KEY");
+        }
+        let settings = read_public_settings!();
+        assert_eq!("", settings["turnstile_site_key"]);
+        assert_eq!(false, settings["turnstile_required"]);
+
+        unsafe {
+            env::set_var("TURNSTILE_SECRET_KEY", "runtime-secret");
+            env::remove_var("VITE_TURNSTILE_SITE_KEY");
+        }
+        // Regression: setting only the runtime backend secret used to require
+        // a matching frontend rebuild, otherwise login showed no site key.
+        let settings = read_public_settings!();
+        assert_eq!("", settings["turnstile_site_key"]);
+        assert_eq!(true, settings["turnstile_required"]);
+
+        unsafe {
+            env::set_var("TURNSTILE_SECRET_KEY", "runtime-secret");
+            env::set_var("VITE_TURNSTILE_SITE_KEY", "site-key");
+        }
+        let settings = read_public_settings!();
+        assert_eq!("site-key", settings["turnstile_site_key"]);
+        assert_eq!(true, settings["turnstile_required"]);
+
+        unsafe {
+            env::set_var("TURNSTILE_SECRET_KEY", " runtime-secret ");
+            env::set_var("VITE_TURNSTILE_SITE_KEY", " abc ");
+        }
+        let settings = read_public_settings!();
+        assert_eq!("abc", settings["turnstile_site_key"]);
+        assert_eq!(true, settings["turnstile_required"]);
+
+        let _ = fs::remove_file(db_path);
+        let _ = fs::remove_dir_all(upload_root);
+        clear_auth_test_env();
     }
 
     #[actix_web::test]
