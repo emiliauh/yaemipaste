@@ -2310,6 +2310,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .upload-name-cell { min-width: 190px; }
 }
 @media (max-width: 600px) {
+  .admin-table tbody tr:hover:not(:has(input[type="checkbox"]:checked)) td {
+    background: transparent;
+  }
   .settings-layer {
     --settings-panel-left: 12px;
     --settings-panel-right: 12px;
