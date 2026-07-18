@@ -642,7 +642,7 @@ onBeforeUnmount(() => {
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);
 }
-.btn-copy:hover { transform: translateY(-1px); }
+.btn-copy:hover { transform: none; }
 .btn-copy:active { transform: translateY(0) scale(0.97); }
 
 @keyframes skeleton-sweep {

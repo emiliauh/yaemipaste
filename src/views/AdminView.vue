@@ -214,6 +214,11 @@ function isShareXUpload(upload: AdminUpload): boolean {
   return source === 'sharex' || uploader === 'sharex' || uploader.endsWith('(sharex)')
 }
 
+function uploadOwner(upload: AdminUpload): string {
+  const owner = upload.owner ?? upload.uploader ?? 'Unattributed'
+  return isShareXUpload(upload) ? owner.replace(/\s*\(sharex\)\s*$/i, '') : owner
+}
+
 function uploadDownloadUrl(upload: AdminUpload): string {
   return publicDownloadUrl(upload.file_name)
 }
@@ -805,7 +810,7 @@ onBeforeUnmount(() => {
                   @change="toggleUploadPage(($event.target as HTMLInputElement).checked)"
                 />
               </th>
-              <th>Name</th><th>Size</th><th>Expires</th><th></th>
+              <th>Name</th><th>Owner</th><th>Size</th><th>Created</th><th>Expires</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -815,12 +820,19 @@ onBeforeUnmount(() => {
                 <button class="upload-preview-trigger" type="button" :aria-label="`Preview ${uploadDisplayName(upload)}`" @click="openUploadPreview(upload)">
                   <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                 </button>
-                <img v-if="isShareXUpload(upload)" class="upload-sharex-icon" :src="sharexLogoUrl" alt="Uploaded with ShareX" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX" />
                 <button class="upload-name-link" type="button" @click="openUploadPreview(upload)">
                   {{ uploadDisplayName(upload) }}
                 </button>
               </td>
+              <td class="upload-owner-cell">
+                <span>{{ uploadOwner(upload) }}</span>
+                <span v-if="isShareXUpload(upload)" class="upload-sharex-badge" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX">
+                  <img :src="sharexLogoUrl" alt="" aria-hidden="true" />
+                  ShareX
+                </span>
+              </td>
               <td>{{ formatBytes(upload.size_bytes) }}</td>
+              <td>{{ ts(upload.created_at) }}</td>
               <td>{{ upload.expired ? 'Expired' : (upload.expires_at ? ts(upload.expires_at) : 'Never') }}</td>
               <td class="upload-row-actions">
                 <a class="btn-ghost upload-action" :href="uploadDownloadUrl(upload)" aria-label="Download">
@@ -1994,12 +2006,26 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   color: var(--accent-h);
   text-decoration: underline;
 }
-.upload-sharex-icon {
-  width: 17px;
-  height: 17px;
-  margin-right: var(--space-1);
+.upload-owner-cell {
+  white-space: nowrap;
+}
+.upload-sharex-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: var(--space-2);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg1);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  line-height: 1;
+}
+.upload-sharex-badge img {
+  width: 14px;
+  height: 14px;
   object-fit: contain;
-  vertical-align: middle;
 }
 .upload-row-actions {
   min-width: 234px;
