@@ -3573,6 +3573,7 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   await expect(nameButton).toHaveCSS('color', 'rgb(78, 120, 170)')
   await expect(hoverPreview).toBeVisible()
   await expect(hoverPreview.getByRole('img', { name: 'ShareX screenshot.png' })).toBeVisible()
+  await expect(hoverPreview.locator('.upload-hover-name')).toHaveText('ShareX screenshot')
   await expect(hoverPreview).toHaveCSS('pointer-events', 'none')
 
   const downloadLink = row.getByRole('link', { name: 'Download' })

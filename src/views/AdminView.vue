@@ -995,7 +995,7 @@ onBeforeUnmount(() => {
 
     <div v-if="hoverUploadPreview" class="upload-hover-preview" :style="{ left: `${hoverUploadPreview.x}px`, top: `${hoverUploadPreview.y}px` }">
       <img :src="publicFileUrl(hoverUploadPreview.upload.file_name)" :alt="uploadDisplayName(hoverUploadPreview.upload)" />
-      <div class="upload-hover-name">{{ uploadDisplayName(hoverUploadPreview.upload) }}</div>
+      <div class="upload-hover-name">{{ splitUploadDisplayName(hoverUploadPreview.upload).base }}</div>
     </div>
 
     <section v-if="tab === 'Settings'" class="settings-page">
