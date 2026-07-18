@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   adminAuditLog,
@@ -106,6 +106,11 @@ const uploadsPageSize = ref<UploadPageSize>(15)
 const uploadsActionsOpen = ref(false)
 const uploadRowMenuOpen = ref<string | null>(null)
 const userRowMenuOpen = ref<string | null>(null)
+const userRowMenuTrigger = ref<HTMLButtonElement | null>(null)
+const userRowMenuPanel = ref<HTMLElement | null>(null)
+const userRowMenuStyle = ref<Record<string, string>>({})
+const usersTableScroll = ref<HTMLElement | null>(null)
+const uploadsTableScroll = ref<HTMLElement | null>(null)
 const previewUpload = ref<AdminUpload | null>(null)
 const hoverUploadPreview = ref<UploadHoverPreview | null>(null)
 const uploadHoverEnabled = typeof window !== 'undefined'
@@ -148,6 +153,7 @@ const pagedUsers = computed(() => paginate(users.value, 'Users'))
 const pagedUploads = computed(() => paginate(filteredUploads.value, 'Uploads', uploadsPageSize.value))
 const pagedWebhooks = computed(() => paginate(webhooks.value, 'Webhooks'))
 const pagedAudit = computed(() => paginate(audit.value, 'Audit'))
+const activeUserMenuUser = computed(() => users.value.find((user) => user.username === userRowMenuOpen.value) ?? null)
 const usersPageCount = computed(() => pageCount(users.value.length))
 const uploadsPageCount = computed(() => pageCount(filteredUploads.value.length, uploadsPageSize.value))
 const webhooksPageCount = computed(() => pageCount(webhooks.value.length))
@@ -592,14 +598,58 @@ function closeUploadMenusOnOutsidePointer(event: PointerEvent) {
   const target = event.target as Element | null
   if (!target?.closest('.admin-actions-menu')) uploadsActionsOpen.value = false
   if (!target?.closest('.upload-row-menu')) uploadRowMenuOpen.value = null
-  if (!target?.closest('.user-row-menu')) userRowMenuOpen.value = null
+  if (userRowMenuOpen.value && !userRowMenuTrigger.value?.contains(target) && !userRowMenuPanel.value?.contains(target)) closeUserRowMenu()
 }
 
-function closeUserRowMenuAndRestoreFocus(event: KeyboardEvent) {
-  const trigger = (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('.user-more')
-  userRowMenuOpen.value = null
-  void nextTick(() => trigger?.focus())
+function positionUserRowMenu() {
+  const trigger = userRowMenuTrigger.value
+  const panel = userRowMenuPanel.value
+  if (!trigger || !panel) return
+  const gutter = 8
+  const gap = 6
+  const triggerBox = trigger.getBoundingClientRect()
+  const panelBox = panel.getBoundingClientRect()
+  const left = Math.max(gutter, Math.min(triggerBox.right - panelBox.width, window.innerWidth - panelBox.width - gutter))
+  const below = triggerBox.bottom + gap
+  const above = triggerBox.top - panelBox.height - gap
+  const top = below + panelBox.height <= window.innerHeight - gutter
+    ? below
+    : Math.max(gutter, Math.min(above, window.innerHeight - panelBox.height - gutter))
+  userRowMenuStyle.value = { left: `${left}px`, top: `${top}px` }
 }
+
+function closeUserRowMenu(restoreFocus = false) {
+  userRowMenuOpen.value = null
+  userRowMenuStyle.value = {}
+  if (restoreFocus) void nextTick(() => userRowMenuTrigger.value?.focus())
+}
+
+async function toggleUserRowMenu(username: string, event: MouseEvent) {
+  if (userRowMenuOpen.value === username) {
+    closeUserRowMenu(true)
+    return
+  }
+  userRowMenuTrigger.value = event.currentTarget as HTMLButtonElement
+  userRowMenuOpen.value = username
+  await nextTick()
+  positionUserRowMenu()
+  userRowMenuPanel.value?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+}
+
+function repositionUserRowMenu() {
+  if (userRowMenuOpen.value) positionUserRowMenu()
+}
+
+watch(tab, async (nextTab) => {
+  closeUserRowMenu()
+  await nextTick()
+  if (nextTab === 'Users') usersTableScroll.value?.scrollTo({ left: 0 })
+  if (nextTab === 'Uploads') uploadsTableScroll.value?.scrollTo({ left: 0 })
+})
+
+watch(pagedUsers, (nextUsers) => {
+  if (userRowMenuOpen.value && !nextUsers.some((user) => user.username === userRowMenuOpen.value)) closeUserRowMenu()
+})
 
 onMounted(() => {
   void refreshPublicSettings()
@@ -609,6 +659,8 @@ onMounted(() => {
   document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.addEventListener('blur', hideUploadHover)
   window.addEventListener('scroll', hideUploadHover, true)
+  window.addEventListener('resize', repositionUserRowMenu)
+  window.addEventListener('scroll', repositionUserRowMenu, true)
 })
 
 onBeforeUnmount(() => {
@@ -617,6 +669,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.removeEventListener('blur', hideUploadHover)
   window.removeEventListener('scroll', hideUploadHover, true)
+  window.removeEventListener('resize', repositionUserRowMenu)
+  window.removeEventListener('scroll', repositionUserRowMenu, true)
 })
 </script>
 
@@ -730,7 +784,7 @@ onBeforeUnmount(() => {
 
       <div class="card">
         <h2>Users</h2>
-        <div class="table-scroll">
+        <div ref="usersTableScroll" class="table-scroll">
         <table class="file-table admin-table users-table">
           <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Uploads</th><th>Storage</th><th>Actions</th></tr></thead>
           <tbody>
@@ -741,16 +795,8 @@ onBeforeUnmount(() => {
               <td>{{ user.upload_count }}</td>
               <td>{{ formatBytes(user.disk_usage_bytes) }}</td>
               <td class="actions user-actions-cell">
-                <div class="user-actions" :class="{ 'is-expanded': userRowMenuOpen === user.username }" @keydown.escape="closeUserRowMenuAndRestoreFocus">
-                  <div class="user-row-menu">
-                    <button class="btn-ghost user-more" type="button" aria-label="More actions" :aria-expanded="userRowMenuOpen === user.username ? 'true' : 'false'" @click="userRowMenuOpen = userRowMenuOpen === user.username ? null : user.username">⋯</button>
-                    <div v-if="userRowMenuOpen === user.username" class="user-row-menu-panel">
-                      <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(user.username, { suspended: !user.suspended_at, suspension_reason: 'Suspended by administrator' }), user.suspended_at ? 'User unsuspended' : 'User suspended'); userRowMenuOpen = null">{{ user.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
-                      <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(user.username, { is_admin: !user.is_admin }), 'Role updated'); userRowMenuOpen = null">{{ user.is_admin ? 'Demote' : 'Promote' }}</button>
-                      <button class="menu-action" type="button" @click="rotateToken(user.username); userRowMenuOpen = null">Rotate token</button>
-                      <button class="menu-action danger" type="button" @click="requestUserPurge(user.username); userRowMenuOpen = null">Purge uploads</button>
-                    </div>
-                  </div>
+                <div class="user-actions">
+                  <button class="btn-ghost user-more" type="button" aria-label="More actions" :aria-controls="`user-actions-${user.username}`" :aria-expanded="userRowMenuOpen === user.username ? 'true' : 'false'" @click="toggleUserRowMenu(user.username, $event)">⋯</button>
                   <button class="btn-red" type="button" @click="requestUserDelete(user.username)">Delete</button>
                 </div>
               </td>
@@ -767,6 +813,14 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      <Teleport to="body">
+        <div v-if="activeUserMenuUser" :id="`user-actions-${activeUserMenuUser.username}`" ref="userRowMenuPanel" class="user-row-menu-panel" :style="userRowMenuStyle" role="group" aria-label="User actions" @keydown.escape.prevent="closeUserRowMenu(true)">
+          <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(activeUserMenuUser!.username, { suspended: !activeUserMenuUser!.suspended_at, suspension_reason: 'Suspended by administrator' }), activeUserMenuUser!.suspended_at ? 'User unsuspended' : 'User suspended'); closeUserRowMenu(true)">{{ activeUserMenuUser.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
+          <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(activeUserMenuUser!.username, { is_admin: !activeUserMenuUser!.is_admin }), 'Role updated'); closeUserRowMenu(true)">{{ activeUserMenuUser.is_admin ? 'Demote' : 'Promote' }}</button>
+          <button class="menu-action" type="button" @click="rotateToken(activeUserMenuUser!.username); closeUserRowMenu(true)">Rotate token</button>
+          <button class="menu-action danger" type="button" @click="requestUserPurge(activeUserMenuUser!.username); closeUserRowMenu()">Purge uploads</button>
+        </div>
+      </Teleport>
     </section>
 
     <section v-if="tab === 'Uploads'" class="stack">
@@ -859,11 +913,11 @@ onBeforeUnmount(() => {
           </div>
           </div>
         </div>
-        <div class="table-scroll">
-        <table class="file-table admin-table">
+        <div ref="uploadsTableScroll" class="table-scroll">
+        <table class="file-table admin-table uploads-table">
           <thead>
             <tr>
-              <th class="select-col" :class="{ 'selection-disabled': !pagedUploads.length || loading }">
+              <th scope="col" class="select-col" :class="{ 'selection-disabled': !pagedUploads.length || loading }">
                 <input
                   type="checkbox"
                   :checked="allPagedUploadsSelected"
@@ -872,7 +926,7 @@ onBeforeUnmount(() => {
                   @change="toggleUploadPage(($event.target as HTMLInputElement).checked)"
                 />
               </th>
-              <th>Name</th><th>Owner</th><th>Size</th><th>Created</th><th>Expires</th><th></th>
+              <th scope="col">Name</th><th scope="col">Owner</th><th scope="col" class="upload-size">Size</th><th scope="col">Created</th><th scope="col" class="upload-expires">Expires</th><th scope="col"></th>
             </tr>
           </thead>
           <tbody>
@@ -882,21 +936,21 @@ onBeforeUnmount(() => {
                 <span class="upload-file-icon" aria-hidden="true">
                   <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                 </span>
-                <button class="upload-name-link" type="button" :aria-label="uploadDisplayName(upload)" :title="uploadDisplayName(upload)" @click="openUploadPreview(upload)" @mouseenter="showUploadHover(upload, $event)" @mousemove="moveUploadHover" @mouseleave="hideUploadHover">
-                  <span class="upload-filename-base">{{ splitUploadDisplayName(upload).base }}</span>
+                <button class="upload-name-link" type="button" :aria-label="uploadDisplayName(upload)" :title="uploadDisplayName(upload)" @click="openUploadPreview(upload)">
+                  <span class="upload-filename-base" @mouseenter="showUploadHover(upload, $event)" @mousemove="moveUploadHover" @mouseleave="hideUploadHover">{{ splitUploadDisplayName(upload).base }}</span>
                   <span v-if="splitUploadDisplayName(upload).ext" class="upload-filename-ext">{{ splitUploadDisplayName(upload).ext }}</span>
                 </button>
               </td>
-              <td class="upload-owner-cell">
+              <td class="upload-owner-cell" data-label="Owner">
                 <span>{{ uploadOwner(upload) }}</span>
                 <span v-if="isShareXUpload(upload)" class="upload-sharex-badge" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX">
                   <img :src="sharexLogoUrl" alt="" aria-hidden="true" />
                   ShareX
                 </span>
               </td>
-              <td>{{ formatBytes(upload.size_bytes) }}</td>
-              <td>{{ ts(upload.created_at) }}</td>
-              <td>{{ upload.expired ? 'Expired' : (upload.expires_at ? ts(upload.expires_at) : 'Never') }}</td>
+              <td class="upload-size" data-label="Size">{{ formatBytes(upload.size_bytes) }}</td>
+              <td data-label="Created">{{ ts(upload.created_at) }}</td>
+              <td class="upload-expires" data-label="Expires">{{ upload.expired ? 'Expired' : (upload.expires_at ? ts(upload.expires_at) : 'Never') }}</td>
               <td class="upload-row-actions">
                 <a class="btn-ghost upload-action" :href="uploadDownloadUrl(upload)" aria-label="Download">
                   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1188,12 +1242,10 @@ onBeforeUnmount(() => {
 .user-actions {
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
   min-width: 124px;
 }
-.user-actions.is-expanded { width: 440px; }
 .user-actions-cell {
   display: table-cell;
   vertical-align: middle;
@@ -1206,9 +1258,6 @@ onBeforeUnmount(() => {
 .user-actions > .btn-red {
   min-width: 80px;
 }
-.user-row-menu {
-  display: contents;
-}
 .user-more {
   display: inline-flex;
   align-items: center;
@@ -1219,17 +1268,32 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 .user-row-menu-panel {
-  display: flex;
-  order: 3;
-  width: 100%;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--space-2);
+  position: fixed;
+  z-index: 1000;
+  width: min(212px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 14px 32px var(--shadow);
 }
 .user-row-menu-panel .menu-action {
-  min-height: 34px;
+  display: block;
+  width: 100%;
+  min-height: 40px;
   padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  text-align: left;
   white-space: nowrap;
+}
+.user-row-menu-panel .menu-action:hover:not(:disabled) {
+  background: var(--surface2);
+  color: var(--text);
 }
 .user-row-menu-panel .menu-action.danger {
   color: var(--red-h);
@@ -2261,6 +2325,92 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
   .webhook-endpoint-actions {
     grid-template-columns: 1fr;
+  }
+  .uploads-table {
+    min-width: 0;
+  }
+  .uploads-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .uploads-table,
+  .uploads-table tbody,
+  .uploads-table tr,
+  .uploads-table td {
+    display: block;
+    width: 100%;
+  }
+  .uploads-table tbody {
+    display: grid;
+    gap: var(--space-2);
+  }
+  .uploads-table tbody tr {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 40px;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .uploads-table td {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+  .uploads-table .select-col {
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+  .uploads-table .upload-name-cell,
+  .uploads-table td[data-label] {
+    grid-column: 2;
+  }
+  .uploads-table .upload-name-cell {
+    min-width: 0;
+    white-space: normal;
+  }
+  .uploads-table .upload-filename-base {
+    max-width: calc(100vw - 150px);
+  }
+  .uploads-table td[data-label] {
+    display: flex;
+    gap: var(--space-2);
+    color: var(--text2);
+    font-size: var(--fs-xs);
+  }
+  .uploads-table td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 52px;
+    color: var(--text3);
+  }
+  .uploads-table .upload-owner-cell > span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .uploads-table .upload-row-actions {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+  }
+  .admin-layout .uploads-table .upload-action,
+  .admin-layout .uploads-table .upload-more {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding: 0 !important;
+  }
+  .uploads-table .upload-action span {
+    display: none;
   }
 }
 @media (max-width: 480px) {
