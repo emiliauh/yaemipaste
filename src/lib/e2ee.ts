@@ -38,12 +38,9 @@ export interface DecryptionResult {
 }
 
 export function supportsBrowserEncryption(): boolean {
-  // crypto.subtle is itself a valid secure-context proxy: real browsers only
-  // expose SubtleCrypto on HTTPS/localhost origins, and Node's WebCrypto
-  // (used when this module runs directly in the Playwright test runner,
-  // outside a browser `window`) is always available. Checking `window`
-  // first would wrongly report unsupported when there is no `window` at all.
-  return !!globalThis.crypto?.subtle
+  if (!globalThis.crypto?.subtle) return false
+  if (typeof window === 'undefined') return true
+  return window.isSecureContext
 }
 
 function requireBrowserEncryption(): void {

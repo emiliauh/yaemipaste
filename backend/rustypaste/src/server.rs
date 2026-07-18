@@ -1930,7 +1930,7 @@ mod tests {
         assert_eq!(StatusCode::OK, response.status());
         assert_body(
             response.into_body(),
-            &format!("http://localhost:8080/fn_from_header/file.txt\n"),
+            &format!("http://localhost:8080{}\n", public_path_from_file_name(header_filename)),
         )
         .await?;
 

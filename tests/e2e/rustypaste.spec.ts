@@ -682,24 +682,25 @@ test('theme controls persist explicit choices and system mode follows the OS pre
   await page.goto('/#/files')
   const isCompact = (page.viewportSize()?.width ?? 1280) <= 600
   const themeTestId = (mode: string) => (isCompact ? `settings-theme-${mode}` : `theme-${mode}`)
+  const themeControl = (mode: string) => page.getByTestId(themeTestId(mode)).filter({ visible: true })
   const openThemeControls = async () => {
     if (isCompact) await page.getByRole('button', { name: 'Preferences' }).click()
   }
 
   await openThemeControls()
-  await expect(page.getByTestId(themeTestId('system'))).toHaveAttribute('aria-pressed', 'true')
+  await expect(themeControl('system')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
-  await page.getByTestId(themeTestId('light')).click()
+  await themeControl('light').click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_theme_mode'))).toBe('light')
 
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await openThemeControls()
-  await expect(page.getByTestId(themeTestId('light'))).toHaveAttribute('aria-pressed', 'true')
+  await expect(themeControl('light')).toHaveAttribute('aria-pressed', 'true')
 
-  await page.getByTestId(themeTestId('system')).click()
+  await themeControl('system').click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')

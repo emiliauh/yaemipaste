@@ -105,6 +105,7 @@ const GENERATED_SUFFIX_EXTENSIONS = new Set([
   'css',
   'html',
   'pdf',
+  'rpenc',
 ])
 
 function stripGeneratedSuffix(fileName) {
