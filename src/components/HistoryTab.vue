@@ -1284,15 +1284,6 @@ onBeforeUnmount(() => {
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
           </div>
-          <div
-            class="live-status"
-            :class="{ connected: wsConnected }"
-            title="History refreshes automatically"
-            aria-label="History refreshes automatically"
-          >
-            <span aria-hidden="true"></span>
-            Auto-refreshing
-          </div>
         </div>
         <button class="btn-red toolbar-control toolbar-delete-all" :disabled="!files.length || bulkDeleting" @click="requestDeleteAll">
           Delete all
@@ -1849,54 +1840,6 @@ onBeforeUnmount(() => {
   transform: translateY(-50%);
   color: var(--text3);
   pointer-events: none;
-}
-
-.live-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  color: var(--text2);
-  font-size: var(--fs-xs);
-}
-
-.live-status span {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  aspect-ratio: 1;
-  display: block;
-  border-radius: var(--radius-full);
-  background: var(--green);
-  opacity: 0.8;
-  animation: refresh-dot-pulse 1.8s ease-in-out infinite;
-}
-
-.live-status.connected span {
-  background: var(--green);
-  opacity: 1;
-  animation-duration: 1.2s;
-}
-
-@keyframes refresh-dot-pulse {
-  0%, 100% {
-    opacity: 0.55;
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 0%, transparent);
-  }
-  50% {
-    opacity: 1;
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 18%, transparent);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .live-status span {
-    animation: none;
-    opacity: 1;
-  }
 }
 
 .bulk-actions {
@@ -2554,10 +2497,6 @@ onBeforeUnmount(() => {
   .search-wrap,
   .toolbar-delete-all {
     width: 100%;
-  }
-
-  .live-status {
-    justify-content: center;
   }
 
   .file-table { width: 100%; }

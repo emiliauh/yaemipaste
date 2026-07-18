@@ -3360,7 +3360,7 @@ test('admin panel covers every tab and responsive viewport class', async ({ page
   await tabs.getByRole('button', { name: 'Uploads', exact: true }).click()
   await expect(page.getByText('ShareX screenshot.png')).toBeVisible()
   await expect(page.getByLabel('Search uploads')).toBeVisible()
-  await expect(page.getByText('Auto-refreshing')).toBeVisible()
+  await expect(page.getByText('Auto-refreshing')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Delete all', exact: true })).toBeVisible()
   expect(await page.locator('.admin-table thead th').allTextContents()).toEqual(['', 'Name', 'Owner', 'Size', 'Created', 'Expires', ''])
   await expect(page.getByRole('group', { name: 'Uploads per page' }).getByRole('button', { name: '15', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -3374,7 +3374,7 @@ test('admin panel covers every tab and responsive viewport class', async ({ page
   await page.getByLabel('Search uploads').fill('')
 
   await tabs.getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(page.getByText('Safe global settings')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Shape the public service' })).toBeVisible()
   await expect(page.getByLabel('App name')).toHaveValue('yaemipaste')
   await expect(page.getByLabel('Public title')).toHaveValue('yaemipaste')
   await expect(page.getByLabel('Base API URL')).toBeVisible()

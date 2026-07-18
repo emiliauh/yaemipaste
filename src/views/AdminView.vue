@@ -258,19 +258,29 @@ function isImageUpload(upload: AdminUpload): boolean {
     || /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)(?:\.\d{6,})?$/i.test(upload.file_name)
 }
 
+function uploadHoverPosition(event: MouseEvent): { x: number; y: number } {
+  // Keep the 232px preview card inside the viewport with a 16px outer gutter.
+  return {
+    x: Math.max(16, Math.min(event.clientX + 18, window.innerWidth - 266)),
+    y: event.clientY + 18,
+  }
+}
+
 function showUploadHover(upload: AdminUpload, event: MouseEvent) {
   if (!uploadHoverEnabled || !isImageUpload(upload)) return
+  const { x, y } = uploadHoverPosition(event)
   hoverUploadPreview.value = {
     upload,
-    x: event.clientX + 18,
-    y: event.clientY + 18,
+    x,
+    y,
   }
 }
 
 function moveUploadHover(event: MouseEvent) {
   if (!hoverUploadPreview.value) return
-  hoverUploadPreview.value.x = event.clientX + 18
-  hoverUploadPreview.value.y = event.clientY + 18
+  const { x, y } = uploadHoverPosition(event)
+  hoverUploadPreview.value.x = x
+  hoverUploadPreview.value.y = y
 }
 
 function hideUploadHover() {
@@ -758,7 +768,6 @@ onBeforeUnmount(() => {
               <input v-model="filterText" placeholder="Search uploads" aria-label="Search uploads" />
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </label>
-            <span class="upload-live-status" title="Uploads refresh automatically"><i aria-hidden="true"></i>Auto-refreshing</span>
           </div>
           <button class="btn-red" type="button" :disabled="!filteredUploads.length || loading" @click="deleteAdminUploads(filteredUploads.map((upload) => upload.path), 'All matching uploads deleted')">Delete all</button>
         </div>
@@ -864,7 +873,7 @@ onBeforeUnmount(() => {
                 <span class="upload-file-icon" aria-hidden="true">
                   <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                 </span>
-                <button class="upload-name-link" type="button" :aria-label="uploadDisplayName(upload)" @click="openUploadPreview(upload)" @mouseenter="showUploadHover(upload, $event)" @mousemove="moveUploadHover" @mouseleave="hideUploadHover">
+                <button class="upload-name-link" type="button" :aria-label="uploadDisplayName(upload)" :title="uploadDisplayName(upload)" @click="openUploadPreview(upload)" @mouseenter="showUploadHover(upload, $event)" @mousemove="moveUploadHover" @mouseleave="hideUploadHover">
                   <span class="upload-filename-base">{{ splitUploadDisplayName(upload).base }}</span>
                   <span v-if="splitUploadDisplayName(upload).ext" class="upload-filename-ext">{{ splitUploadDisplayName(upload).ext }}</span>
                 </button>
@@ -927,22 +936,30 @@ onBeforeUnmount(() => {
     </div>
 
     <section v-if="tab === 'Settings'" class="settings-page">
-      <div class="settings-intro">
-        <h2>Safe global settings</h2>
-        <p class="subtle">Public branding and operational limits. Secrets are never displayed here; sensitive values must be replaced through server-side configuration.</p>
-      </div>
+      <header class="settings-intro">
+        <p class="settings-eyebrow">Administration / Configuration</p>
+        <h2>Shape the public service</h2>
+        <p class="subtle">Manage public identity and practical guardrails from one place. Secrets stay server-side and are never shown here.</p>
+      </header>
 
-      <div class="settings-group settings-group-branding">
-        <p class="settings-group-label">Branding</p>
+      <div class="settings-groups">
+      <section class="settings-group settings-group-branding">
+        <header class="settings-group-heading">
+          <span class="settings-group-number">01</span>
+          <div><h3>Identity</h3><p>How the service presents itself to visitors.</p></div>
+        </header>
         <div class="settings-fields">
           <label><span>App name</span><small>The internal name shown in navigation and account areas.</small><input v-model="settingsForm.app_name" /></label>
           <label><span>Public title</span><small>The browser title and public-facing site name.</small><input v-model="settingsForm.public_title" /></label>
           <label class="span-2"><span>Base API URL</span><small>Leave blank to use this deployment’s default API.</small><input v-model="settingsForm.base_api_url" placeholder="https://papi.example.com" /></label>
         </div>
-      </div>
+      </section>
 
-      <div class="settings-group">
-        <p class="settings-group-label">Operational limits</p>
+      <section class="settings-group">
+        <header class="settings-group-heading">
+          <span class="settings-group-number">02</span>
+          <div><h3>Guardrails</h3><p>Set the boundaries for uploads and account access.</p></div>
+        </header>
         <div class="settings-fields">
           <div class="setting-slider span-2">
             <div class="setting-slider-heading"><div><strong>File size limit</strong><small>Rejects any single upload larger than this amount. This applies to files and text pastes. Disabled means there is no application-level limit.</small></div><output>{{ fileSizeLimitLabel }}</output></div>
@@ -951,9 +968,11 @@ onBeforeUnmount(() => {
           </div>
           <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
         </div>
+      </section>
       </div>
 
       <div class="settings-footer">
+        <p>Changes apply to the public service after saving.</p>
         <button class="btn-orange" type="button" @click="saveSettings">Save settings</button>
       </div>
     </section>
@@ -1294,29 +1313,75 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .settings-page {
   width: 100%;
-  max-width: none;
   display: grid;
-  gap: var(--space-6);
+  gap: clamp(var(--space-4), 3vw, var(--space-6));
+}
+.settings-intro {
+  max-width: 720px;
+  padding: clamp(var(--space-4), 4vw, var(--space-6));
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface) 62%);
+}
+.settings-eyebrow {
+  margin-bottom: var(--space-2);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 .settings-intro h2 {
-  margin-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
+  font-size: clamp(24px, 3vw, 34px);
+  letter-spacing: -0.035em;
 }
-.settings-intro p {
-  max-width: 56ch;
+.settings-intro .subtle {
+  max-width: 60ch;
+  color: var(--text2);
   line-height: var(--lh-body);
+}
+.settings-groups {
+  display: grid;
+  gap: var(--space-4);
 }
 .settings-group {
   display: grid;
-  gap: var(--space-3);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border);
+  grid-template-columns: minmax(190px, .55fr) minmax(0, 1fr);
+  gap: clamp(var(--space-4), 5vw, var(--space-7));
+  padding: clamp(var(--space-4), 3vw, var(--space-6));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
 }
-.settings-group-label {
-  color: var(--text2);
+.settings-group-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.settings-group-number {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border));
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 700;
+}
+.settings-group-heading h3 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+.settings-group-heading p {
+  max-width: 28ch;
+  color: var(--text3);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
 }
 .settings-fields {
   display: grid;
@@ -1454,8 +1519,15 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .settings-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--space-4);
   padding-top: var(--space-2);
+}
+.settings-footer p {
+  margin-right: auto;
+  color: var(--text3);
+  font-size: var(--fs-xs);
 }
 .settings-footer .btn-orange {
   min-width: 160px;
@@ -1497,19 +1569,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   color: var(--text3);
   pointer-events: none;
   transform: translateY(-50%);
-}
-.upload-live-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text2);
-  font-size: var(--fs-sm);
-}
-.upload-live-status i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
 }
 .upload-list-toolbar {
   display: flex;
@@ -2216,29 +2275,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 
 .settings-page {
   width: min(100%, 980px);
-  gap: clamp(var(--space-5), 4vw, var(--space-7));
-}
-.settings-intro {
-  max-width: 680px;
-}
-.settings-intro h2 {
-  margin-bottom: var(--space-1);
-  font-size: clamp(22px, 2.6vw, 30px);
-  letter-spacing: -0.025em;
-}
-.settings-intro p {
-  color: var(--text2);
-  font-size: var(--fs-sm);
-}
-.settings-page > .settings-group {
-  grid-template-columns: minmax(130px, 0.3fr) minmax(0, 1fr);
-  column-gap: clamp(var(--space-5), 5vw, var(--space-8));
-  padding: clamp(var(--space-5), 3vw, var(--space-6)) 0;
-}
-.settings-group-label {
-  padding-top: 3px;
-  color: var(--text);
-  letter-spacing: 0.08em;
 }
 .settings-fields {
   gap: var(--space-5) var(--space-4);
@@ -2258,36 +2294,46 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   margin-top: var(--space-2);
   background: color-mix(in srgb, var(--bg2) 78%, var(--surface));
 }
-.settings-page > .settings-group-branding .settings-fields label:last-child {
+.settings-group-branding .settings-fields label:last-child {
   grid-column: 1 / -1;
 }
-.settings-page > .settings-group-branding .settings-fields label:last-child input {
+.settings-group-branding .settings-fields label:last-child input {
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
 }
 @media (max-width: 700px) {
-  .settings-page > .settings-group {
+  .settings-group {
     grid-template-columns: 1fr;
     gap: var(--space-4);
   }
-  .settings-page > .settings-group-branding .settings-fields label:last-child {
+  .settings-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .settings-footer p {
+    margin-right: 0;
+  }
+  .settings-footer .btn-orange {
+    width: 100%;
+  }
+  .settings-group-branding .settings-fields label:last-child {
     grid-column: 1 / -1;
   }
 }
 
 @media (min-width: 701px) and (max-width: 900px) {
-  .settings-page > .settings-group-branding .settings-fields label > small {
+  .settings-group-branding .settings-fields label > small {
     min-height: calc(1.45em * 2);
   }
-  .settings-page > .settings-group-branding .settings-fields {
+  .settings-group-branding .settings-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (min-width: 901px) {
-  .settings-page > .settings-group-branding .settings-fields label > small {
+  .settings-group-branding .settings-fields label > small {
     min-height: calc(1.45em * 2);
   }
-  .settings-page > .settings-group-branding .settings-fields {
+  .settings-group-branding .settings-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
