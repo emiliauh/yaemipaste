@@ -213,7 +213,7 @@ function setUploadsPageSize(size: UploadPageSize) {
 }
 
 function uploadDisplayName(upload: AdminUpload): string {
-  return upload.display_name?.trim() || upload.file_name
+  return (upload.display_name?.trim() || upload.file_name).replace(/\.\d{6,}$/, '')
 }
 
 function isShareXUpload(upload: AdminUpload): boolean {
@@ -2020,8 +2020,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .upload-file-icon {
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   margin-right: var(--space-2);
   border: 1px solid var(--border2);
   border-radius: var(--radius-sm);
@@ -2035,7 +2035,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   padding: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: 500;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2092,7 +2092,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   white-space: nowrap;
 }
 .upload-row-actions {
-  min-width: 234px;
+  min-width: 270px;
   text-align: right;
   white-space: nowrap;
 }
@@ -2107,6 +2107,10 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   margin-left: var(--space-2);
   border-radius: var(--radius-sm);
   text-decoration: none;
+}
+.upload-row-actions > .upload-action:first-child {
+  min-width: 120px;
+  padding-inline: var(--space-3);
 }
 .upload-row-menu {
   position: relative;

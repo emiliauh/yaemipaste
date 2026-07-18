@@ -3472,9 +3472,9 @@ test('admin previews expiring text uploads whose stored name has a timestamp suf
 
   await page.goto('/admin')
   await page.getByRole('button', { name: 'Uploads', exact: true }).click()
-  await page.getByRole('button', { name: 'expiring-paste.txt.1785612876517', exact: true }).click()
+  await page.getByRole('button', { name: 'expiring-paste.txt', exact: true }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'Preview expiring-paste.txt.1785612876517' })
+  const dialog = page.getByRole('dialog', { name: 'Preview expiring-paste.txt' })
   await expect(dialog.getByText('expiring paste preview')).toBeVisible()
 })
 
@@ -3523,6 +3523,7 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   const moreButton = row.getByRole('button', { name: 'More' })
   await expect(downloadLink).toBeVisible()
   await expect(downloadLink).toHaveAttribute('href', /\/file\/upload-1\/download$/)
+  await expect(downloadLink).toHaveCSS('min-width', '120px')
   await expect(copyButton).toBeVisible()
   await expect(copyButton).toHaveCSS('border-radius', '7px')
   await expect(moreButton).toHaveAttribute('aria-expanded', 'false')
