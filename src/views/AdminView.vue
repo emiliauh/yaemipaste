@@ -1602,6 +1602,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   align-items: center;
   gap: var(--space-2);
 }
+.inline-check.span-2 > span > strong {
+  font-weight: 500;
+}
 .upload-toolbar {
   display: flex;
   flex-wrap: wrap;
