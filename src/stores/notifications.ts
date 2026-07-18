@@ -10,7 +10,7 @@ export interface AppNotification {
 }
 
 const MAX_NOTIFICATIONS = 5
-const DEFAULT_TIMEOUT_MS = 4000
+const DEFAULT_TIMEOUT_MS = 8000
 
 export const useNotificationStore = defineStore('notifications', () => {
   const notifications = ref<AppNotification[]>([])

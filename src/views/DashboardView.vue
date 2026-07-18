@@ -6,7 +6,7 @@ import HistoryTab from '../components/HistoryTab.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 import { isAuthEnabled } from '../lib/features'
-import { isAuthAdmin } from '../lib/api'
+import { isAuthAdmin, refreshAuthAdmin } from '../lib/api'
 import { usePublicSettings } from '../lib/publicSettings'
 
 const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
@@ -17,7 +17,7 @@ const route = useRoute()
 const tab = ref<'files' | 'history'>('files')
 const showSettings = ref(false)
 const authEnabled = isAuthEnabled()
-const adminEnabled = isAuthAdmin()
+const adminEnabled = ref(isAuthAdmin())
 const sidebarCollapsed = ref(
   typeof window !== 'undefined' && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
 )
@@ -45,11 +45,17 @@ function setTab(next: 'files' | 'history') {
 // straight into the History tab via `/files?tab=history` instead of needing
 // a dedicated route for what is otherwise client-side tab state.
 function syncTabFromQuery() {
-  if (authEnabled && route.query.tab === 'history' && tab.value !== 'history') setTab('history')
+  const nextTab = authEnabled && route.query.tab === 'history' ? 'history' : 'files'
+  if (tab.value !== nextTab) {
+    tab.value = nextTab
+    showSettings.value = false
+    if (nextTab === 'history') window.dispatchEvent(new CustomEvent(HISTORY_REFRESH_EVENT))
+  }
 }
 
 onMounted(() => {
   void refreshPublicSettings()
+  void refreshAuthAdmin().then((isAdmin) => { adminEnabled.value = isAdmin })
   syncTabFromQuery()
 })
 
@@ -93,11 +99,13 @@ watch(() => route.query.tab, syncTabFromQuery)
 <style scoped>
 .layout {
   width: 100%;
+  height: 100dvh;
   min-height: 100dvh;
+  max-height: 100dvh;
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   position: relative;
-  overflow-x: hidden;
+  overflow: hidden;
   transition: grid-template-columns 0.18s;
 }
 
@@ -107,9 +115,22 @@ watch(() => route.query.tab, syncTabFromQuery)
 
 .workspace {
   min-width: 0;
+  min-height: 0;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
   padding: 32px 32px 38px;
+}
+.layout :deep(.sidebar) {
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  position: sticky;
+  top: 0;
 }
 
 .content {
@@ -124,6 +145,12 @@ watch(() => route.query.tab, syncTabFromQuery)
   pointer-events: none;
   position: fixed;
   inset: 0;
+  --settings-panel-left: calc(var(--sidebar-w) + 26px);
+  --settings-panel-right: auto;
+  --settings-panel-top: auto;
+  --settings-panel-bottom: 20px;
+  --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w) - 50px));
+  --settings-panel-max-height: calc(100dvh - 40px);
 }
 
 .overlay {
@@ -158,21 +185,14 @@ watch(() => route.query.tab, syncTabFromQuery)
 .settings-layer :deep(.settings-panel) {
   pointer-events: auto;
   z-index: 1;
-  position: fixed;
-  left: calc(var(--sidebar-w) + 26px);
-  right: auto;
-  top: auto;
-  bottom: 74px;
-  width: min(380px, calc(100vw - var(--sidebar-w) - 50px));
   height: auto;
   min-height: 0;
-  max-height: calc(100dvh - 92px);
   overflow: auto;
 }
 
-.sidebar-collapsed .settings-layer :deep(.settings-panel) {
-  left: calc(var(--sidebar-w-collapsed) + 24px);
-  width: min(380px, calc(100vw - var(--sidebar-w-collapsed) - 48px));
+.sidebar-collapsed .settings-layer {
+  --settings-panel-left: calc(var(--sidebar-w-collapsed) + 24px);
+  --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w-collapsed) - 48px));
 }
 
 @media (max-width: 600px) {
@@ -182,17 +202,16 @@ watch(() => route.query.tab, syncTabFromQuery)
   }
 
   .workspace {
-    min-height: 100dvh;
-    padding: 18px 12px calc(var(--mobile-bar-space) + 22px);
+    padding: 18px 12px calc(var(--mobile-bar-space) + 42px);
   }
 
-  .settings-layer :deep(.settings-panel) {
-    left: 12px;
-    right: 12px;
-    top: auto;
-    bottom: calc(var(--mobile-bar-space) + 14px);
-    width: auto;
-    max-height: calc(100dvh - var(--mobile-bar-space) - 30px);
+  .settings-layer {
+    --settings-panel-left: 12px;
+    --settings-panel-right: 12px;
+    --settings-panel-top: auto;
+    --settings-panel-bottom: calc(var(--mobile-bar-space) + 14px);
+    --settings-panel-width: auto;
+    --settings-panel-max-height: calc(100dvh - var(--mobile-bar-space) - 30px);
   }
 }
 
@@ -209,9 +228,12 @@ watch(() => route.query.tab, syncTabFromQuery)
     padding: 18px;
   }
 
-  .settings-layer :deep(.settings-panel) {
-    left: calc(var(--sidebar-w-tablet) + 26px);
-    width: min(380px, calc(100vw - var(--sidebar-w-tablet) - 50px));
+  .settings-layer {
+    --settings-panel-left: calc(var(--sidebar-w-tablet) + 26px);
+    --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w-tablet) - 50px));
+    --settings-panel-top: auto;
+    --settings-panel-bottom: 20px;
+    --settings-panel-max-height: calc(100dvh - 40px);
   }
 }
 </style>

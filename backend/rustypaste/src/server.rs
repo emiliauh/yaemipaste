@@ -811,6 +811,14 @@ async fn upload(
                 warn!("{} sent zero bytes", host);
                 return Err(error::ErrorBadRequest("invalid file size"));
             }
+            if let Some(limit) = crate::admin::file_size_limit_bytes() {
+                if bytes.len() as u64 > limit {
+                    return Err(error::ErrorPayloadTooLarge(format!(
+                        "file exceeds the configured {} limit",
+                        Byte::from_u64(limit).get_appropriate_unit(UnitType::Decimal)
+                    )));
+                }
+            }
             if paste_type != PasteType::Oneshot
                 && paste_type != PasteType::RemoteFile
                 && paste_type != PasteType::OneshotUrl
@@ -909,6 +917,7 @@ async fn upload(
                 "file.uploaded",
                 json!({
                     "file": file_name.clone(),
+                    "url": format!("{}{}", server_url, public_path_from_file_name(&file_name)),
                     "uploader": upload_meta.uploader.clone(),
                     "source": upload_meta.source.clone(),
                     "original_name": upload_meta.original_name.clone(),

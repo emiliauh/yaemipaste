@@ -102,21 +102,23 @@ onUnmounted(() => {
         </svg>
       </button>
 
-      <div v-if="open" class="expiry-options" role="listbox" data-testid="expiry-options">
-        <button
-          v-for="option in visibleOptions"
-          :key="option.value"
-          type="button"
-          role="option"
-          :aria-selected="option.value === selectedValue"
-          :class="{ active: option.value === selectedValue, danger: option.danger }"
-          :data-testid="`expiry-option-${option.value}`"
-          @click="choose(option.value)"
-        >
-          <span class="option-dot"></span>
-          {{ option.label }}
-        </button>
-      </div>
+      <Transition name="expiry-options-fade">
+        <div v-if="open" class="expiry-options" role="listbox" data-testid="expiry-options">
+          <button
+            v-for="option in visibleOptions"
+            :key="option.value"
+            type="button"
+            role="option"
+            :aria-selected="option.value === selectedValue"
+            :class="{ active: option.value === selectedValue, danger: option.danger }"
+            :data-testid="`expiry-option-${option.value}`"
+            @click="choose(option.value)"
+          >
+            <span class="option-dot"></span>
+            {{ option.label }}
+          </button>
+        </div>
+      </Transition>
     </div>
   </div>
 </template>
@@ -134,19 +136,21 @@ onUnmounted(() => {
 .expiry-panel {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
   width: 100%;
   min-height: 76px;
   border: 1px solid color-mix(in srgb, var(--border2) 82%, transparent);
   border-radius: var(--radius-lg);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--bg1) 86%, transparent), color-mix(in srgb, var(--subtle-grad-end) 88%, transparent)),
-    color-mix(in srgb, var(--bg) 72%, transparent);
+  background: var(--surface);
   padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
-  box-shadow: 0 18px 46px color-mix(in srgb, var(--shadow) 72%, transparent);
-  backdrop-filter: blur(16px);
+  box-shadow: none;
+  animation: expiry-panel-in 260ms var(--ease-out) both;
+}
+@keyframes expiry-panel-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .expiry-panel-top {
   min-width: 0;
@@ -187,24 +191,18 @@ onUnmounted(() => {
   min-height: 44px;
   border: 1px solid color-mix(in srgb, var(--border2) 90%, transparent);
   border-radius: var(--radius-sm);
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--bg2) 86%, transparent), color-mix(in srgb, var(--subtle-grad-end) 92%, transparent)),
-    var(--bg1);
+  background: var(--surface2);
   color: var(--text);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
   padding: 0 var(--space-3) 0 var(--space-4);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 7%, transparent);
-  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 .expiry-trigger:hover,
 .expiry-trigger[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--border2));
-}
-.expiry-trigger:active {
-  transform: scale(0.98);
 }
 .expiry-trigger svg {
   flex: 0 0 auto;
@@ -215,31 +213,39 @@ onUnmounted(() => {
   overflow: hidden;
   color: var(--text);
   font-size: var(--fs-body);
-  font-weight: 650;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .expiry-options {
   position: absolute;
-  top: calc(100% + 8px);
+  /* Anchor to the trigger row, rather than the full panel.  The panel also
+     contains the helper copy, so using 100% left an unnecessary visual gap. */
+  top: 64px;
   right: 16px;
   z-index: 70;
   width: 204px;
   border: 1px solid color-mix(in srgb, var(--border2) 88%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg1) 94%, transparent);
+  background: var(--surface);
   padding: var(--space-2);
-  box-shadow: 0 18px 40px color-mix(in srgb, var(--shadow) 82%, transparent);
-  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 32px var(--shadow);
 }
-.expiry-options::before {
-  content: "";
-  position: absolute;
-  left: 18px;
-  top: 12px;
-  bottom: 12px;
-  width: 1px;
-  background: color-mix(in srgb, var(--border) 82%, transparent);
+.expiry-options-fade-enter-active,
+.expiry-options-fade-leave-active {
+  transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out);
+}
+.expiry-options-fade-enter-from,
+.expiry-options-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .expiry-panel,
+  .expiry-options-fade-enter-active,
+  .expiry-options-fade-leave-active {
+    transition: none;
+  }
 }
 .expiry-options button {
   position: relative;
@@ -249,7 +255,7 @@ onUnmounted(() => {
   background: transparent;
   color: var(--text2);
   text-align: left;
-  padding: var(--space-2) var(--space-2) var(--space-2) 28px;
+  padding: var(--space-2) var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -261,12 +267,8 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--bg2) 86%, transparent);
   color: var(--text);
 }
-.expiry-options button:active {
-  transform: scale(0.98);
-}
 .option-dot {
-  position: absolute;
-  left: 10px;
+  display: none;
   width: 7px;
   height: 7px;
   border: 1px solid var(--text2);
@@ -277,6 +279,13 @@ onUnmounted(() => {
   border-color: var(--accent);
   background: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.expiry-options button.active::after {
+  content: "✓";
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
 }
 .expiry-options button.danger .option-dot {
   border-color: var(--red);
@@ -314,23 +323,29 @@ onUnmounted(() => {
     color: var(--text);
     border-color: var(--border2);
   }
-  .expiry-mobile-toggle:active {
-    transform: scale(0.97);
-  }
   .expiry-menu.mobile-collapsed .expiry-mobile-toggle {
     display: inline-flex;
   }
   .expiry-panel {
     display: block;
     min-height: auto;
+    max-height: 220px;
+    overflow: hidden;
     border-radius: var(--radius-md);
     background: var(--bg1);
     padding: var(--space-2);
     box-shadow: 0 8px 24px var(--shadow);
     backdrop-filter: none;
+    opacity: 1;
+    transition: max-height 220ms var(--ease-out), opacity 180ms var(--ease-out), padding 220ms var(--ease-out), border-color 220ms var(--ease-out);
   }
   .expiry-menu.mobile-collapsed .expiry-panel {
-    display: none;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-color: transparent;
+    opacity: 0;
+    pointer-events: none;
   }
   .expiry-panel-top {
     display: flex;
@@ -377,6 +392,28 @@ onUnmounted(() => {
   }
   .expiry-collapse:active {
     transform: scale(0.92);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .expiry-panel {
+    transition: none;
+  }
+}
+@media (min-width: 601px) {
+  .expiry-panel {
+    align-items: center;
+    min-height: 84px;
+  }
+  .expiry-label {
+    font-size: var(--fs-sm);
+    letter-spacing: 0.15em;
+  }
+  .expiry-tip {
+    font-size: var(--fs-sm);
+  }
+  .expiry-tip kbd {
+    font-size: var(--fs-xs);
+    padding: 2px 6px 3px;
   }
 }
 </style>

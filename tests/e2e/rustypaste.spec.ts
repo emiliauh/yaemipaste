@@ -132,8 +132,8 @@ async function signInAsAdmin(page: Page) {
   })
 }
 
-async function mockAdminApi(page: Page) {
-  const users = Array.from({ length: 12 }, (_, index) => ({
+async function mockAdminApi(page: Page, userCount = 12) {
+  const users = Array.from({ length: userCount }, (_, index) => ({
     username: `user-${index + 1}`,
     created_at: 1_775_000_000 + index,
     is_admin: index === 0,
@@ -147,6 +147,9 @@ async function mockAdminApi(page: Page) {
     path: `files/upload-${index + 1}.txt`,
     owner: index % 2 === 0 ? 'user-1' : 'user-2',
     file_name: `upload-${index + 1}.txt`,
+    display_name: index === 0 ? 'ShareX screenshot.png' : `upload-${index + 1}.txt`,
+    uploader: index % 2 === 0 ? 'user-1' : 'user-2',
+    source: index === 0 ? 'ShareX' : 'WebUI',
     size_bytes: 1024 * (index + 1),
     created_at: 1_775_100_000 + index,
     expires_at: index % 3 === 0 ? 1_775_200_000 + index : null,
@@ -187,10 +190,11 @@ async function mockAdminApi(page: Page) {
     app_name: 'yaemipaste',
     public_title: 'yaemipaste',
     registration_enabled: 'true',
-    storage_warning_bytes: '1073741824',
+    file_size_limit_bytes: '1073741824',
+    file_size_limit_unlimited: 'false',
   }
 
-  await page.route('**/auth/admin/dashboard', async (route) => {
+  await page.route('**/auth/admin/dashboard**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     await route.fulfill({
       status: 200,
@@ -210,7 +214,7 @@ async function mockAdminApi(page: Page) {
       }),
     })
   })
-  await page.route('**/auth/admin/users', async (route) => {
+  await page.route('**/auth/admin/users**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     if (route.request().method() === 'POST') {
       await route.fulfill({
@@ -247,7 +251,7 @@ async function mockAdminApi(page: Page) {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ detail: 'updated' }) })
   })
-  await page.route('**/auth/admin/uploads', async (route) => {
+  await page.route('**/auth/admin/uploads**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     if (route.request().method() === 'DELETE') {
       await route.fulfill({
@@ -277,7 +281,7 @@ async function mockAdminApi(page: Page) {
       body: JSON.stringify({ deleted: 1, bytes_removed: 4096 }),
     })
   })
-  await page.route('**/auth/admin/settings', async (route) => {
+  await page.route('**/auth/admin/settings**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     if (route.request().method() === 'PUT') {
       expect(route.request().postDataJSON()).toEqual({
@@ -285,7 +289,8 @@ async function mockAdminApi(page: Page) {
         public_title: 'Verified public title',
         base_api_url: '',
         registration_enabled: false,
-        storage_warning_bytes: 2048,
+        file_size_limit_bytes: 2147483648,
+        file_size_limit_unlimited: false,
       })
       await route.fulfill({
         status: 200,
@@ -294,22 +299,26 @@ async function mockAdminApi(page: Page) {
           app_name: 'Verified Paste',
           public_title: 'Verified public title',
           registration_enabled: 'false',
-          storage_warning_bytes: '2048',
+          file_size_limit_bytes: '2147483648',
         }),
       })
       return
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
   })
-  await page.route('**/auth/admin/webhooks/deliveries', async (route) => {
+  await page.route('**/auth/admin/webhooks/deliveries**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(deliveries) })
   })
-  await page.route('**/auth/admin/webhooks', async (route) => {
+  await page.route('**/auth/admin/webhooks**', async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/deliveries')) {
+      await route.fallback()
+      return
+    }
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(webhooks) })
   })
-  await page.route('**/auth/admin/audit', async (route) => {
+  await page.route('**/auth/admin/audit**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(audit) })
   })
@@ -374,7 +383,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
     })
   })
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1031,7 +1040,7 @@ test('upload preview download and delete work as one public-file flow', async ({
   await page.route('**/flow-e2e/file.txt', async (route) => {
     await route.fulfill({ status: deleted ? 404 : 200, contentType: 'text/plain', body: deleted ? 'not found' : body })
   })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1386,7 +1395,7 @@ test('notifications are row-stacked, capped at five, and clearable', async ({ pa
 
 test('history delete-all notifications stay capped at five', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1419,7 +1428,7 @@ test('history hover preview clears immediately when deleting the hovered file', 
   test.skip(!supportsHover, 'Hover previews are only available on pointer/hover devices')
   await signInWithToken(page)
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1474,7 +1483,7 @@ test('history actions and settings buttons work', async ({ page }) => {
   await mockClipboard(page)
   let downloadRequested = false
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1593,7 +1602,7 @@ test('history copy includes decryption key for encrypted files', async ({ page }
     localStorage.setItem('rp_e2ee_keys', JSON.stringify(payload))
   }, { name: fileName, key: decryptKey })
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1648,7 +1657,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
     localStorage.setItem('rp_e2ee_keys', JSON.stringify(payload))
   }, { name: fileName, key: decryptKey })
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1688,7 +1697,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
 
 test('history marks rpenc files as encrypted and explains locked preview', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1727,7 +1736,7 @@ test('history decrypts rpenc previews when legacy key entries omit origin', asyn
       body: `${APP_ORIGIN}/${encryptedName}`,
     })
   })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1802,7 +1811,7 @@ test('history decrypts and previews inline text for encrypted text files', async
       body: `${APP_ORIGIN}/${encryptedName}`,
     })
   })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1851,7 +1860,7 @@ test('encrypted upload keeps history key when server returns /file/<token>/previ
       body: `${APP_ORIGIN}/file/${token}/preview`,
     })
   })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1890,7 +1899,7 @@ test('encrypted upload keeps history key when server returns /file/<id>/preview 
       body: `${APP_ORIGIN}/file/${fileId}/preview`,
     })
   })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1935,7 +1944,7 @@ test('history password-encrypted download requires password prompt', async ({ pa
     localStorage.setItem('rp_e2ee_keys', JSON.stringify(payload))
   }, { name: fileName })
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1989,7 +1998,7 @@ test('history password-encrypted text preview decrypts inline', async ({ page })
     }))
   }, { fileName, salt: encryptedPayload.salt })
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2063,7 +2072,7 @@ test('history password change closes modal and keeps success notification after 
       body: `${APP_ORIGIN}/change-target-rotated.rpenc`,
     })
   })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2139,7 +2148,7 @@ test('history password change closes modal and keeps success notification after 
 test('history auto-refreshes after upload refresh event', async ({ page }) => {
   await signInWithToken(page)
   let listVersion = 0
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     const files = listVersion === 0
       ? [{
         file_name: 'existing-history.txt',
@@ -2178,7 +2187,7 @@ test('history auto-refreshes after upload refresh event', async ({ page }) => {
 test('history refreshes when History tab is clicked again', async ({ page }) => {
   await signInWithToken(page)
   let listVersion = 0
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     const files = listVersion === 0
       ? [{
         file_name: 'first-list.txt',
@@ -2217,7 +2226,7 @@ test('history refreshes when History tab is clicked again', async ({ page }) => 
 
 test('history shows ShareX badge for token-uploaded screenshot files', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2257,7 +2266,7 @@ test('history shows ShareX badge for token-uploaded screenshot files', async ({ 
 
 test('history does not show ShareX badge when source marker says WebUI', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2293,7 +2302,7 @@ test('history does not show ShareX badge when source marker says WebUI', async (
 
 test('history does not show ShareX badge when source is explicit webui even with sharex-like uploader text', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2329,7 +2338,7 @@ test('history does not show ShareX badge when source is explicit webui even with
 
 test('history shows ShareX badge for legacy ShareX uploader value without source marker', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2364,7 +2373,7 @@ test('history shows ShareX badge for legacy ShareX uploader value without source
 
 test('history shows ShareX badge for legacy token-uploaded media rows without explicit source marker', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2399,7 +2408,7 @@ test('history shows ShareX badge for legacy token-uploaded media rows without ex
 
 test('history does not show ShareX badge for legacy token-uploaded text rows without explicit source marker', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2436,7 +2445,7 @@ test('history preview modal provides copy action that copies preview URL', async
   await signInWithToken(page)
   await mockClipboard(page)
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2477,7 +2486,7 @@ test('history preview modal provides copy action that copies preview URL', async
 test('history non-image preview shows size and download button', async ({ page }) => {
   await signInWithToken(page)
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2511,7 +2520,7 @@ test('history non-image preview shows size and download button', async ({ page }
 test('history preview shows inline text content for text files', async ({ page }) => {
   await signInWithToken(page)
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2560,7 +2569,7 @@ test('history non-image preview opens instantly without waiting on raw fetch', a
   await signInWithToken(page)
   let rawRequested = false
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2594,7 +2603,7 @@ test('history non-image preview opens instantly without waiting on raw fetch', a
 
 test('history paginates at 15 by default and supports page-size menu', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2630,7 +2639,7 @@ test('history paginates at 15 by default and supports page-size menu', async ({ 
 test('history does not overflow horizontally on mobile with long names', async ({ page }) => {
   await signInWithToken(page)
   await page.setViewportSize({ width: 375, height: 812 })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2675,7 +2684,7 @@ test('history does not overflow horizontally on mobile with long names', async (
 
 test('history keeps file extension visible for long filenames', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2696,7 +2705,7 @@ test('history keeps file extension visible for long filenames', async ({ page })
 
 test('history actions menu closes when clicking outside', async ({ page }) => {
   await signInWithToken(page)
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2722,7 +2731,7 @@ test('history supports multi-select delete selected', async ({ page }) => {
   await signInWithToken(page)
   const deleted = new Set<string>()
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2765,7 +2774,7 @@ test('history downloads selected files as a zip archive', async ({ page }) => {
   let firstRaw = false
   let secondRaw = false
 
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2828,6 +2837,74 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
   await page.getByTestId('open-passkey-modal').click()
   await expect(page.getByTestId('passkey-modal')).toBeVisible()
   await expect(page.getByTestId('passkey-add-btn')).toBeVisible()
+})
+
+test('admin Preferences control opens and fades closed on desktop and mobile', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+
+  const isMobile = (page.viewportSize()?.width ?? 1280) <= 600
+  const preferences = page.getByTestId(isMobile ? 'mobile-nav-preferences' : 'desktop-preferences')
+  await expect(preferences).toBeVisible()
+  const enterTransition = page.waitForFunction(() =>
+    document.querySelector('[data-testid="settings-layer"]')?.classList.contains('settings-layer-enter-active'),
+  )
+  await preferences.click()
+  await enterTransition
+
+  const layer = page.getByTestId('settings-layer')
+  await expect(layer).toBeVisible()
+  await expect(layer.locator('.settings-panel')).toBeVisible()
+  await expect.poll(() => layer.evaluate((element) => getComputedStyle(element).transitionProperty)).toContain('opacity')
+
+  const leaveTransition = page.waitForFunction(() =>
+    document.querySelector('[data-testid="settings-layer"]')?.classList.contains('settings-layer-leave-active'),
+  )
+  await layer.locator('.overlay').click({ position: { x: 8, y: 8 } })
+  await leaveTransition
+  await expect(layer).toBeHidden()
+})
+
+test('admin branding fields are visible and use responsive layout', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const branding = page.locator('.settings-group-branding')
+  const appName = page.getByLabel('App name')
+  const publicTitle = page.getByLabel('Public title')
+  const baseApiUrl = page.getByLabel('Base API URL')
+  await expect(branding).toBeVisible()
+  await expect(appName).toBeVisible()
+  await expect(publicTitle).toBeVisible()
+  await expect(baseApiUrl).toBeVisible()
+
+  await page.setViewportSize({ width: 1280, height: 900 })
+  const desktopAppBox = await appName.boundingBox()
+  const desktopTitleBox = await publicTitle.boundingBox()
+  const desktopApiBox = await baseApiUrl.boundingBox()
+  expect(desktopAppBox).not.toBeNull()
+  expect(desktopTitleBox).not.toBeNull()
+  expect(desktopApiBox).not.toBeNull()
+  if (desktopAppBox && desktopTitleBox && desktopApiBox) {
+    expect(Math.abs(desktopAppBox.y - desktopTitleBox.y)).toBeLessThanOrEqual(2)
+    expect(desktopApiBox.y).toBeGreaterThan(desktopAppBox.y + desktopAppBox.height)
+    expect(desktopApiBox.width).toBeGreaterThan(desktopAppBox.width)
+  }
+
+  await page.setViewportSize({ width: 600, height: 900 })
+  const mobileAppBox = await appName.boundingBox()
+  const mobileTitleBox = await publicTitle.boundingBox()
+  const mobileApiBox = await baseApiUrl.boundingBox()
+  expect(mobileAppBox).not.toBeNull()
+  expect(mobileTitleBox).not.toBeNull()
+  expect(mobileApiBox).not.toBeNull()
+  if (mobileAppBox && mobileTitleBox && mobileApiBox) {
+    expect(mobileTitleBox.y).toBeGreaterThan(mobileAppBox.y + mobileAppBox.height)
+    expect(mobileApiBox.y).toBeGreaterThan(mobileTitleBox.y + mobileTitleBox.height)
+  }
 })
 
 test('settings password modal changes password and supports logout-all option', async ({ page }) => {
@@ -3106,7 +3183,7 @@ test('login remember me unchecked stores auth in session storage', async ({ page
       }),
     })
   })
-  await page.route('**/api/list', async (route) => {
+  await page.route('**/api/list**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
   })
 
@@ -3235,49 +3312,299 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await expect(page.getByText('settings.update')).toBeVisible()
 
   await page.getByRole('button', { name: 'Users' }).click()
-  await expect(page.getByText('1-10 of 12')).toBeVisible()
+  await expect(page.getByText('1 of 2')).toBeVisible()
   await expect(page.getByText('user-1', { exact: true })).toBeVisible()
   await expect(page.getByText('user-11', { exact: true })).toHaveCount(0)
   await page.locator('[aria-label="User pagination"]').getByRole('button', { name: 'Next' }).click()
-  await expect(page.getByText('11-12 of 12')).toBeVisible()
+  await expect(page.getByText('2 of 2')).toBeVisible()
   await expect(page.getByText('user-11', { exact: true })).toBeVisible()
 
   await page.locator('.admin-tabs').getByRole('button', { name: 'Uploads', exact: true }).click()
-  await expect(page.getByText('1-10 of 12')).toBeVisible()
-  await page.getByLabel('Filter uploads by path or type').fill('upload-12')
+  await expect(page.getByText('1-12 of 12')).toBeVisible()
+  await page.getByLabel('Search uploads').fill('upload-12')
   await expect(page.getByText('1-1 of 1')).toBeVisible()
-  await expect(page.getByText('files/upload-12.txt')).toBeVisible()
+  await expect(page.getByText('upload-12.txt')).toBeVisible()
 
   await page.locator('.admin-tabs').getByRole('button', { name: 'Settings' }).click()
   await page.getByLabel('App name').fill('Verified Paste')
   await page.getByLabel('Public title').fill('Verified public title')
-  await page.getByLabel('Storage warning bytes').fill('2048')
-  await page.getByLabel('registration enabled').uncheck()
+  await page.getByLabel('Maximum file size in gigabytes').fill('2')
+  await page.getByRole("checkbox", { name: /Allow new registrations/ }).uncheck()
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('admin panel covers every tab and responsive viewport class', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+
+  await expect(page.getByRole('heading', { name: 'Admin panel' })).toBeVisible()
+  await expect(page.getByText('Signed in as admin-user')).toBeVisible()
+  await expect(page.getByText('Storage usage is above warning threshold')).toBeVisible()
+  await expect(page.getByText('Recent uploads')).toBeVisible()
+  await expect(page.getByText('Recent admin actions')).toBeVisible()
+
+  const tabs = page.locator('.admin-tabs')
+  await tabs.getByRole('button', { name: 'Users', exact: true }).click()
+  await expect(page.getByText('user-1', { exact: true })).toBeVisible()
+  await expect(page.getByText('token configured').first()).toBeVisible()
+  await expect(page.getByText('no token').first()).toBeVisible()
+  const userPagination = page.locator('[aria-label="User pagination"]')
+  await expect(userPagination).toContainText('1 of 2')
+  await userPagination.getByRole('button', { name: 'Next' }).click()
+  await expect(userPagination).toContainText('2 of 2')
+  await expect(page.getByText('user-11', { exact: true })).toBeVisible()
+
+  await tabs.getByRole('button', { name: 'Uploads', exact: true }).click()
+  await expect(page.getByText('ShareX screenshot.png')).toBeVisible()
+  await expect(page.getByLabel('Search uploads')).toBeVisible()
+  await expect(page.getByText('Auto-refreshing')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Delete all', exact: true })).toBeVisible()
+  expect(await page.locator('.admin-table thead th').allTextContents()).toEqual(['', 'Name', 'Size', 'Expires', ''])
+  await expect(page.getByRole('group', { name: 'Uploads per page' }).getByRole('button', { name: '15', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const uploadPagination = page.locator('[aria-label="Upload pagination"]')
+  await expect(uploadPagination).toContainText('1-12 of 12')
+  await page.getByLabel('Search uploads').fill('upload-12')
+  await expect(uploadPagination).toContainText('1-1 of 1')
+  await expect(page.getByText('upload-12.txt')).toBeVisible()
+  await page.getByLabel('Search uploads').fill('image/png')
+  await expect(page.getByText('upload-2.txt')).toBeVisible()
+  await page.getByLabel('Search uploads').fill('')
+
+  await tabs.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByText('Safe global settings')).toBeVisible()
+  await expect(page.getByLabel('App name')).toHaveValue('yaemipaste')
+  await expect(page.getByLabel('Public title')).toHaveValue('yaemipaste')
+  await expect(page.getByLabel('Base API URL')).toBeVisible()
+  await expect(page.getByLabel('Maximum file size in gigabytes')).toHaveValue('1')
+  await expect(page.getByRole('checkbox', { name: /Allow new registrations/ })).toBeChecked()
+
+  await tabs.getByRole('button', { name: 'Webhooks', exact: true }).click()
+  await expect(page.getByText('https://example.test/webhook')).toBeVisible()
+  await expect(page.getByLabel('Subscribed events').getByText('File uploaded')).toBeVisible()
+  await expect(page.getByLabel('Subscribed events').getByText('File deleted')).toBeVisible()
+  await expect(page.getByText('Enabled', { exact: true })).toBeVisible()
+  await expect(page.getByText('timeout')).toBeVisible()
+  await expect(page.locator('[aria-label="Webhook pagination"]')).toContainText('1 of 1')
+
+  await tabs.getByRole('button', { name: 'Audit', exact: true }).click()
+  await expect(page.getByText('Audit log')).toBeVisible()
+  await expect(page.getByText('settings.update').first()).toBeVisible()
+  await expect(page.getByText('upload.delete').first()).toBeVisible()
+  await expect(page.getByText('target-1', { exact: true })).toBeVisible()
+  await expect(page.locator('[aria-label="Audit pagination"]')).toContainText('1-10 of 12')
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'Preferences' }).click()
+  const preferencesLayer = page.getByTestId('settings-layer')
+  await expect(preferencesLayer.locator('.settings-panel')).toBeVisible()
+  await expect.poll(() => preferencesLayer.getAttribute('class')).toContain('settings-layer-enter-active')
+  await preferencesLayer.locator('.overlay').click({ position: { x: 8, y: 8 } })
+  await expect.poll(() => preferencesLayer.getAttribute('class')).toContain('settings-layer-leave-active')
+  await expect(preferencesLayer).toBeHidden()
 })
 
 test('admin destructive actions send explicit confirmations', async ({ page }) => {
   await signInAsAdmin(page)
   await mockAdminApi(page)
-  page.on('dialog', async (dialog) => {
-    if (dialog.message().includes('PURGE EXPIRED')) {
-      await dialog.accept('PURGE EXPIRED')
-      return
-    }
-    await dialog.accept('PURGE UPLOADS')
-  })
 
   await page.goto('/admin')
   await page.locator('.admin-tabs').getByRole('button', { name: 'Uploads', exact: true }).click()
   await page.getByLabel('Select files/upload-1.txt').check()
-  await page.getByRole('button', { name: 'Delete selected' }).click()
+  await page.getByRole('button', { name: 'Actions', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Delete selected', exact: true }).click()
+  let confirmation = page.getByRole('dialog', { name: 'Delete selected uploads?' })
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole('checkbox').check()
+  await confirmation.getByRole('button', { name: 'Delete uploads', exact: true }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Selected uploads deleted')
 
-  await page.getByRole('button', { name: 'Purge expired' }).click()
+  await page.getByRole('button', { name: 'Actions', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Purge expired', exact: true }).click()
+  confirmation = page.getByRole('dialog', { name: 'Purge expired uploads?' })
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole('checkbox').check()
+  await confirmation.getByRole('button', { name: 'Purge expired', exact: true }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Expired uploads purged')
 
   await page.getByRole('button', { name: 'Users' }).click()
   await page.locator('tr').filter({ has: page.getByText('user-1', { exact: true }) }).getByRole('button', { name: 'Purge uploads' }).click()
+  confirmation = page.getByRole('dialog', { name: 'Purge user uploads?' })
+  await expect(confirmation).toBeVisible()
+  await confirmation.getByRole('checkbox').check()
+  await confirmation.getByRole('button', { name: 'Purge uploads', exact: true }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Uploads purged')
+})
+
+test('admin users show one page and disable navigation for a single user', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page, 1)
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Users', exact: true }).click()
+
+  const pagination = page.locator('[aria-label="User pagination"]')
+  await expect(page.getByText('user-1', { exact: true })).toBeVisible()
+  await expect(pagination).toContainText('1 of 1')
+  await expect(pagination.getByRole('button', { name: 'Previous' })).toBeDisabled()
+  await expect(pagination.getByRole('button', { name: 'Next' })).toBeDisabled()
+})
+
+test('admin uploads show the original name and ShareX provenance', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+
+  await expect(page.getByText('ShareX screenshot.png')).toBeVisible()
+  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+  await page.getByLabel('Search uploads').fill('sharex')
+  await expect(page.getByText('ShareX screenshot.png')).toBeVisible()
+})
+
+test('admin upload library keeps ShareX provenance beside the name and exposes row actions', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await mockClipboard(page)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.route('**/file/upload-1/preview', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>ShareX preview</p>' })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+
+  const row = page.locator('.admin-table tbody tr').filter({ hasText: 'ShareX screenshot.png' }).first()
+  const nameCell = row.locator('.upload-name-cell')
+  const nameButton = row.getByRole('button', { name: 'ShareX screenshot.png', exact: true })
+  const shareXBadge = row.getByLabel('Uploaded with ShareX')
+  await expect(row).toBeVisible()
+  await expect(nameCell.getByRole('button', { name: 'Preview ShareX screenshot.png' })).toBeVisible()
+  await expect(nameButton).toBeVisible()
+  await expect(shareXBadge).toHaveAttribute('title', 'Captured and uploaded with ShareX')
+
+  const nameBox = await nameCell.boundingBox()
+  const badgeBox = await shareXBadge.boundingBox()
+  expect(nameBox).not.toBeNull()
+  expect(badgeBox).not.toBeNull()
+  if (nameBox && badgeBox) {
+    expect(badgeBox.x).toBeGreaterThan(nameBox.x)
+    expect(Math.abs((badgeBox.y + badgeBox.height / 2) - (nameBox.y + nameBox.height / 2))).toBeLessThan(12)
+  }
+
+  const downloadLink = row.getByRole('link', { name: 'Download' })
+  const copyButton = row.getByRole('button', { name: 'Copy preview link' })
+  const moreButton = row.getByRole('button', { name: 'More' })
+  await expect(downloadLink).toBeVisible()
+  await expect(downloadLink).toHaveAttribute('href', /\/file\/upload-1\/download$/)
+  await expect(copyButton).toBeVisible()
+  await expect(moreButton).toHaveAttribute('aria-expanded', 'false')
+
+  const previewHref = '/file/upload-1/preview'
+  expect(previewHref).toMatch(/\/file\/upload-1\/preview$/)
+
+  await copyButton.click()
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/upload-1\/preview$/)
+
+  await moreButton.click()
+  await expect(moreButton).toHaveAttribute('aria-expanded', 'true')
+  const menu = row.getByRole('menu')
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Preview', exact: true })).toBeVisible()
+
+  await menu.getByRole('menuitem', { name: 'Preview', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Preview ShareX screenshot.png' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.modal-body')).toBeVisible()
+  const openButton = dialog.getByRole('button', { name: 'Open file preview or raw content' })
+  const copyMenuButton = dialog.getByRole('button', { name: 'Copy file content or URL' })
+  await expect(openButton).toBeVisible()
+  await expect(copyMenuButton).toBeVisible()
+  await openButton.click()
+  const openMenu = dialog.getByRole('menu', { name: 'Open options' })
+  await expect(openMenu).toBeVisible()
+  await expect(openMenu.getByRole('menuitem', { name: /Open preview/ })).toHaveAttribute('href', /\/file\/upload-1\/preview$/)
+  await expect(openMenu.getByRole('menuitem', { name: /Open raw/ })).toHaveAttribute('href', /\/upload-1\/file\.txt$/)
+  const openMenuBox = await openMenu.boundingBox()
+  await copyMenuButton.click()
+  const copyMenu = dialog.getByRole('menu', { name: 'Copy options' })
+  await expect(copyMenu).toBeVisible()
+  const copyMenuBox = await copyMenu.boundingBox()
+  if (openMenuBox && copyMenuBox) {
+    const viewport = page.viewportSize()!
+    expect(openMenuBox.x).toBeGreaterThanOrEqual(0)
+    expect(copyMenuBox.x + copyMenuBox.width).toBeLessThanOrEqual(viewport.width)
+  }
+  const openButtonBox = await openButton.boundingBox()
+  const copyButtonBox = await copyMenuButton.boundingBox()
+  expect(openButtonBox?.width).toBe(copyButtonBox?.width)
+  expect(openButtonBox?.height).toBe(copyButtonBox?.height)
+  await dialog.getByRole('button', { name: 'Close preview' }).click()
+  await expect(dialog).toBeHidden()
+})
+
+test('admin upload library keeps row controls keyboard accessible on mobile', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await mockClipboard(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/file/upload-1/preview', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/html', body: '<p>ShareX preview</p>' })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+
+  const row = page.locator('.admin-table tbody tr').filter({ hasText: 'ShareX screenshot.png' }).first()
+  await expect(row.getByLabel('Uploaded with ShareX')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
+
+  const previewButton = row.getByRole('button', { name: 'Preview ShareX screenshot.png' })
+  await previewButton.scrollIntoViewIfNeeded()
+  await previewButton.focus()
+  await expect(previewButton).toBeFocused()
+  await previewButton.press('Enter')
+  const dialog = page.getByRole('dialog', { name: 'Preview ShareX screenshot.png' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close preview' }).click()
+  await expect(dialog).toBeHidden()
+
+  const downloadLink = row.getByRole('link', { name: 'Download' })
+  const copyButton = row.getByRole('button', { name: 'Copy preview link' })
+  const moreButton = row.getByRole('button', { name: 'More' })
+  await downloadLink.scrollIntoViewIfNeeded()
+  await expect(downloadLink).toBeVisible()
+  await expect(downloadLink).toHaveAttribute('href', /\/file\/upload-1\/download$/)
+
+  await copyButton.focus()
+  await expect(copyButton).toBeFocused()
+  await copyButton.press('Enter')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(/\/file\/upload-1\/preview$/)
+
+  await moreButton.focus()
+  await expect(moreButton).toBeFocused()
+  await moreButton.press('Enter')
+  await expect(moreButton).toHaveAttribute('aria-expanded', 'true')
+  const menu = row.getByRole('menu')
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Preview', exact: true })).toBeVisible()
+
+  await menu.getByRole('menuitem', { name: 'Preview', exact: true }).press('Enter')
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close preview' }).click()
+  await expect(dialog).toBeHidden()
+})
+
+test('admin uploads search filters without layout shift', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Uploads', exact: true }).click()
+
+  const search = page.getByLabel('Search uploads')
+  const before = await search.boundingBox()
+  await search.fill('upload-12')
+  await expect(page.getByText('upload-12.txt')).toBeVisible()
+  const after = await search.boundingBox()
+  expect(before && after ? Math.abs(before.height - after.height) : 0).toBe(0)
 })

@@ -152,7 +152,17 @@ pub(crate) fn normalize_username(value: &str) -> String {
 }
 
 pub(crate) fn json_error(status: actix_web::http::StatusCode, detail: &str) -> HttpResponse {
-    HttpResponse::build(status).json(json!({ "detail": detail }))
+    let code = match status {
+        actix_web::http::StatusCode::BAD_REQUEST => "bad_request",
+        actix_web::http::StatusCode::UNAUTHORIZED => "unauthorized",
+        actix_web::http::StatusCode::FORBIDDEN => "forbidden",
+        actix_web::http::StatusCode::NOT_FOUND => "not_found",
+        actix_web::http::StatusCode::CONFLICT => "conflict",
+        actix_web::http::StatusCode::TOO_MANY_REQUESTS => "rate_limited",
+        _ if status.is_server_error() => "server_error",
+        _ => "request_failed",
+    };
+    HttpResponse::build(status).json(json!({ "code": code, "detail": detail }))
 }
 
 fn ensure_column(
@@ -2050,7 +2060,7 @@ mod tests {
                 "public_title": "Test Title",
                 "registration_enabled": false,
                 "base_api_url": "https://paste.example.test/api/",
-                "storage_warning_bytes": 1024,
+                "file_size_limit_bytes": 1024,
             }))
             .to_request();
         let update_settings_response = test::call_service(&app, update_settings).await;
@@ -2058,6 +2068,7 @@ mod tests {
         let settings_json: Value = test::read_body_json(update_settings_response).await;
         assert_eq!(settings_json["registration_enabled"], "false");
         assert_eq!(settings_json["base_api_url"], "https://paste.example.test/api");
+        assert_eq!(settings_json["file_size_limit_bytes"], "1024");
 
         let public_settings = test::TestRequest::get()
             .uri("/auth/admin/public-settings")

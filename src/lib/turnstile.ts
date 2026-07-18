@@ -146,9 +146,14 @@ export function useTurnstile() {
     if (fatalError.value) throw new Error(fatalError.value)
     if (!window.turnstile || widgetId.value == null) throw new Error('Security check is not ready yet. Please wait a moment and try again.')
     if (!token.value) {
+      // Ask Turnstile to promote the interaction-only widget into its visible
+      // challenge when the background pass did not produce a token. Without
+      // this call the form could only report an error while the challenge
+      // remained hidden in privacy-focused browsers.
+      window.turnstile.execute(widgetId.value)
       const arrived = await waitUntil(() => !!token.value || !!fatalError.value, TOKEN_WAIT_TIMEOUT_MS)
       if (fatalError.value) throw new Error(fatalError.value)
-      if (!arrived || !token.value) throw new Error('Please complete the security check before continuing.')
+      if (!arrived || !token.value) throw new Error('User verification failed.')
     }
     return token.value
   }

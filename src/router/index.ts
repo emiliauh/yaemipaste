@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { encodeFileToken, isAuthAdmin, isLoggedIn, rememberResolvedFileName } from '../lib/api'
+import { encodeFileToken, isLoggedIn, refreshAuthAdmin, rememberResolvedFileName } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { isAuthEnabled } from '../lib/features'
 
@@ -88,10 +88,10 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register' || to.path.startsWith('/admin'))) return '/files'
   if (to.meta.requiresAuth && !isLoggedIn()) return '/login'
-  if (to.meta.requiresAdmin && !isAuthAdmin()) return '/files'
+  if (to.meta.requiresAdmin && !(await refreshAuthAdmin())) return '/files'
 })
 
 export default router

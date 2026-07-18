@@ -165,21 +165,20 @@ function dismiss(id: number) {
     bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
   .notification-stack-row {
-    grid-template-columns: 1fr;
-    justify-items: start;
-    width: min(320px, 100%);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    width: fit-content;
+    max-width: min(320px, 100%);
     gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
   }
   .notification-message {
     max-width: 100%;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
+    min-height: 0;
+    line-height: 1.25;
   }
   .notification-dismiss {
-    justify-self: end;
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 28px;
+    min-height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;

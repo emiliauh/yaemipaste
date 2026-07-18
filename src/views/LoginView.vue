@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   authLogin,
@@ -10,13 +10,13 @@ import {
   loginWithToken,
   setRememberPreference,
 } from '../lib/api'
-import { credentialToJson, isPasskeySupported, toRequestOptions } from '../lib/passkeys'
+import { credentialToJson, isPasskeySupported, passkeyErrorMessage, toRequestOptions } from '../lib/passkeys'
 import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
 import { useTurnstile } from '../lib/turnstile'
 
 const router = useRouter()
-const { publicSettings, refreshPublicSettings } = usePublicSettings()
+const { publicSettings, appName, refreshPublicSettings } = usePublicSettings()
 // The backend is the sole source of truth at runtime (see
 // /auth/admin/public-settings): TURNSTILE_SECRET_KEY and
 // VITE_TURNSTILE_SITE_KEY can both change via `.env` + `docker compose up
@@ -45,10 +45,9 @@ const passkeyLoading = ref(false)
 const rememberMe = ref(getRememberPreference())
 const showPassword = ref(false)
 const tokenUsed = ref(false)
+const passkeySupported = computed(() => isPasskeySupported())
 const turnstileContainer = ref<HTMLElement | null>(null)
 const turnstile = useTurnstile()
-let restoreBodyOverflow = ''
-let restoreHtmlOverflow = ''
 
 watch(rememberMe, (value) => setRememberPreference(value))
 watch(mode, () => {
@@ -87,16 +86,7 @@ onMounted(() => {
     router.replace('/files')
     return
   }
-  restoreBodyOverflow = document.body.style.overflow
-  restoreHtmlOverflow = document.documentElement.style.overflow
-  document.body.style.overflow = 'hidden'
-  document.documentElement.style.overflow = 'hidden'
   void mountTurnstileWhenReady()
-})
-
-onBeforeUnmount(() => {
-  document.body.style.overflow = restoreBodyOverflow
-  document.documentElement.style.overflow = restoreHtmlOverflow
 })
 
 async function submit() {
@@ -162,7 +152,7 @@ async function loginWithPasskey() {
     await authPasskeyLoginFinish(username.value.trim(), credentialToJson(credential), rememberMe.value)
     router.push('/files')
   } catch (e: any) {
-    setError(e.message ?? 'Passkey login failed')
+    setError(passkeyErrorMessage(e))
   } finally {
     passkeyLoading.value = false
   }
@@ -171,14 +161,35 @@ async function loginWithPasskey() {
 
 <template>
   <div class="page">
-    <div class="center" data-testid="login-center">
-      <div class="info-box login-info">
-        <span class="icon">ⓘ</span>
-        <span>
-          Authentication Required<br>
-          <span style="color:var(--text2)">Sign in with your account, or enter a token directly.</span>
-        </span>
-      </div>
+    <main class="login-layout" data-testid="login-center">
+      <section class="login-intro" aria-label="Welcome">
+        <div class="login-brand">
+          <span class="login-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M5 7.5h14M7 4.5h10l1 3H6l1-3Z"/>
+              <path d="M6.5 7.5 8 20h8l1.5-12.5"/>
+              <path d="M10 11v5M14 11v5"/>
+            </svg>
+          </span>
+          <span>{{ appName }}</span>
+        </div>
+        <h1>Sign in to {{ appName }}.</h1>
+        <p>Manage your uploads, links, and account from one place.</p>
+      </section>
+
+      <section class="login-surface">
+        <div class="login-info">
+          <span class="login-info-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="4" y="10" width="16" height="10" rx="2"/>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+            </svg>
+          </span>
+          <div>
+            <strong>Authentication required</strong>
+            <p>Use your account, or enter a token directly.</p>
+          </div>
+        </div>
 
       <div class="card login-card">
         <div class="tabs login-tabs">
@@ -233,10 +244,23 @@ async function loginWithPasskey() {
             </div>
           </template>
 
-          <label class="remember-toggle">
-            <input v-model="rememberMe" type="checkbox" />
-            <span>remember me</span>
-          </label>
+          <div class="login-options">
+            <label class="remember-toggle">
+              <input v-model="rememberMe" type="checkbox" />
+              <span>remember me</span>
+            </label>
+            <button
+              v-if="mode === 'account'"
+              type="button"
+              class="passkey-link"
+              data-testid="passkey-login-btn"
+              :disabled="loading || passkeyLoading || !username.trim() || !passkeySupported"
+              :title="!passkeySupported ? 'Passkeys are not supported in this browser' : !username.trim() ? 'Enter your username to use a passkey' : 'Use a passkey instead'"
+              @click="loginWithPasskey"
+            >
+              {{ passkeyLoading ? 'Waiting…' : 'Use passkey' }}
+            </button>
+          </div>
 
           <div v-if="TURNSTILE_SITE_KEY" ref="turnstileContainer" class="turnstile-container"></div>
 
@@ -249,54 +273,101 @@ async function loginWithPasskey() {
             <button type="submit" class="btn-primary" :disabled="loading">
               {{ loading ? 'Logging in…' : 'Login' }}
             </button>
-            <button
-              v-if="mode === 'account'"
-              type="button"
-              class="btn-ghost"
-              data-testid="passkey-login-btn"
-              :disabled="loading || passkeyLoading || !username.trim()"
-              @click="loginWithPasskey"
-            >
-              {{ passkeyLoading ? 'Waiting for passkey…' : 'Use passkey' }}
-            </button>
-            <router-link v-if="mode === 'account'" to="/register" class="link">Register</router-link>
+            <router-link v-if="mode === 'account' && publicSettings.registration_enabled" to="/register" class="link">Register</router-link>
+            <span v-else-if="mode === 'account'" class="registration-disabled">Registration is disabled</span>
           </div>
         </form>
       </div>
-    </div>
+      </section>
+    </main>
   </div>
 </template>
 
 <style scoped>
 .page {
-  min-height: 100dvh;
+  min-height: max(100vh, 100dvh);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: var(--space-4);
+  padding: clamp(var(--space-4), 5vw, var(--space-8));
   overflow-y: auto;
 }
-.center {
-  width: min(400px, 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+.login-layout {
+  width: min(920px, 100%);
+  display: grid;
+  grid-template-columns: minmax(260px, .85fr) minmax(360px, 420px);
+  align-items: center;
+  gap: clamp(var(--space-6), 7vw, 88px);
 }
+.login-intro { max-width: 360px; }
+.login-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-h2);
+  font-weight: 650;
+  margin-bottom: var(--space-6);
+}
+.login-brand-mark {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--accent-h);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.login-brand-mark svg { width: 19px; height: 19px; }
+.login-intro h1 {
+  color: var(--text);
+  font-size: clamp(26px, 3vw, 34px);
+  letter-spacing: -.025em;
+  line-height: 1.12;
+  font-weight: 580;
+}
+.login-intro > p {
+  max-width: 34ch;
+  margin-top: var(--space-3);
+  color: var(--text2);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}
+.login-surface { width: 100%; }
 .login-info {
   width: 100%;
-  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
   font-size: var(--fs-sm);
   line-height: var(--lh-body);
 }
+.login-info-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: var(--accent-h);
+  line-height: 1;
+}
+.login-info-icon svg { display: block; width: 18px; height: 18px; }
+.login-info strong { display: block; color: var(--text); font-weight: 580; }
+.login-info p { margin-top: 2px; color: var(--text2); }
 .login-card {
   position: relative;
   width: 100%;
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
-  box-shadow: 0 20px 48px color-mix(in srgb, var(--shadow) 60%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--shadow) 30%, transparent);
 }
 .login-tabs {
   width: 100%;
@@ -318,8 +389,7 @@ async function loginWithPasskey() {
   border-radius: var(--radius-full);
   background: var(--accent);
 }
-.login-tabs button:hover:not(.active) { transform: translateY(-1px); }
-.login-tabs button:active { transform: scale(0.98); }
+.login-tabs button:hover:not(.active) { background: var(--surface2); }
 .field { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
 .field label { color: var(--text); font-size: var(--fs-sm); line-height: var(--lh-tight); }
 .field-hint { color: var(--text2); font-size: var(--fs-xs); line-height: var(--lh-body); margin-top: calc(var(--space-1) / -2); }
@@ -349,15 +419,12 @@ async function loginWithPasskey() {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
 }
 .password-toggle:hover {
   color: var(--text);
   background: var(--bg2);
-  transform: translateY(-50%) translateY(-1px);
-}
-.password-toggle:active {
-  transform: translateY(-50%) scale(0.96);
+  transform: translateY(-50%);
 }
 .remember-toggle {
   display: inline-flex;
@@ -365,53 +432,59 @@ async function loginWithPasskey() {
   gap: var(--space-2);
   color: var(--text2);
   font-size: var(--fs-sm);
-  margin: var(--space-1) 0 var(--space-3);
   user-select: none;
   cursor: pointer;
 }
 .remember-toggle input {
-  appearance: none;
-  width: var(--space-4);
-  height: var(--space-4);
-  padding: 0;
-  border: 1px solid var(--border2);
-  border-radius: calc(var(--radius-sm) / 2);
-  background: var(--bg);
-  display: inline-block;
   flex-shrink: 0;
-  position: relative;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
-.remember-toggle:hover input { border-color: var(--text3); }
-.remember-toggle input:checked {
-  border-color: var(--accent);
-  background: var(--checked-bg);
+.login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-1) 0 var(--space-3);
 }
-.remember-toggle input:checked::after {
-  content: "";
-  position: absolute;
-  inset: calc(var(--space-1) / 2);
-  background: var(--accent);
-  border-radius: calc(var(--radius-sm) / 5);
+.passkey-link {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent-h);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
 }
+.passkey-link:hover:not(:disabled) { color: var(--text); }
+.passkey-link:disabled { color: var(--text3); opacity: 1; cursor: not-allowed; text-decoration: none; }
 .turnstile-container {
   margin-bottom: var(--space-3);
 }
 .form-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: var(--space-2);
   flex-wrap: wrap;
   margin-top: var(--space-1);
 }
 .form-footer button {
   border-radius: var(--radius-sm);
-  transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
-.form-footer button:hover:not(:disabled) { transform: translateY(-1px); }
-.form-footer button:active:not(:disabled) { transform: scale(0.98); }
+.form-footer .link {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  padding: 5px 10px;
+}
+.form-footer .link:hover { border-color: var(--text3); background: var(--surface2); color: var(--text); }
 .error-msg {
   color: var(--red-h);
   font-size: var(--fs-sm);
@@ -441,13 +514,20 @@ async function loginWithPasskey() {
   font-size: var(--fs-sm);
   text-decoration: none;
   display: inline-block;
-  transition: color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: color var(--duration-fast) var(--ease-out);
 }
-.link:hover { color: var(--text); transform: translateY(-1px); }
-.link:active { transform: scale(0.98); }
+.link:hover { color: var(--text); }
+
+@media (max-width: 900px) {
+  .page { align-items: flex-start; padding-top: clamp(var(--space-6), 12vh, var(--space-8)); }
+  .login-layout { grid-template-columns: minmax(0, 420px); justify-content: center; gap: var(--space-5); }
+  .login-intro { max-width: 420px; }
+  .login-brand { margin-bottom: var(--space-5); }
+}
 
 @media (max-width: 600px) {
-  .page { padding: var(--space-3); }
+  .page { padding: var(--space-5) var(--space-3); }
+  .login-intro h1 { font-size: 29px; }
   .login-card { padding: var(--space-4); }
   .field input,
   .login-tabs button,
@@ -458,6 +538,7 @@ async function loginWithPasskey() {
   .password-toggle { width: calc(var(--space-6) + var(--space-2)); height: calc(var(--space-6) + var(--space-2)); }
   .password-wrap input { padding-right: var(--space-7); }
   .form-footer { flex-direction: column; align-items: stretch; }
+  .form-footer { grid-template-columns: 1fr; }
   .form-footer > * { width: 100%; text-align: center; justify-content: center; }
 }
 </style>

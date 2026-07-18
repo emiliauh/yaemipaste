@@ -84,7 +84,8 @@ struct SettingsRequest {
     public_title: Option<String>,
     base_api_url: Option<String>,
     registration_enabled: Option<bool>,
-    storage_warning_bytes: Option<u64>,
+    file_size_limit_bytes: Option<u64>,
+    file_size_limit_unlimited: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,11 +135,21 @@ struct AdminUploadItem {
     path: String,
     owner: Option<String>,
     file_name: String,
+    display_name: Option<String>,
+    uploader: Option<String>,
+    source: Option<String>,
     size_bytes: u64,
     created_at: Option<i64>,
     expires_at: Option<i64>,
     expired: bool,
     content_type: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Default)]
+struct UploadSidecarMeta {
+    display_name: Option<String>,
+    uploader: Option<String>,
+    source: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -244,7 +255,8 @@ fn ensure_setting_defaults(connection: &Connection) -> rusqlite::Result<()> {
         ("public_title", "yaemipaste"),
         ("base_api_url", ""),
         ("registration_enabled", "true"),
-        ("storage_warning_bytes", "0"),
+        ("file_size_limit_bytes", "0"),
+        ("file_size_limit_unlimited", "false"),
     ] {
         connection.execute(
             "INSERT OR IGNORE INTO admin_settings (key, value, updated_at, updated_by) VALUES (?1, ?2, ?3, 'system')",
@@ -266,6 +278,14 @@ fn setting_map(connection: &Connection) -> rusqlite::Result<HashMap<String, Stri
         values.insert(key, value);
     }
     Ok(values)
+}
+
+pub(crate) fn file_size_limit_bytes() -> Option<u64> {
+    let auth_env = AuthEnv::from_env();
+    let connection = open_db(&auth_env.db_path).ok()?;
+    let settings = setting_map(&connection).ok()?;
+    if settings.get("file_size_limit_unlimited").map(|value| value == "true").unwrap_or(false) { return None; }
+    settings.get("file_size_limit_bytes").and_then(|value| value.parse().ok()).filter(|value| *value > 0)
 }
 
 pub(crate) fn registration_enabled(connection: &Connection) -> bool {
@@ -527,20 +547,25 @@ fn strip_expiry_suffix(file_name: &str) -> Option<&str> {
 /// token) is kept only as a fallback for uploads that predate metadata
 /// tracking or that never carried a `meta` field, such as raw API/ShareX
 /// uploads made without the web UI's uploader hint.
+fn read_upload_metadata(containing_dir: &Path, file_name: &str) -> Option<UploadSidecarMeta> {
+    fn read_metadata(path: PathBuf) -> Option<UploadSidecarMeta> {
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|contents| serde_json::from_str::<UploadSidecarMeta>(&contents).ok())
+    }
+    read_metadata(metadata_path(containing_dir, file_name)).or_else(|| {
+        strip_expiry_suffix(file_name)
+            .and_then(|base| read_metadata(metadata_path(containing_dir, base)))
+    })
+}
+
 fn resolve_upload_owner(
     containing_dir: &Path,
     file_name: &str,
     dir_owner: Option<&String>,
 ) -> Option<String> {
-    #[derive(Deserialize)]
-    struct UploadSidecarMeta {
-        uploader: Option<String>,
-    }
-    fn read_uploader(path: PathBuf) -> Option<String> {
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|contents| serde_json::from_str::<UploadSidecarMeta>(&contents).ok())
-            .and_then(|meta| meta.uploader)
+    fn metadata_uploader(meta: UploadSidecarMeta) -> Option<String> {
+        meta.uploader
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty() && value != "Unknown (token user)")
     }
@@ -548,10 +573,7 @@ fn resolve_upload_owner(
     // (expiry-suffixed) file name wrote it under the pre-suffix name
     // instead; fall back to that legacy path so those uploads don't
     // silently show up as owned by nobody.
-    let from_metadata = read_uploader(metadata_path(containing_dir, file_name)).or_else(|| {
-        strip_expiry_suffix(file_name)
-            .and_then(|base| read_uploader(metadata_path(containing_dir, base)))
-    });
+    let from_metadata = read_upload_metadata(containing_dir, file_name).and_then(metadata_uploader);
     from_metadata.or_else(|| dir_owner.cloned())
 }
 
@@ -586,11 +608,58 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
     for user in users {
         owner_by_dir.insert(token_to_dir_name(&user.token), user.username.clone());
     }
+    let mut owner_by_file: HashMap<String, String> = HashMap::new();
+    fn index_metadata(
+        root: &Path,
+        current: &Path,
+        owner_by_dir: &HashMap<String, String>,
+        owner_by_file: &mut HashMap<String, String>,
+    ) {
+        let Ok(entries) = fs::read_dir(current) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name == ".rpmeta" {
+                let Ok(metadata_entries) = fs::read_dir(&path) else {
+                    continue;
+                };
+                let relative_parent = current
+                    .strip_prefix(root)
+                    .unwrap_or(current)
+                    .to_string_lossy();
+                let dir_key = relative_parent.split('/').next().unwrap_or_default();
+                for metadata_entry in metadata_entries.flatten() {
+                    let metadata_name = metadata_entry.file_name().to_string_lossy().to_string();
+                    let Some(file_name) = metadata_name.strip_suffix(".json") else {
+                        continue;
+                    };
+                    if let Some(owner) = resolve_upload_owner(
+                        current,
+                        file_name,
+                        owner_by_dir.get(dir_key),
+                    ) {
+                        owner_by_file.insert(file_name.to_string(), owner.clone());
+                        if let Some(base) = strip_expiry_suffix(file_name) {
+                            owner_by_file.insert(base.to_string(), owner);
+                        }
+                    }
+                }
+                continue;
+            }
+            if path.is_dir() {
+                index_metadata(root, &path, owner_by_dir, owner_by_file);
+            }
+        }
+    }
+    index_metadata(upload_root, upload_root, &owner_by_dir, &mut owner_by_file);
     let mut out = Vec::new();
     fn walk(
         root: &Path,
         current: &Path,
         owner_by_dir: &HashMap<String, String>,
+        owner_by_file: &HashMap<String, String>,
         out: &mut Vec<AdminUploadItem>,
     ) {
         let Ok(entries) = fs::read_dir(current) else {
@@ -602,11 +671,22 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
             if name == ".rpmeta" {
                 continue;
             }
+            // The public short-path compatibility layer creates symlinks at
+            // the upload root. They are aliases, not stored uploads, and
+            // may remain dangling after the backing file is purged. Do not
+            // expose those aliases as admin uploads (or as Unattributed
+            // rows).
+            let Ok(link_metadata) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if link_metadata.file_type().is_symlink() {
+                continue;
+            }
             let Ok(metadata) = entry.metadata() else {
                 continue;
             };
             if metadata.is_dir() {
-                walk(root, &path, owner_by_dir, out);
+                walk(root, &path, owner_by_dir, owner_by_file, out);
                 continue;
             }
             let relative = path
@@ -616,7 +696,15 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
                 .replace('\\', "/");
             let mut segments = relative.split('/');
             let first = segments.next().unwrap_or_default();
-            let owner = resolve_upload_owner(current, &name, owner_by_dir.get(first));
+            let sidecar = read_upload_metadata(current, &name);
+            let owner = sidecar
+                .as_ref()
+                .and_then(|meta| meta.uploader.as_ref())
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty() && value != "Unknown (token user)")
+                .or_else(|| resolve_upload_owner(current, &name, owner_by_dir.get(first)))
+                .or_else(|| owner_by_file.get(&name).cloned())
+                .or_else(|| strip_expiry_suffix(&name).and_then(|base| owner_by_file.get(base).cloned()));
             let expires_at = expires_at_from_name(&name);
             let now = now_seconds();
             let content_type = None;
@@ -624,6 +712,9 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
                 path: relative,
                 owner,
                 file_name: name,
+                display_name: sidecar.as_ref().and_then(|meta| meta.display_name.clone()),
+                uploader: sidecar.as_ref().and_then(|meta| meta.uploader.clone()),
+                source: sidecar.and_then(|meta| meta.source),
                 size_bytes: metadata.len(),
                 created_at: metadata
                     .created()
@@ -636,7 +727,7 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
             });
         }
     }
-    walk(upload_root, upload_root, &owner_by_dir, &mut out);
+    walk(upload_root, upload_root, &owner_by_dir, &owner_by_file, &mut out);
     out.sort_by_key(|item| item.created_at.unwrap_or(0));
     out.reverse();
     out
@@ -762,6 +853,61 @@ fn webhook_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Webhook
     })
 }
 
+fn webhook_value_text(payload: &Value, key: &str, fallback: &str) -> String {
+    match payload.get(key) {
+        Some(Value::String(value)) if !value.trim().is_empty() => value.clone(),
+        Some(value) if !value.is_null() => value.to_string(),
+        _ => fallback.to_string(),
+    }
+}
+
+fn webhook_embed(event: &str, payload: &Value, app_name: &str) -> Value {
+    let (title, color) = match event {
+        "file.uploaded" => ("File uploaded", 0x70A7E0),
+        "file.deleted" => ("File deleted", 0xD98282),
+        "user.created" => ("User created", 0x82C596),
+        "user.deleted" => ("User deleted", 0xD98282),
+        "admin.webhook.test" => ("Webhook test", 0xA78BFA),
+        _ => ("Yaemipaste event", 0x70A7E0),
+    };
+    let mut fields = Vec::new();
+    if payload.get("file").is_some() || payload.get("path").is_some() {
+        fields.push(json!({ "name": "File", "value": format!("`{}`", webhook_value_text(payload, "file", &webhook_value_text(payload, "path", "unknown"))), "inline": false }));
+    }
+    for (key, label) in [
+        ("original_name", "Name"),
+        ("uploader", "Uploader"),
+        ("owner", "Owner"),
+        ("source", "Source"),
+        ("size_bytes", "Size"),
+        ("bytes_removed", "Bytes removed"),
+    ] {
+        if payload.get(key).is_some() {
+            let value = if key == "size_bytes" || key == "bytes_removed" {
+                format!("{} bytes", webhook_value_text(payload, key, "0"))
+            } else {
+                webhook_value_text(payload, key, "unknown")
+            };
+            if value == "unknown" || value == "\"\"" || value == "null" {
+                continue;
+            }
+            fields.push(json!({ "name": label, "value": value, "inline": true }));
+        }
+    }
+    let mut embed = json!({
+        "title": title,
+        "description": format!("**{}** · `{}`", app_name, event),
+        "color": color,
+        "fields": fields,
+        "footer": { "text": app_name },
+        "timestamp": uts2ts::uts2ts(now_seconds()).as_string(),
+    });
+    if let Some(url) = payload.get("url").and_then(Value::as_str).filter(|value| !value.is_empty()) {
+        embed["url"] = json!(url);
+    }
+    embed
+}
+
 pub(crate) fn dispatch_webhook(event: &str, payload: Value) {
     let event = event.to_string();
     let auth_env = AuthEnv::from_env();
@@ -792,13 +938,28 @@ pub(crate) fn dispatch_webhook(event: &str, payload: Value) {
             .map(|rows| rows.flatten().collect())
             .unwrap_or_default();
         drop(statement);
+        let settings = setting_map(&connection).unwrap_or_default();
+        let app_name = settings
+            .get("public_title")
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| settings.get("app_name"))
+            .map(String::as_str)
+            .unwrap_or("yaemipaste");
         let client = Client::default();
         for (id, url, events) in hooks {
-            if !events.iter().any(|candidate| candidate == &event) {
+            // A manual admin test must reach the endpoint even when the
+            // webhook is subscribed only to production events such as
+            // file.uploaded. Regular events remain strictly filtered.
+            if event != "admin.webhook.test" && !events.iter().any(|candidate| candidate == &event) {
                 continue;
             }
             let created_at = now_seconds();
             let body = json!({
+                // Keep the event envelope below for generic consumers while
+                // using the rich embed as Discord's only visible message.
+                "username": "Yaemipaste",
+                "allowed_mentions": { "parse": [] },
+                "embeds": [webhook_embed(&event, &payload, app_name)],
                 "event": event,
                 "created_at": created_at,
                 "payload": payload,
@@ -1168,7 +1329,6 @@ async fn dashboard(request: HttpRequest, config: web::Data<RwLock<Config>>) -> H
         .iter()
         .map(|user| user_summary(user, &uploads))
         .collect();
-    let settings = setting_map(&connection).unwrap_or_default();
     let cfg = match config.read() {
         Ok(config) => config.clone(),
         Err(_) => {
@@ -1186,30 +1346,6 @@ async fn dashboard(request: HttpRequest, config: web::Data<RwLock<Config>>) -> H
             warnings.push("Upload storage is at or above configured maximum".to_string());
         } else if total_disk_usage_bytes >= limit_bytes.saturating_mul(9) / 10 {
             warnings.push("Upload storage is above 90% of configured maximum".to_string());
-        }
-    }
-    if let Some(threshold) = settings
-        .get("storage_warning_bytes")
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-    {
-        if total_disk_usage_bytes >= threshold {
-            warnings.push("Upload storage is above the configured warning threshold".to_string());
-            let last_dispatch = settings
-                .get("storage_warning_last_dispatch_at")
-                .and_then(|value| value.parse::<i64>().ok())
-                .unwrap_or(0);
-            if now_seconds() - last_dispatch > 3600 {
-                dispatch_webhook(
-                    "storage.threshold_reached",
-                    json!({ "total_disk_usage_bytes": total_disk_usage_bytes, "threshold_bytes": threshold }),
-                );
-                let _ = connection.execute(
-                    "INSERT INTO admin_settings (key, value, updated_at, updated_by) VALUES ('storage_warning_last_dispatch_at', ?1, ?1, 'system') \
-                     ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-                    params![now_seconds()],
-                );
-            }
         }
     }
     audit(
@@ -2030,8 +2166,11 @@ async fn put_settings(request: HttpRequest, body: web::Json<SettingsRequest>) ->
     if let Some(value) = body.registration_enabled {
         updates.push(("registration_enabled", value.to_string()));
     }
-    if let Some(value) = body.storage_warning_bytes {
-        updates.push(("storage_warning_bytes", value.to_string()));
+    if let Some(value) = body.file_size_limit_bytes {
+        updates.push(("file_size_limit_bytes", value.to_string()));
+    }
+    if let Some(value) = body.file_size_limit_unlimited {
+        updates.push(("file_size_limit_unlimited", value.to_string()));
     }
     for (key, value) in updates {
         if let Err(error) = connection.execute(
@@ -2341,6 +2480,8 @@ async fn public_settings() -> HttpResponse {
         "public_title": settings.get("public_title").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "base_api_url": settings.get("base_api_url").cloned().unwrap_or_default(),
         "registration_enabled": registration_enabled(&connection),
+        "file_size_limit_bytes": settings.get("file_size_limit_bytes").and_then(|value| value.parse::<u64>().ok()).unwrap_or(0),
+        "file_size_limit_unlimited": settings.get("file_size_limit_unlimited").map(|value| value == "true").unwrap_or(false),
         "turnstile_site_key": turnstile_site_key,
         "turnstile_required": !auth_env.turnstile_secret_key.trim().is_empty(),
     }))

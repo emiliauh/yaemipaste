@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { zipSync } from 'fflate'
 import { getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicApiFileUrl, publicFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
 import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
+import ActionConfirmDialog from './ActionConfirmDialog.vue'
 import { useNotificationStore } from '../stores/notifications'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
 
@@ -18,6 +20,13 @@ interface PreviewState {
   loading: boolean
 }
 
+interface CachedPreview {
+  blob: Blob
+  name: string
+  type: string
+  textContent?: string
+}
+
 type DeleteConfirmMode = 'all' | 'selected'
 
 type PageSize = 15 | 30 | 45
@@ -29,6 +38,9 @@ const PASSWORD_CHANGE_COUNT_KEY = 'rp_pw_change_counts'
 const HISTORY_WS_ENV = (import.meta.env.VITE_HISTORY_WS ?? '').trim()
 const TEXT_PREVIEW_BYTES = 256 * 1024
 const TEXT_PREVIEW_CHARS = 32_000
+const PREVIEW_CACHE_MAX_BYTES = 64 * 1024 * 1024
+const PREVIEW_CACHE_ENTRY_MAX_BYTES = 24 * 1024 * 1024
+const DELETE_CONCURRENCY = 6
 
 const files = ref<PasteFile[]>([])
 const loading = ref(true)
@@ -65,13 +77,19 @@ const passwordPreviewError = ref('')
 const passwordPromptAction = ref<'preview' | 'download'>('preview')
 const deleteConfirmOpen = ref(false)
 const deleteConfirmMode = ref<DeleteConfirmMode>('selected')
+const deleteAcknowledged = ref(false)
 const wsConnected = ref(false)
 const compactFileNames = ref(window.matchMedia('(max-width: 820px)').matches)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const notificationStore = useNotificationStore()
+const router = useRouter()
 let hoverToken = 0
 let previewToken = 0
 let compactFileNamesMediaQuery: MediaQueryList | null = null
+let hoverAbortController: AbortController | null = null
+let previewCacheBytes = 0
+let historyRequestSequence = 0
+const previewCache = new Map<string, CachedPreview>()
 
 async function readPreviewText(blob: Blob): Promise<string> {
   const previewText = await blob.slice(0, TEXT_PREVIEW_BYTES).text()
@@ -137,7 +155,6 @@ function applyHistorySnapshot(rawFiles: unknown[]) {
     const normalized = mapRawHistoryFile(item as Record<string, unknown>)
     if (normalized) parsed.push(normalized)
   }
-  if (!parsed.length) return
   files.value = parsed
   const knownNames = new Set(parsed.map((file) => file.file_name))
   selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
@@ -168,27 +185,37 @@ function resolveHistorySocketUrl(): string | null {
 }
 
 async function load() {
+  const sequence = ++historyRequestSequence
+  files.value = []
+  selectedFiles.value = new Set()
+  fileMetaMap.value = {}
   loading.value = true
   error.value = ''
   try {
-    files.value = await listFiles()
-    const knownNames = new Set(files.value.map((file) => file.file_name))
-    selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
-    fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
-  } catch (e: any) {
-    error.value = e.message
-  } finally {
-    loading.value = false
-  }
-}
-
-async function refreshSilently() {
-  try {
     const nextFiles = await listFiles()
+    if (sequence !== historyRequestSequence) return
     files.value = nextFiles
     const knownNames = new Set(nextFiles.map((file) => file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
     fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
+    await ensureVisibleMeta()
+  } catch (e: any) {
+    if (sequence === historyRequestSequence) error.value = e.message
+  } finally {
+    if (sequence === historyRequestSequence) loading.value = false
+  }
+}
+
+async function refreshSilently() {
+  const sequence = ++historyRequestSequence
+  try {
+    const nextFiles = await listFiles()
+    if (sequence !== historyRequestSequence) return
+    files.value = nextFiles
+    const knownNames = new Set(nextFiles.map((file) => file.file_name))
+    selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
+    fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
+    await ensureVisibleMeta()
   } catch (e) {
     console.error('History auto-refresh failed', e)
   }
@@ -322,13 +349,16 @@ async function del(f: PasteFile) {
 function requestDeleteAll() {
   if (!files.value.length || bulkDeleting.value) return
   deleteConfirmMode.value = 'all'
+  deleteAcknowledged.value = false
   deleteConfirmOpen.value = true
   actionsOpen.value = false
   closeRowMoreMenu()
 }
 
 async function deleteAll() {
-  for (const f of [...files.value]) await del(f)
+  const result = await deleteNamesConcurrently(files.value.map((file) => file.file_name))
+  if (result.deleted) showToast(`Deleted ${result.deleted} file(s)`)
+  if (result.failed) showToast(`${result.failed} file(s) could not be deleted`, 'error')
 }
 
 function previewName(f: PasteFile) {
@@ -396,6 +426,48 @@ function canInlinePreview(f: PasteFile): boolean {
 
 function clearPreviewObjectUrl(state: PreviewState | null) {
   if (state?.url.startsWith('blob:')) URL.revokeObjectURL(state.url)
+}
+
+function previewCacheKey(file: PasteFile): string {
+  return file.file_name
+}
+
+function cachedPreview(file: PasteFile): CachedPreview | null {
+  const key = previewCacheKey(file)
+  const entry = previewCache.get(key)
+  if (!entry) return null
+  // Refresh the entry's position to keep the cache least-recently-used.
+  previewCache.delete(key)
+  previewCache.set(key, entry)
+  return entry
+}
+
+function cachePreview(file: PasteFile, entry: CachedPreview) {
+  if (entry.blob.size > PREVIEW_CACHE_ENTRY_MAX_BYTES) return
+  const key = previewCacheKey(file)
+  const previous = previewCache.get(key)
+  if (previous) previewCacheBytes -= previous.blob.size
+  previewCache.set(key, entry)
+  previewCacheBytes += entry.blob.size
+  while (previewCacheBytes > PREVIEW_CACHE_MAX_BYTES) {
+    const oldest = previewCache.entries().next().value as [string, CachedPreview] | undefined
+    if (!oldest) break
+    previewCache.delete(oldest[0])
+    previewCacheBytes -= oldest[1].blob.size
+  }
+}
+
+function previewStateFromCache(file: PasteFile, cached: CachedPreview, x: number, y: number): PreviewState {
+  return {
+    file,
+    url: URL.createObjectURL(cached.blob),
+    name: cached.name,
+    type: cached.type,
+    textContent: cached.textContent,
+    x,
+    y,
+    loading: false,
+  }
 }
 
 function isPasswordEncryptedFile(f: PasteFile): boolean {
@@ -663,6 +735,9 @@ const hasSelection = computed(() => selectedCount.value > 0)
 const allVisibleSelected = computed(
   () => paginatedFiles.value.length > 0 && paginatedFiles.value.every((file) => selectedFiles.value.has(file.file_name)),
 )
+const allFilteredSelected = computed(
+  () => filtered.value.length > 0 && filtered.value.every((file) => selectedFiles.value.has(file.file_name)),
+)
 
 function toggleSelection(name: string, enabled: boolean) {
   const next = new Set(selectedFiles.value)
@@ -672,6 +747,10 @@ function toggleSelection(name: string, enabled: boolean) {
 }
 
 function toggleSelectAll(enabled: boolean) {
+  if (!enabled && allFilteredSelected.value) {
+    clearSelection()
+    return
+  }
   const next = new Set(selectedFiles.value)
   if (enabled) {
     for (const file of paginatedFiles.value) next.add(file.file_name)
@@ -679,6 +758,10 @@ function toggleSelectAll(enabled: boolean) {
     for (const file of paginatedFiles.value) next.delete(file.file_name)
   }
   selectedFiles.value = next
+}
+
+function selectAllFiltered() {
+  selectedFiles.value = new Set(filtered.value.map((file) => file.file_name))
 }
 
 function clearSelection() {
@@ -744,6 +827,7 @@ async function downloadSelectedAsZip() {
 function requestDeleteSelected() {
   if (!hasSelection.value || bulkDeleting.value) return
   deleteConfirmMode.value = 'selected'
+  deleteAcknowledged.value = false
   deleteConfirmOpen.value = true
   actionsOpen.value = false
   closeRowMoreMenu()
@@ -752,10 +836,11 @@ function requestDeleteSelected() {
 function closeDeleteConfirm() {
   if (bulkDeleting.value) return
   deleteConfirmOpen.value = false
+  deleteAcknowledged.value = false
 }
 
 async function confirmDelete() {
-  if (!deleteConfirmCount.value || bulkDeleting.value) return
+  if (!deleteConfirmCount.value || !deleteAcknowledged.value || bulkDeleting.value) return
   if (deleteConfirmMode.value === 'all') {
     bulkDeleting.value = true
     try {
@@ -776,23 +861,38 @@ async function deleteSelected() {
   if (!selected.length) return
   actionsOpen.value = false
   bulkDeleting.value = true
-  let deletedCount = 0
   try {
-    for (const file of selected) {
-      try {
-        await deleteFile(file.file_name)
-        files.value = files.value.filter((item) => item.file_name !== file.file_name)
-        selectedFiles.value.delete(file.file_name)
-        deletedCount += 1
-      } catch (error) {
-        console.error('Bulk delete failed', { fileName: file.file_name, error })
-      }
-    }
-    if (deletedCount) showToast(`Deleted ${deletedCount} file(s)`)
-    if (deletedCount !== selected.length) showToast('Some selected files could not be deleted', 'error')
+    const result = await deleteNamesConcurrently(selected.map((file) => file.file_name))
+    if (result.deleted) showToast(`Deleted ${result.deleted} file(s)`)
+    if (result.failed) showToast(`${result.failed} file(s) could not be deleted`, 'error')
   } finally {
     bulkDeleting.value = false
   }
+}
+
+async function deleteNamesConcurrently(names: string[]): Promise<{ deleted: number; failed: number }> {
+  const deletedNames = new Set<string>()
+  let cursor = 0
+  let failed = 0
+  const worker = async () => {
+    while (cursor < names.length) {
+      const name = names[cursor]
+      cursor += 1
+      try {
+        await deleteFile(name)
+        deletedNames.add(name)
+      } catch (error) {
+        failed += 1
+        console.error('Bulk delete failed', { fileName: name, error })
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(DELETE_CONCURRENCY, names.length) }, () => worker()))
+  if (deletedNames.size) {
+    files.value = files.value.filter((file) => !deletedNames.has(file.file_name))
+    selectedFiles.value = new Set([...selectedFiles.value].filter((name) => !deletedNames.has(name)))
+  }
+  return { deleted: deletedNames.size, failed }
 }
 
 async function downloadFile(f: PasteFile) {
@@ -822,47 +922,47 @@ async function downloadFile(f: PasteFile) {
   }
 }
 
-async function buildPreview(f: PasteFile, x = 0, y = 0): Promise<PreviewState> {
+async function buildPreview(f: PasteFile, x = 0, y = 0, signal?: AbortSignal): Promise<PreviewState> {
+  const cached = cachedPreview(f)
+  if (cached) return previewStateFromCache(f, cached, x, y)
   const stored = getStoredEncryptedFile(f.file_name)
   const kind = previewKind(f)
   if (!stored || stored.key.startsWith('pw:')) {
     const response = await fetch(publicFileUrl(f.file_name), {
       cache: 'no-store',
       headers: { Authorization: getAuthToken() },
+      signal,
     })
     if (!response.ok) throw new Error('Preview download failed')
     const payload = await response.blob()
     const textContent = kind === 'text' ? await readPreviewText(payload) : undefined
-    return {
-      file: f,
-      url: URL.createObjectURL(payload),
+    const cachedPreviewResult: CachedPreview = {
+      blob: payload,
       name: previewName(f),
       type: response.headers.get('content-type')
         || (kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : kind === 'text' ? 'text/plain' : 'application/octet-stream'),
       textContent,
-      x,
-      y,
-      loading: false,
     }
+    cachePreview(f, cachedPreviewResult)
+    return previewStateFromCache(f, cachedPreviewResult, x, y)
   }
 
   const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`, {
     cache: 'no-store',
     headers: { Authorization: getAuthToken() },
+    signal,
   })
   if (!response.ok) throw new Error('Preview download failed')
   const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
   const textContent = kind === 'text' ? await readPreviewText(decrypted.blob) : undefined
-  return {
-    file: f,
-    url: URL.createObjectURL(decrypted.blob),
+  const cachedPreviewResult: CachedPreview = {
+    blob: decrypted.blob,
     name: decrypted.metadata.name,
     type: decrypted.metadata.type,
     textContent,
-    x,
-    y,
-    loading: false,
   }
+  cachePreview(f, cachedPreviewResult)
+  return previewStateFromCache(f, cachedPreviewResult, x, y)
 }
 
 function moveHover(e: MouseEvent) {
@@ -875,6 +975,9 @@ async function showHover(f: PasteFile, e: MouseEvent) {
   if (!hoverEnabled) return
   if (previewKind(f) === 'text') return
   if (!canInlinePreview(f)) return
+  hoverAbortController?.abort()
+  const controller = new AbortController()
+  hoverAbortController = controller
   const token = ++hoverToken
   clearPreviewObjectUrl(hoverPreview.value)
   hoverPreview.value = {
@@ -887,16 +990,21 @@ async function showHover(f: PasteFile, e: MouseEvent) {
     loading: true,
   }
   try {
-    const next = await buildPreview(f, e.clientX + 18, e.clientY + 18)
+    const next = await buildPreview(f, e.clientX + 18, e.clientY + 18, controller.signal)
     if (token === hoverToken) hoverPreview.value = next
     else clearPreviewObjectUrl(next)
-  } catch {
+  } catch (error) {
+    if ((error as DOMException | null)?.name === 'AbortError') return
     if (token === hoverToken) hoverPreview.value = null
+  } finally {
+    if (hoverAbortController === controller) hoverAbortController = null
   }
 }
 
 function hideHover() {
   if (!hoverEnabled) return
+  hoverAbortController?.abort()
+  hoverAbortController = null
   hoverToken += 1
   clearPreviewObjectUrl(hoverPreview.value)
   hoverPreview.value = null
@@ -1119,6 +1227,7 @@ onMounted(() => {
   }, AUTO_REFRESH_MS)
 })
 onBeforeUnmount(() => {
+  hoverAbortController?.abort()
   compactFileNamesMediaQuery?.removeEventListener('change', onCompactNamesMediaChange)
   compactFileNamesMediaQuery = null
   window.removeEventListener('blur', hideHover)
@@ -1175,9 +1284,14 @@ onBeforeUnmount(() => {
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
           </div>
-          <div class="live-status" :class="{ connected: wsConnected }">
+          <div
+            class="live-status"
+            :class="{ connected: wsConnected }"
+            title="History refreshes automatically"
+            aria-label="History refreshes automatically"
+          >
             <span aria-hidden="true"></span>
-            {{ wsConnected ? 'Live sync' : 'Polling' }}
+            Auto-refreshing
           </div>
         </div>
         <button class="btn-red toolbar-control toolbar-delete-all" :disabled="!files.length || bulkDeleting" @click="requestDeleteAll">
@@ -1197,6 +1311,27 @@ onBeforeUnmount(() => {
           <span>Select page</span>
         </label>
         <span class="selection-count">{{ selectedCount }} selected</span>
+        <button
+          v-if="hasSelection"
+          class="clear-selection"
+          type="button"
+          :disabled="bulkDeleting || bulkDownloading"
+          @click="clearSelection"
+        >
+          Clear
+        </button>
+        <button
+          v-if="totalPages > 1 && allVisibleSelected && !allFilteredSelected"
+          class="select-all-pages"
+          type="button"
+          :disabled="bulkDeleting || bulkDownloading"
+          @click="selectAllFiltered"
+        >
+          Select all {{ filtered.length }} files
+        </button>
+        <span v-else-if="totalPages > 1 && allFilteredSelected" class="all-pages-selected">
+          All {{ filtered.length }} pages selected
+        </span>
         <span class="history-meta">Latest: {{ latestFileDate }}</span>
         <div class="page-size-wrap">
           <span class="page-size-label">Per page</span>
@@ -1265,15 +1400,24 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="!filtered.length" class="state-card">
-        <strong>{{ search ? 'No matching files' : 'No files yet' }}</strong>
-        <p>{{ search ? 'Try a different filename or clear the search field.' : 'Uploaded files will appear here with preview, download, copy, and delete actions.' }}</p>
+        <template v-if="search">
+          <strong>No matching files</strong>
+          <p>Try a different filename or clear the search field.</p>
+        </template>
+        <template v-else>
+          <strong>You haven’t uploaded any files yet.</strong>
+          <p>Want to upload your first?</p>
+          <button class="btn-ghost empty-action" type="button" @click.stop.prevent="router.push({ path: '/files', query: {} })">
+            Upload
+          </button>
+        </template>
       </div>
 
       <div v-else class="table-wrap" @mouseleave="hideHover">
         <table class="file-table">
           <thead>
             <tr>
-              <th style="width:1px">
+              <th class="select-col">
                 <input
                   type="checkbox"
                   :checked="allVisibleSelected"
@@ -1448,30 +1592,19 @@ onBeforeUnmount(() => {
       @close="closePreview"
     />
 
-    <div v-if="deleteConfirmOpen" class="modal-backdrop" @click.self="closeDeleteConfirm">
-      <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
-        <div class="modal-icon danger" aria-hidden="true">!</div>
-        <div class="password-modal-header">
-          <strong id="delete-confirm-title">{{ deleteConfirmTitle }}</strong>
-          <button class="modal-close btn-ghost" :disabled="bulkDeleting" aria-label="Close confirmation" @click="closeDeleteConfirm">✕</button>
-        </div>
-        <p class="password-modal-copy">{{ deleteConfirmMessage }}</p>
-        <div class="confirm-detail">
-          <span>{{ deleteConfirmCount }} item{{ deleteConfirmCount === 1 ? '' : 's' }}</span>
-          <span>Permanent deletion</span>
-        </div>
-        <div class="password-modal-actions">
-          <button class="btn-ghost" :disabled="bulkDeleting" @click="closeDeleteConfirm">Cancel</button>
-          <button class="btn-red confirm-danger" :disabled="bulkDeleting || !deleteConfirmCount" @click="confirmDelete">
-            <span v-if="bulkDeleting" class="busy-inline">
-              <span class="loading-spinner" aria-hidden="true"></span>
-              <span>Deleting…</span>
-            </span>
-            <span v-else>Confirm delete</span>
-          </button>
-        </div>
-      </div>
-    </div>
+    <ActionConfirmDialog
+      v-if="deleteConfirmOpen"
+      v-model:acknowledged="deleteAcknowledged"
+      :title="deleteConfirmTitle"
+      :message="deleteConfirmMessage"
+      :detail="`${deleteConfirmCount} item${deleteConfirmCount === 1 ? '' : 's'} · Permanent deletion`"
+      confirm-label="Confirm delete"
+      acknowledgement="I understand that these files will be permanently deleted."
+      :busy="bulkDeleting"
+      danger
+      @close="closeDeleteConfirm"
+      @confirm="confirmDelete"
+    />
 
     <div v-if="passwordModalOpen" class="modal-backdrop" @click.self="closePasswordModal">
       <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
@@ -1568,10 +1701,8 @@ onBeforeUnmount(() => {
 .history-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--bg3) 34%, transparent), transparent 34%),
-    color-mix(in srgb, var(--bg1) 88%, transparent);
-  box-shadow: 0 18px 48px color-mix(in srgb, var(--shadow) 76%, transparent);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .history-hero {
@@ -1647,7 +1778,8 @@ onBeforeUnmount(() => {
 
 .history-panel {
   padding: var(--space-4);
-  background: color-mix(in srgb, var(--bg1) 92%, transparent);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .modal-backdrop {
@@ -1723,25 +1855,48 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   color: var(--text2);
   font-size: var(--fs-xs);
-  background: var(--bg);
 }
 
 .live-status span {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  aspect-ratio: 1;
+  display: block;
   border-radius: var(--radius-full);
-  background: var(--text3);
+  background: var(--green);
+  opacity: 0.8;
+  animation: refresh-dot-pulse 1.8s ease-in-out infinite;
 }
 
 .live-status.connected span {
   background: var(--green);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--green) 55%, transparent);
+  opacity: 1;
+  animation-duration: 1.2s;
+}
+
+@keyframes refresh-dot-pulse {
+  0%, 100% {
+    opacity: 0.55;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 0%, transparent);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 18%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-status span {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .bulk-actions {
@@ -1764,6 +1919,32 @@ onBeforeUnmount(() => {
 .history-meta {
   color: var(--text2);
   font-size: var(--fs-xs);
+}
+
+.select-all-pages,
+.all-pages-selected {
+  color: var(--accent-h);
+  font-size: var(--fs-xs);
+}
+.select-all-pages {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.select-all-pages:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.clear-selection {
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text3);
+  font-size: var(--fs-xs);
+}
+.clear-selection:hover:not(:disabled) {
+  color: var(--text);
 }
 
 .history-meta {
@@ -1823,7 +2004,7 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 
-.page-size-btn:active { transform: scale(0.94); }
+.page-size-btn:active { transform: none; }
 
 .actions-menu,
 .row-item-menu {
@@ -1948,6 +2129,18 @@ onBeforeUnmount(() => {
   font-size: var(--fs-sm);
   line-height: var(--lh-body);
 }
+.empty-action {
+  margin-top: var(--space-4);
+  min-height: 38px;
+  padding-inline: var(--space-4);
+  border-color: var(--border2);
+  color: var(--text2);
+}
+.empty-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border2));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--text);
+}
 
 .error-state {
   border-color: var(--error-border);
@@ -1958,6 +2151,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg);
+  overflow: hidden;
 }
 
 .file-table {
@@ -2001,7 +2195,20 @@ onBeforeUnmount(() => {
   margin-left: 2px;
 }
 
-.select-col { width: 1px; }
+.file-table th.select-col,
+.file-table td.select-col {
+  width: 42px;
+  padding-right: 0;
+  padding-left: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.file-table th.select-col input,
+.file-table td.select-col input {
+  display: block;
+  margin: 0 auto;
+}
 
 .filename {
   display: flex;

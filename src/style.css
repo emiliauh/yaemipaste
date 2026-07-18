@@ -1,31 +1,31 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:        #050505;
-  --bg1:       #0b0c0d;
-  --bg2:       #151719;
-  --bg3:       #202327;
-  --surface:   #0d0e10;
-  --surface2:  #17191c;
-  --surface3:  #23262b;
-  --border:    #25282d;
-  --border2:   #343941;
-  --text:      #e8e8e6;
-  --text2:     #969893;
-  --text3:     #60635f;
-  --accent:    #2f7cf6;
-  --accent-h:  #74a8ff;
-  --accent-d:  #1d5fd0;
+  --bg:        #0b0e13;
+  --bg1:       #11161d;
+  --bg2:       #19212b;
+  --bg3:       #252f3b;
+  --surface:   #121820;
+  --surface2:  #1a232e;
+  --surface3:  #25313e;
+  --border:    #293542;
+  --border2:   #3b4b5c;
+  --text:      #f0f3f7;
+  --text2:     #a4b0be;
+  --text3:     #718092;
+  --accent:    #82a9d6;
+  --accent-h:  #b1cced;
+  --accent-d:  #5e86b4;
   --orange:    var(--accent);
   --orange-h:  var(--accent-h);
-  --red:       #c0392b;
-  --red-h:     #e74c3c;
-  --green:     #27ae60;
+  --red:       #d27676;
+  --red-h:     #f09a9a;
+  --green:     #8fc6a5;
   --on-accent: #ffffff;
   --shadow:    #00000066;
   --modal-bg:  #000000b5;
   --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg2));
-  --checked-bg:#122a20;
+  --checked-bg:#14283b;
   --danger-bg: #2b1111;
   --success-border: #20442f;
   --error-border: #4a1e1e;
@@ -34,14 +34,15 @@
   /* Radius scale - documented, do not invent ad-hoc values.
      sm = controls (buttons/inputs/pills-non-full), md = cards/panels,
      lg = hero-scale panels (upload panel, auth cards), full = pill toggles */
-  --radius:     10px;
-  --radius-sm:  10px;
-  --radius-md:  16px;
-  --radius-lg:  24px;
+  --radius:     7px;
+  --radius-sm:  7px;
+  --radius-md:  11px;
+  --radius-lg:  15px;
   --radius-full: 999px;
 
   /* Type scale */
-  --font:       'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --font:       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   --fs-display: clamp(28px, 3.4vw, 38px);
   --fs-h1:      clamp(20px, 2.2vw, 24px);
   --fs-h2:      15px;
@@ -71,25 +72,25 @@
   --duration-base: 0.22s;
   --duration-slow: 0.4s;
 
-  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 38%, transparent);
+  --focus-ring: 0 0 0 2px var(--bg1), 0 0 0 4px color-mix(in srgb, var(--accent) 72%, transparent);
 }
 
 :root[data-theme="light"] {
-  --bg:        #f7f8fa;
+  --bg:        #f5f7fa;
   --bg1:       #ffffff;
-  --bg2:       #edf0f4;
-  --bg3:       #dfe4ea;
+  --bg2:       #edf1f6;
+  --bg3:       #dfe6ef;
   --surface:   #ffffff;
-  --surface2:  #f2f4f7;
-  --surface3:  #e4e8ee;
-  --border:    #d4d9e1;
-  --border2:   #c3cad4;
-  --text:      #15191f;
-  --text2:     #596270;
-  --text3:     #7c8795;
-  --accent:    #1f6eea;
-  --accent-h:  #0d56c5;
-  --accent-d:  #174fa8;
+  --surface2:  #f1f4f8;
+  --surface3:  #e5ebf2;
+  --border:    #d4dce6;
+  --border2:   #bac7d6;
+  --text:      #18202a;
+  --text2:     #5c6978;
+  --text3:     #7d8b9b;
+  --accent:    #4e78aa;
+  --accent-h:  #385f8d;
+  --accent-d:  #2e527b;
   --red:       #b42318;
   --red-h:     #d92d20;
   --green:     #16834a;
@@ -97,7 +98,7 @@
   --shadow:    #1f29371f;
   --modal-bg:  #15191f66;
   --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--bg2));
-  --checked-bg:#dff5e9;
+  --checked-bg:#e3eefb;
   --danger-bg: #fde7e3;
   --success-border: #8fd3aa;
   --error-border: #efafa7;
@@ -126,11 +127,8 @@ html, body {
 
 body {
   background-color: var(--bg);
-  background-image:
-    radial-gradient(ellipse 78% 48% at 16% -12%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 68%),
-    radial-gradient(ellipse 62% 42% at 104% 108%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%),
-    linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
-  background-attachment: fixed, fixed, fixed;
+  background-image: linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
+  background-attachment: fixed;
   background-repeat: no-repeat;
   background-size: 100vw 100dvh, 100vw 100dvh, 100vw 100dvh;
   color: var(--text);
@@ -141,10 +139,7 @@ body {
 }
 
 :root[data-theme="light"] body {
-  background-image:
-    radial-gradient(ellipse 78% 48% at 16% -12%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 68%),
-    radial-gradient(ellipse 62% 42% at 104% 108%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 70%),
-    linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
+  background-image: linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
 }
 
 #app {
@@ -179,10 +174,96 @@ input, textarea {
   font-size: 13px;
   padding: 6px 10px;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
-input:focus, textarea:focus { border-color: var(--text3); }
+input:focus, textarea:focus { border-color: var(--accent); box-shadow: var(--focus-ring); }
 input::placeholder, textarea::placeholder { color: var(--text3); }
+
+/* Shared site-native checkbox. Keep the browser's accessible input semantics,
+   but replace platform paint so selection and settings controls belong to the
+   same design system everywhere. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--on-accent);
+  cursor: pointer;
+  position: relative;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 5px;
+  left: 4px;
+  top: 4px;
+  border-left: 2.25px solid currentColor;
+  border-bottom: 2.25px solid currentColor;
+  opacity: 0;
+  transform: rotate(-45deg) scale(.8);
+  transition: opacity .12s ease, transform .12s ease;
+}
+
+input[type="checkbox"]:checked,
+input[type="checkbox"]:indeterminate {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(-45deg) scale(1);
+}
+
+input[type="checkbox"]:indeterminate::after {
+  width: 8px;
+  height: 2px;
+  left: 3px;
+  top: 7px;
+  border: 0;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 1;
+  transform: none;
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+}
+
+input[type="checkbox"]:checked:hover:not(:disabled),
+input[type="checkbox"]:indeterminate:hover:not(:disabled) {
+  background: var(--accent-h);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg1), 0 0 0 4px color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+input[type="checkbox"]:disabled {
+  border-color: color-mix(in srgb, var(--text3) 72%, var(--border));
+  background: color-mix(in srgb, var(--surface3) 78%, var(--bg1));
+  color: var(--text3);
+  opacity: .9;
+  cursor: not-allowed;
+}
+
+/* Empty tables still show their selection affordance, but make it clear that
+   there is nothing to select rather than leaving it visually actionable. */
+.select-all:has(input[type="checkbox"]:disabled) {
+  color: var(--text3);
+}
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 button {
@@ -192,7 +273,7 @@ button {
   border-radius: var(--radius);
   cursor: pointer;
   padding: 5px 12px;
-  transition: background 0.15s, opacity 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
   white-space: nowrap;
 }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -228,8 +309,46 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card {
   background: var(--bg1);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   padding: 20px;
+}
+
+/* Quiet utility overrides shared by legacy view markup. */
+.card,
+.upload-panel,
+.expiry-panel,
+.admin-header,
+.settings-panel,
+.table-wrap,
+.file-table {
+  box-shadow: none;
+}
+
+.upload-panel,
+.expiry-panel {
+  background: var(--surface);
+}
+
+.file-table td,
+.file-table th {
+  font-family: var(--font);
+}
+
+.filename,
+.share-file,
+.share-link-block a,
+code,
+kbd,
+.file-table td.name {
+  font-family: var(--font-mono);
+}
+
+button:active:not(:disabled),
+.nav-stack button:active,
+.brand-block:active,
+.preferences-btn:active,
+.name-toggle:active {
+  transform: none !important;
 }
 
 /* ── Info box ──────────────────────────────────────────────────────────── */
@@ -341,8 +460,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 /* ── Settings panel ─────────────────────────────────────────────────────── */
 .settings-panel {
   position: fixed;
-  top: 40px;
-  right: 16px;
+  top: var(--settings-panel-top, auto);
+  right: var(--settings-panel-right, auto);
+  bottom: var(--settings-panel-bottom, auto);
+  left: var(--settings-panel-left, auto);
+  width: var(--settings-panel-width, auto);
+  max-height: var(--settings-panel-max-height, none);
   background: color-mix(in srgb, var(--surface, var(--bg1)) 94%, transparent);
   border: 1px solid color-mix(in srgb, var(--border2) 86%, transparent);
   border-radius: var(--radius-md);

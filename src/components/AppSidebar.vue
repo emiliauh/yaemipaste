@@ -287,7 +287,9 @@ function toggleCompactTheme() {
 
 <style scoped>
 .sidebar {
-  height: 100dvh;
+  min-height: max(100vh, 100dvh);
+  height: auto;
+  align-self: stretch;
   position: sticky;
   top: 0;
   display: flex;
@@ -296,8 +298,8 @@ function toggleCompactTheme() {
   padding: 22px 14px;
   overflow: hidden;
   border-right: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-  background: color-mix(in srgb, var(--surface, var(--bg1)) 98%, var(--accent-soft, var(--bg2)));
-  box-shadow: 1px 0 0 color-mix(in srgb, var(--text) 4%, transparent) inset;
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .sidebar-top {
@@ -326,9 +328,6 @@ function toggleCompactTheme() {
   border-color: transparent;
 }
 
-.brand-block:active {
-  transform: scale(0.98);
-}
 
 .brand-mark {
   width: 38px;
@@ -370,14 +369,26 @@ function toggleCompactTheme() {
 .sidebar-collapsed .brand-block {
   width: 44px;
   justify-content: center;
-  padding: var(--space-1);
+  padding: 0;
   border-radius: var(--radius-sm);
+  transform: translateX(4px);
 }
 
 .sidebar-collapsed .brand-mark {
   width: 36px;
   height: 36px;
   border-radius: var(--radius-sm);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.sidebar-collapsed .brand-block:hover {
+  background: transparent;
+}
+
+.sidebar-collapsed .brand-block:hover .brand-mark {
+  background: color-mix(in srgb, var(--surface2, var(--bg2)) 74%, transparent);
+  border-color: color-mix(in srgb, var(--border2) 72%, transparent);
 }
 
 .sidebar-collapsed .brand-mark svg {
@@ -440,9 +451,6 @@ function toggleCompactTheme() {
   border-color: transparent;
 }
 
-.nav-stack button:active {
-  transform: scale(0.98);
-}
 
 .nav-stack button.active {
   position: relative;
@@ -589,33 +597,27 @@ function toggleCompactTheme() {
   background: var(--bg1);
 }
 
-.theme-switch button:active {
-  transform: scale(0.96);
-}
 
 .compact-icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   color: var(--text2);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--surface2, var(--bg2));
+  background: transparent;
   transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .compact-icon-btn:hover {
   color: var(--text);
-  border-color: var(--border2);
-  background: var(--surface3, var(--bg3));
+  border-color: color-mix(in srgb, var(--border2) 45%, transparent);
+  background: color-mix(in srgb, var(--surface3, var(--bg3)) 42%, transparent);
 }
 
-.compact-icon-btn:active {
-  transform: scale(0.94);
-}
 
 .compact-icon-btn svg {
   width: 17px;
@@ -638,21 +640,18 @@ function toggleCompactTheme() {
   font-family: var(--font);
   font-size: var(--fs-xs);
   font-weight: 600;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--surface, var(--bg1));
+  background: transparent;
   transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .preferences-btn:hover {
   color: var(--text);
-  border-color: var(--border2);
-  background: color-mix(in srgb, var(--surface3, var(--bg3)) 84%, transparent);
+  border-color: color-mix(in srgb, var(--border2) 45%, transparent);
+  background: color-mix(in srgb, var(--surface3, var(--bg3)) 64%, transparent);
 }
 
-.preferences-btn:active {
-  transform: scale(0.98);
-}
 
 .preferences-btn svg {
   width: 16px;
@@ -694,9 +693,8 @@ function toggleCompactTheme() {
     padding: 6px;
     border: 1px solid var(--border);
     border-radius: 14px;
-    background: color-mix(in srgb, var(--surface, var(--bg1)) 92%, transparent);
-    box-shadow: 0 18px 36px var(--shadow);
-    backdrop-filter: blur(16px);
+    background: var(--surface);
+    box-shadow: 0 10px 24px var(--shadow);
   }
 
   .mobile-tabbar-main.has-admin {
@@ -745,9 +743,8 @@ function toggleCompactTheme() {
     padding: 0;
     border-color: var(--border);
     border-radius: 14px;
-    background: color-mix(in srgb, var(--surface, var(--bg1)) 92%, transparent);
-    box-shadow: 0 18px 36px var(--shadow);
-    backdrop-filter: blur(16px);
+    background: var(--surface);
+    box-shadow: 0 10px 24px var(--shadow);
   }
 }
 </style>

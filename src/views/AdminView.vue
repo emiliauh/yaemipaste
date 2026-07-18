@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   adminAuditLog,
@@ -24,28 +24,50 @@ import {
   adminWebhooks,
   authLogout,
   formatBytes,
+  formatGigabytes,
   getAuthUsername,
+  publicFileUrl,
+  publicDownloadUrl,
+  publicPreviewUrl,
   type AdminAuditEntry,
   type AdminDashboard,
   type AdminSettings,
   type AdminUpload,
   type AdminUser,
   type AdminWebhook,
+  type PasteFile,
   type WebhookDelivery,
 } from '../lib/api'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import AppSidebar from '../components/AppSidebar.vue'
-import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
+import ActionConfirmDialog from '../components/ActionConfirmDialog.vue'
+import FilePreview from '../components/FilePreview.vue'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
+import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
 
 const router = useRouter()
 const notifications = useNotificationStore()
 const tabs = ['Overview', 'Users', 'Uploads', 'Settings', 'Webhooks', 'Audit'] as const
 type AdminTab = typeof tabs[number]
+type ConfirmationRequest = {
+  title: string
+  message: string
+  detail?: string
+  confirmLabel: string
+  success: string
+  work: () => Promise<unknown>
+}
 
 const tab = ref<AdminTab>('Overview')
 const showSettings = ref(false)
+const settingsLayer = ref<HTMLElement | null>(null)
+const settingsTrigger = ref<HTMLElement | null>(null)
+const confirmationRequest = ref<ConfirmationRequest | null>(null)
+const confirmationAcknowledged = ref(false)
+const confirmationBusy = ref(false)
+const tokenDialog = ref<{ username: string; token: string } | null>(null)
+const tokenCopied = ref(false)
 const loading = ref(false)
 const error = ref('')
 const dashboard = ref<AdminDashboard | null>(null)
@@ -56,14 +78,39 @@ const settings = ref<AdminSettings>({})
 const webhooks = ref<AdminWebhook[]>([])
 const deliveries = ref<WebhookDelivery[]>([])
 const audit = ref<AdminAuditEntry[]>([])
+let refreshSequence = 0
 
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
-const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, storage_warning_bytes: 0 })
-const filterOwner = ref('')
+const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false })
+const webhookEventOptions = [
+  { value: 'file.uploaded', label: 'File uploaded', description: 'When a new file or paste is stored.' },
+  { value: 'file.deleted', label: 'File deleted', description: 'When a file is removed manually or by cleanup.' },
+  { value: 'user.created', label: 'User created', description: 'When an account is created.' },
+  { value: 'user.deleted', label: 'User deleted', description: 'When an account is removed.' },
+]
+function webhookEventLabel(event: string): string {
+  return webhookEventOptions.find((option) => option.value === event)?.label
+    ?? event.replace(/\./g, ' ')
+}
 const filterText = ref('')
-const filterExpired = ref<'all' | 'expired' | 'active'>('all')
 const PAGE_SIZE = 10
+const UPLOAD_PAGE_SIZES = [15, 30, 45] as const
+type UploadPageSize = typeof UPLOAD_PAGE_SIZES[number]
+const uploadsPageSize = ref<UploadPageSize>(15)
+const uploadsActionsOpen = ref(false)
+const uploadRowMenuOpen = ref<string | null>(null)
+const previewUpload = ref<AdminUpload | null>(null)
+const previewUploadFile = computed<PasteFile | null>(() => {
+  const upload = previewUpload.value
+  if (!upload) return null
+  return {
+    file_name: upload.file_name,
+    file_size: upload.size_bytes,
+    created_at: upload.created_at ? new Date(upload.created_at).toISOString() : null,
+    expires_at: upload.expires_at ? new Date(upload.expires_at).toISOString() : null,
+  }
+})
 const pageByTab = ref<Record<string, number>>({
   Users: 1,
   Uploads: 1,
@@ -78,46 +125,48 @@ const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
 const sidebarCollapsed = ref(
   typeof window !== 'undefined' && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
 )
-const ownerFilterOptions = computed<SelectOption[]>(() => [
-  { value: '', label: 'All owners', hint: 'Every upload source' },
-  ...users.value.map((user) => ({
-    value: user.username,
-    label: user.username,
-    hint: user.is_admin ? 'Administrator' : 'User',
-  })),
-])
-watch(ownerFilterOptions, (options) => {
-  if (filterOwner.value && !options.some((option) => option.value === filterOwner.value)) {
-    filterOwner.value = ''
-  }
-})
-const expiryFilterOptions: SelectOption[] = [
-  { value: 'all', label: 'All expiry states', hint: 'Active and expired' },
-  { value: 'active', label: 'Active', hint: 'Still available' },
-  { value: 'expired', label: 'Expired', hint: 'Ready to purge' },
-]
 const filteredUploads = computed(() => uploads.value.filter((upload) => {
-  const ownerOk = !filterOwner.value || upload.owner === filterOwner.value
   const text = filterText.value.trim().toLowerCase()
-  const textOk = !text || upload.path.toLowerCase().includes(text) || (upload.content_type ?? '').toLowerCase().includes(text)
-  const expiryOk = filterExpired.value === 'all' || (filterExpired.value === 'expired' ? upload.expired : !upload.expired)
-  return ownerOk && textOk && expiryOk
+  const textOk = !text
+    || upload.path.toLowerCase().includes(text)
+    || upload.file_name.toLowerCase().includes(text)
+    || (upload.display_name ?? '').toLowerCase().includes(text)
+    || (upload.source ?? '').toLowerCase().includes(text)
+    || (upload.content_type ?? '').toLowerCase().includes(text)
+  return textOk
 }))
 const pagedUsers = computed(() => paginate(users.value, 'Users'))
-const pagedUploads = computed(() => paginate(filteredUploads.value, 'Uploads'))
+const pagedUploads = computed(() => paginate(filteredUploads.value, 'Uploads', uploadsPageSize.value))
 const pagedWebhooks = computed(() => paginate(webhooks.value, 'Webhooks'))
 const pagedAudit = computed(() => paginate(audit.value, 'Audit'))
 const usersPageCount = computed(() => pageCount(users.value.length))
-const uploadsPageCount = computed(() => pageCount(filteredUploads.value.length))
+const uploadsPageCount = computed(() => pageCount(filteredUploads.value.length, uploadsPageSize.value))
 const webhooksPageCount = computed(() => pageCount(webhooks.value.length))
 const auditPageCount = computed(() => pageCount(audit.value.length))
+const allPagedUploadsSelected = computed(
+  () => pagedUploads.value.length > 0 && pagedUploads.value.every((upload) => selectedUploads.value.has(upload.path)),
+)
+const allFilteredUploadsSelected = computed(
+  () => filteredUploads.value.length > 0 && filteredUploads.value.every((upload) => selectedUploads.value.has(upload.path)),
+)
+const latestUploadDate = computed(() => {
+  const latest = uploads.value.reduce<number | null>((value, upload) => (
+    upload.created_at && (!value || upload.created_at > value) ? upload.created_at : value
+  ), null)
+  return latest ? ts(latest) : 'No uploads'
+})
+const fileSizeLimitGb = computed({
+  get: () => settingsForm.value.file_size_limit_bytes === 0 ? 0 : Math.min(100, settingsForm.value.file_size_limit_bytes / (1024 ** 3)),
+  set: (value: number) => { settingsForm.value.file_size_limit_unlimited = false; settingsForm.value.file_size_limit_bytes = Math.round(value * 1024 ** 3) },
+})
+const fileSizeLimitLabel = computed(() => settingsForm.value.file_size_limit_bytes === 0 ? 'Disabled' : formatGigabytes(settingsForm.value.file_size_limit_bytes))
 
-function pageCount(total: number): number {
-  return Math.max(1, Math.ceil(total / PAGE_SIZE))
+function pageCount(total: number, size = PAGE_SIZE): number {
+  return Math.max(1, Math.ceil(total / size))
 }
 
-function pageFor(key: string, total: number): number {
-  const max = pageCount(total)
+function pageFor(key: string, total: number, size = PAGE_SIZE): number {
+  const max = pageCount(total, size)
   const current = pageByTab.value[key] ?? 1
   if (current > max) {
     pageByTab.value = { ...pageByTab.value, [key]: max }
@@ -130,22 +179,66 @@ function pageFor(key: string, total: number): number {
   return current
 }
 
-function paginate<T>(items: T[], key: string): T[] {
-  const page = pageFor(key, items.length)
-  return items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+function paginate<T>(items: T[], key: string, size = PAGE_SIZE): T[] {
+  const page = pageFor(key, items.length, size)
+  return items.slice((page - 1) * size, page * size)
 }
 
-function setPage(key: string, next: number, total: number) {
-  const max = pageCount(total)
+function setPage(key: string, next: number, total: number, size = PAGE_SIZE) {
+  const max = pageCount(total, size)
   pageByTab.value = { ...pageByTab.value, [key]: Math.min(max, Math.max(1, next)) }
 }
 
-function pageLabel(key: string, total: number): string {
+function pageLabel(key: string, total: number, size = PAGE_SIZE): string {
   if (total === 0) return 'No items'
-  const page = pageFor(key, total)
-  const start = (page - 1) * PAGE_SIZE + 1
-  const end = Math.min(total, page * PAGE_SIZE)
+  const page = pageFor(key, total, size)
+  if (key === "Users") return `${page} of ${pageCount(total, size)}`
+  const start = (page - 1) * size + 1
+  const end = Math.min(total, page * size)
   return `${start}-${end} of ${total}`
+}
+
+function setUploadsPageSize(size: UploadPageSize) {
+  uploadsPageSize.value = size
+  pageByTab.value = { ...pageByTab.value, Uploads: 1 }
+  uploadsActionsOpen.value = false
+}
+
+function uploadDisplayName(upload: AdminUpload): string {
+  return upload.display_name?.trim() || upload.file_name
+}
+
+function isShareXUpload(upload: AdminUpload): boolean {
+  const source = (upload.source ?? '').trim().toLowerCase()
+  const uploader = (upload.uploader ?? upload.owner ?? '').trim().toLowerCase()
+  return source === 'sharex' || uploader === 'sharex' || uploader.endsWith('(sharex)')
+}
+
+function uploadDownloadUrl(upload: AdminUpload): string {
+  return publicDownloadUrl(upload.file_name)
+}
+
+async function copyUploadLink(upload: AdminUpload) {
+  try {
+    await navigator.clipboard.writeText(publicPreviewUrl(upload.file_name))
+    notifications.push('Preview link copied', 'success')
+  } catch {
+    notifications.push('Could not copy preview link', 'error')
+  }
+}
+
+function openUploadPreview(upload: AdminUpload) {
+  uploadRowMenuOpen.value = null
+  previewUpload.value = upload
+}
+
+function closeUploadPreview() {
+  previewUpload.value = null
+}
+
+function downloadPreviewUpload() {
+  if (!previewUpload.value) return
+  window.open(uploadDownloadUrl(previewUpload.value), '_blank', 'noopener')
 }
 
 function ts(value: number | null | undefined): string {
@@ -153,11 +246,93 @@ function ts(value: number | null | undefined): string {
   return new Date(value * 1000).toLocaleString()
 }
 
-function confirmText(promptText: string): string | null {
-  return window.prompt(promptText) ?? null
+function openSettings() {
+  if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+    settingsTrigger.value = document.activeElement
+  }
+  showSettings.value = true
+  void nextTick(() => {
+    settingsLayer.value?.querySelector<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+    )?.focus()
+  })
+}
+
+function closeSettings() {
+  showSettings.value = false
+  void nextTick(() => settingsTrigger.value?.focus())
+}
+
+function handleSettingsKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSettings()
+    return
+  }
+  if (event.key !== 'Tab' || !settingsLayer.value) return
+
+  const focusable = Array.from(settingsLayer.value.querySelectorAll<HTMLElement>(
+    'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+  )).filter((element) => element.getAttribute('aria-hidden') !== 'true')
+  if (!focusable.length) {
+    event.preventDefault()
+    settingsLayer.value.focus()
+    return
+  }
+
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+function requestConfirmation(request: ConfirmationRequest) {
+  confirmationRequest.value = request
+  confirmationAcknowledged.value = false
+  confirmationBusy.value = false
+}
+
+function closeConfirmation() {
+  if (confirmationBusy.value) return
+  confirmationRequest.value = null
+  confirmationAcknowledged.value = false
+}
+
+async function submitConfirmation() {
+  const request = confirmationRequest.value
+  if (!request || !confirmationAcknowledged.value || confirmationBusy.value) return
+  confirmationBusy.value = true
+  try {
+    await runAction(request.work, request.success)
+    confirmationRequest.value = null
+    confirmationAcknowledged.value = false
+  } finally {
+    confirmationBusy.value = false
+  }
+}
+
+function showTokenDialog(username: string, token: string) {
+  tokenDialog.value = { username, token }
+  tokenCopied.value = false
+}
+
+async function copyToken() {
+  if (!tokenDialog.value) return
+  try {
+    await navigator.clipboard.writeText(tokenDialog.value.token)
+    tokenCopied.value = true
+  } catch {
+    notifications.push('Could not copy token', 'error')
+  }
 }
 
 async function refreshAll() {
+  const sequence = ++refreshSequence
   loading.value = true
   error.value = ''
   try {
@@ -170,6 +345,10 @@ async function refreshAll() {
       adminWebhookDeliveries(),
       adminAuditLog(),
     ])
+    // A page-load refresh may still be in flight when an admin action
+    // completes. Only the newest response may update the visible state;
+    // otherwise a stale uploads list can reappear after deletion.
+    if (sequence !== refreshSequence) return
     dashboard.value = nextDashboard
     users.value = nextUsers
     uploads.value = nextUploads
@@ -182,12 +361,13 @@ async function refreshAll() {
       public_title: nextSettings.public_title ?? 'yaemipaste',
       base_api_url: nextSettings.base_api_url ?? '',
       registration_enabled: nextSettings.registration_enabled !== 'false',
-      storage_warning_bytes: Number(nextSettings.storage_warning_bytes ?? 0) || 0,
+      file_size_limit_bytes: Number(nextSettings.file_size_limit_bytes ?? 0) || 0,
+      file_size_limit_unlimited: nextSettings.file_size_limit_unlimited === 'true',
     }
   } catch (e: any) {
-    error.value = e.message ?? 'Could not load admin data'
+    if (sequence === refreshSequence) error.value = e.message ?? 'Could not load admin data'
   } finally {
-    loading.value = false
+    if (sequence === refreshSequence) loading.value = false
   }
 }
 
@@ -199,20 +379,35 @@ async function saveSettings() {
 }
 
 async function deleteUploadWithConfirmation(path: string) {
-  if (confirmText(`Type ${path} to delete this upload`) !== path) return
-  await runAction(() => adminDeleteUpload(path), 'Upload deleted')
+  requestConfirmation({
+    title: 'Delete upload?',
+    message: 'This upload will be permanently removed from the server.',
+    detail: path,
+    confirmLabel: 'Delete upload',
+    success: 'Upload deleted',
+    work: async () => {
+      await adminDeleteUpload(path)
+      uploads.value = uploads.value.filter((upload) => upload.path !== path)
+    },
+  })
 }
 
 async function deleteWebhookWithConfirmation(hook: AdminWebhook) {
-  if (confirmText(`Type ${hook.url} to delete this webhook`) !== hook.url) return
-  await runAction(() => adminDeleteWebhook(hook.id), 'Webhook deleted')
+  requestConfirmation({
+    title: 'Delete webhook?',
+    message: 'This endpoint and its delivery history will no longer be managed here.',
+    detail: hook.url,
+    confirmLabel: 'Delete webhook',
+    success: 'Webhook deleted',
+    work: () => adminDeleteWebhook(hook.id),
+  })
 }
 
 async function runAction(work: () => Promise<unknown>, success: string) {
   try {
     await work()
-    notifications.push(success, 'success')
     await refreshAll()
+    notifications.push(success, 'success')
   } catch (e: any) {
     notifications.push(e.message ?? 'Admin action failed', 'error')
   }
@@ -232,7 +427,7 @@ async function createUser() {
       upload_token: newUser.value.upload_token.trim() || undefined,
       is_admin: newUser.value.is_admin,
     })
-    window.alert(`One-time upload token for ${username}:\n\n${result.upload_token}\n\nCopy it now. It will not be shown again.`)
+    showTokenDialog(username, result.upload_token)
     newUser.value = { username: '', password: '', upload_token: '', is_admin: false }
   }, 'User created')
 }
@@ -240,7 +435,7 @@ async function createUser() {
 async function rotateToken(username: string) {
   await runAction(async () => {
     const result = await adminRotateUserToken(username)
-    window.alert(`One-time upload token for ${username}:\n\n${result.upload_token}\n\nCopy it now. It will not be shown again.`)
+    showTokenDialog(username, result.upload_token)
   }, 'Token rotated')
 }
 
@@ -251,9 +446,110 @@ function toggleSelection(path: string, checked: boolean) {
   selectedUploads.value = next
 }
 
+function toggleUploadPage(checked: boolean) {
+  if (!checked && allFilteredUploadsSelected.value) {
+    clearUploadSelection()
+    return
+  }
+  const next = new Set(selectedUploads.value)
+  if (checked) {
+    for (const upload of pagedUploads.value) next.add(upload.path)
+  } else {
+    for (const upload of pagedUploads.value) next.delete(upload.path)
+  }
+  selectedUploads.value = next
+}
+
+function selectAllFilteredUploads() {
+  selectedUploads.value = new Set(filteredUploads.value.map((upload) => upload.path))
+}
+
+function clearUploadSelection() {
+  selectedUploads.value = new Set()
+}
+
+async function deleteAdminUploads(paths: string[], success: string) {
+  uploadsActionsOpen.value = false
+  if (!paths.length) return
+  requestConfirmation({
+    title: success === 'All matching uploads deleted' ? 'Delete all matching uploads?' : 'Delete selected uploads?',
+    message: `This will permanently delete ${paths.length} upload${paths.length === 1 ? '' : 's'}.`,
+    detail: 'The files will no longer be available to users.',
+    confirmLabel: 'Delete uploads',
+    success,
+    work: async () => {
+      await adminBulkDeleteUploads(paths, 'PURGE UPLOADS')
+      uploads.value = uploads.value.filter((upload) => !paths.includes(upload.path))
+      clearUploadSelection()
+    },
+  })
+}
+
+function requestPurgeExpired() {
+  uploadsActionsOpen.value = false
+  requestConfirmation({
+    title: 'Purge expired uploads?',
+    message: 'Expired uploads will be permanently removed from storage.',
+    confirmLabel: 'Purge expired',
+    success: 'Expired uploads purged',
+    work: async () => {
+      await adminPurgeExpired('PURGE EXPIRED')
+      uploads.value = uploads.value.filter((upload) => !upload.expired)
+    },
+  })
+}
+
+function requestUserPurge(username: string) {
+  requestConfirmation({
+    title: 'Purge user uploads?',
+    message: `All uploads owned by ${username} will be permanently removed.`,
+    detail: username,
+    confirmLabel: 'Purge uploads',
+    success: 'Uploads purged',
+    work: async () => {
+      await adminPurgeUserUploads(username, 'PURGE UPLOADS')
+      uploads.value = uploads.value.filter((upload) => upload.owner !== username)
+    },
+  })
+}
+
+function requestUserDelete(username: string) {
+  requestConfirmation({
+    title: 'Delete user?',
+    message: `The account and all associated uploads for ${username} will be permanently removed.`,
+    detail: username,
+    confirmLabel: 'Delete user',
+    success: 'User deleted',
+    work: async () => {
+      await adminDeleteUser(username, 'DELETE USER')
+      users.value = users.value.filter((user) => user.username !== username)
+      uploads.value = uploads.value.filter((upload) => upload.owner !== username)
+    },
+  })
+}
+
+function refreshAdminWhenVisible() {
+  if (document.visibilityState === 'visible') void refreshAll()
+}
+
+function closeUploadMenusOnOutsidePointer(event: PointerEvent) {
+  const target = event.target as Element | null
+  if (!target?.closest('.admin-actions-menu')) uploadsActionsOpen.value = false
+  if (!target?.closest('.upload-row-menu')) uploadRowMenuOpen.value = null
+}
+
 onMounted(() => {
   void refreshPublicSettings()
   void refreshAll()
+  window.addEventListener('focus', refreshAdminWhenVisible)
+  document.addEventListener('visibilitychange', refreshAdminWhenVisible)
+  document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', refreshAdminWhenVisible)
+  document.removeEventListener('visibilitychange', refreshAdminWhenVisible)
+  document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
 })
 </script>
 
@@ -269,7 +565,7 @@ onMounted(() => {
       @select-files="router.push('/files')"
       @select-history="router.push('/files?tab=history')"
       @select-admin="router.push('/admin')"
-      @toggle-settings="showSettings = true"
+      @toggle-settings="openSettings"
     />
 
     <main class="workspace">
@@ -325,7 +621,7 @@ onMounted(() => {
             <tbody>
               <tr v-for="upload in dashboard.recent_uploads.slice(0, 6)" :key="upload.path">
                 <td>{{ upload.path }}</td>
-                <td>{{ upload.owner ?? 'anonymous' }}</td>
+                <td>{{ upload.owner ?? 'Unattributed' }}</td>
                 <td>{{ formatBytes(upload.size_bytes) }}</td>
                 <td>{{ ts(upload.created_at) }}</td>
               </tr>
@@ -368,7 +664,7 @@ onMounted(() => {
       <div class="card">
         <h2>Users</h2>
         <div class="table-scroll">
-        <table class="file-table admin-table">
+        <table class="file-table admin-table users-table">
           <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Uploads</th><th>Storage</th><th>Actions</th></tr></thead>
           <tbody>
             <tr v-for="user in pagedUsers" :key="user.username">
@@ -377,7 +673,8 @@ onMounted(() => {
               <td>{{ user.suspended_at ? `suspended ${ts(user.suspended_at)}` : 'active' }}</td>
               <td>{{ user.upload_count }}</td>
               <td>{{ formatBytes(user.disk_usage_bytes) }}</td>
-              <td class="actions">
+              <td class="actions user-actions-cell">
+                <div class="user-actions">
                 <button class="btn-ghost" type="button" @click="runAction(() => adminUpdateUser(user.username, { suspended: !user.suspended_at, suspension_reason: 'Suspended by administrator' }), user.suspended_at ? 'User unsuspended' : 'User suspended')">
                   {{ user.suspended_at ? 'Unsuspend' : 'Suspend' }}
                 </button>
@@ -385,8 +682,9 @@ onMounted(() => {
                   {{ user.is_admin ? 'Demote' : 'Promote' }}
                 </button>
                 <button class="btn-ghost" type="button" @click="rotateToken(user.username)">Rotate token</button>
-                <button class="btn-red" type="button" @click="runAction(() => adminPurgeUserUploads(user.username, confirmText('Type PURGE UPLOADS') ?? ''), 'Uploads purged')">Purge uploads</button>
-                <button class="btn-red" type="button" @click="runAction(() => adminDeleteUser(user.username, confirmText('Type DELETE USER') ?? ''), 'User deleted')">Delete</button>
+                <button class="btn-red" type="button" @click="requestUserPurge(user.username)">Purge uploads</button>
+                <button class="btn-red" type="button" @click="requestUserDelete(user.username)">Delete</button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -404,63 +702,192 @@ onMounted(() => {
     </section>
 
     <section v-if="tab === 'Uploads'" class="stack">
-      <div class="card filters">
-        <CustomSelect v-model="filterOwner" label="Owner" :options="ownerFilterOptions" />
-        <CustomSelect v-model="filterExpired" label="Expiry" :options="expiryFilterOptions" />
-        <input v-model="filterText" class="filter-text" placeholder="filter path or type" aria-label="Filter uploads by path or type" />
-        <div class="filter-actions">
-          <button class="btn-red" type="button" :disabled="selectedUploads.size === 0" @click="runAction(() => adminBulkDeleteUploads(Array.from(selectedUploads), confirmText('Type PURGE UPLOADS') ?? ''), 'Selected uploads deleted')">Delete selected</button>
-          <button class="btn-red" type="button" @click="runAction(() => adminPurgeExpired(confirmText('Type PURGE EXPIRED') ?? ''), 'Expired uploads purged')">Purge expired</button>
-        </div>
-      </div>
       <div class="card">
+        <div class="upload-toolbar">
+          <div class="upload-toolbar-main">
+            <label class="upload-search">
+              <input v-model="filterText" placeholder="Search uploads" aria-label="Search uploads" />
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            </label>
+            <span class="upload-live-status" title="Uploads refresh automatically"><i aria-hidden="true"></i>Auto-refreshing</span>
+          </div>
+          <button class="btn-red" type="button" :disabled="!filteredUploads.length || loading" @click="deleteAdminUploads(filteredUploads.map((upload) => upload.path), 'All matching uploads deleted')">Delete all</button>
+        </div>
+        <div class="upload-list-toolbar">
+          <div class="upload-selection-bar" aria-label="Upload selection">
+          <label
+            class="select-all"
+            :class="{ 'selection-disabled': !pagedUploads.length || loading }"
+            :aria-disabled="!pagedUploads.length || loading ? 'true' : 'false'"
+          >
+            <input
+              type="checkbox"
+              :checked="allPagedUploadsSelected"
+              :disabled="!pagedUploads.length || loading"
+              aria-label="Select uploads on this page"
+              @change="toggleUploadPage(($event.target as HTMLInputElement).checked)"
+            />
+            <span>Select page</span>
+          </label>
+          <span class="selection-count">{{ selectedUploads.size }} selected</span>
+          <button
+            v-if="uploadsPageCount > 1 && allPagedUploadsSelected && !allFilteredUploadsSelected"
+            class="select-all-pages"
+            type="button"
+            :disabled="loading"
+            @click="selectAllFilteredUploads"
+          >
+            Select all {{ filteredUploads.length }} uploads
+          </button>
+            <span v-else-if="uploadsPageCount > 1 && allFilteredUploadsSelected" class="all-pages-selected">
+              All {{ filteredUploads.length }} uploads selected
+            </span>
+          <button v-if="selectedUploads.size" class="clear-selection" type="button" @click="clearUploadSelection">
+              Clear
+            </button>
+          </div>
+          <span class="upload-latest">Latest: {{ latestUploadDate }}</span>
+          <div class="upload-table-toolbar">
+          <div class="page-size-wrap">
+            <span class="page-size-label">Per page</span>
+            <div class="page-size-segment" role="group" aria-label="Uploads per page">
+              <button
+                v-for="size in UPLOAD_PAGE_SIZES"
+                :key="size"
+                class="page-size-btn"
+                :class="{ active: uploadsPageSize === size }"
+                :aria-pressed="uploadsPageSize === size ? 'true' : 'false'"
+                type="button"
+                @click="setUploadsPageSize(size)"
+              >
+                {{ size }}
+              </button>
+            </div>
+          </div>
+          <div class="admin-actions-menu">
+            <button
+              class="btn-ghost upload-actions-trigger"
+              type="button"
+              :disabled="!uploads.length || loading"
+              aria-haspopup="menu"
+              :aria-expanded="uploadsActionsOpen ? 'true' : 'false'"
+              @click="uploadsActionsOpen = !uploadsActionsOpen"
+            >
+              Actions
+            </button>
+            <div v-if="uploadsActionsOpen" class="admin-actions-menu-panel" role="menu">
+              <button class="menu-action" type="button" role="menuitem" :disabled="!selectedUploads.size" @click="deleteAdminUploads(Array.from(selectedUploads), 'Selected uploads deleted')">
+                Delete selected
+              </button>
+              <button class="menu-action danger" type="button" role="menuitem" :disabled="!filteredUploads.length" @click="deleteAdminUploads(filteredUploads.map((upload) => upload.path), 'All matching uploads deleted')">
+                Delete all
+              </button>
+              <button class="menu-action danger" type="button" role="menuitem" @click="requestPurgeExpired">
+                Purge expired
+              </button>
+              <button class="menu-action" type="button" role="menuitem" :disabled="!selectedUploads.size" @click="clearUploadSelection(); uploadsActionsOpen = false">
+                Clear selection
+              </button>
+            </div>
+          </div>
+          </div>
+        </div>
         <div class="table-scroll">
         <table class="file-table admin-table">
-          <thead><tr><th aria-label="Select"></th><th>Path</th><th>Owner</th><th>Size</th><th>Created</th><th>Expires</th><th>Actions</th></tr></thead>
+          <thead>
+            <tr>
+              <th class="select-col" :class="{ 'selection-disabled': !pagedUploads.length || loading }">
+                <input
+                  type="checkbox"
+                  :checked="allPagedUploadsSelected"
+                  :disabled="!pagedUploads.length || loading"
+                  aria-label="Select uploads on this page"
+                  @change="toggleUploadPage(($event.target as HTMLInputElement).checked)"
+                />
+              </th>
+              <th>Name</th><th>Size</th><th>Expires</th><th></th>
+            </tr>
+          </thead>
           <tbody>
             <tr v-for="upload in pagedUploads" :key="upload.path">
-              <td><input type="checkbox" :checked="selectedUploads.has(upload.path)" :aria-label="`Select ${upload.path}`" @change="toggleSelection(upload.path, ($event.target as HTMLInputElement).checked)" /></td>
-              <td>{{ upload.path }}</td>
-              <td>{{ upload.owner ?? 'anonymous' }}</td>
+              <td class="select-col"><input type="checkbox" :checked="selectedUploads.has(upload.path)" :aria-label="`Select ${upload.path}`" @change="toggleSelection(upload.path, ($event.target as HTMLInputElement).checked)" /></td>
+              <td class="upload-name-cell">
+                <button class="upload-preview-trigger" type="button" :aria-label="`Preview ${uploadDisplayName(upload)}`" @click="openUploadPreview(upload)">
+                  <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                </button>
+                <button class="upload-name-link" type="button" @click="openUploadPreview(upload)">
+                  {{ uploadDisplayName(upload) }}
+                </button>
+                <img v-if="isShareXUpload(upload)" class="upload-sharex-icon" :src="sharexLogoUrl" alt="Uploaded with ShareX" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX" />
+              </td>
               <td>{{ formatBytes(upload.size_bytes) }}</td>
-              <td>{{ ts(upload.created_at) }}</td>
-              <td>{{ upload.expired ? 'expired' : ts(upload.expires_at) }}</td>
-              <td><button class="btn-red" type="button" @click="deleteUploadWithConfirmation(upload.path)">Delete</button></td>
+              <td>{{ upload.expired ? 'Expired' : (upload.expires_at ? ts(upload.expires_at) : 'Never') }}</td>
+              <td class="upload-row-actions">
+                <a class="btn-ghost upload-action" :href="uploadDownloadUrl(upload)" aria-label="Download">
+                  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Download</span>
+                </a>
+                <button class="btn-ghost upload-action upload-copy-action" type="button" aria-label="Copy preview link" @click="copyUploadLink(upload)">
+                  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span>Copy</span>
+                </button>
+                <div class="upload-row-menu">
+                  <button class="btn-ghost upload-more" type="button" aria-label="More" :aria-expanded="uploadRowMenuOpen === upload.path ? 'true' : 'false'" @click="uploadRowMenuOpen = uploadRowMenuOpen === upload.path ? null : upload.path">⋯</button>
+                  <div v-if="uploadRowMenuOpen === upload.path" class="upload-row-menu-panel" role="menu">
+                    <button class="menu-action" type="button" role="menuitem" @click="openUploadPreview(upload)">Preview</button>
+                    <button class="menu-action danger" type="button" role="menuitem" @click="deleteUploadWithConfirmation(upload.path); uploadRowMenuOpen = null">Delete</button>
+                  </div>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
         </div>
         <p v-if="!pagedUploads.length && !loading" class="empty-state">No uploads match the current filters.</p>
         <div class="pagination-bar" aria-label="Upload pagination">
-          <span>{{ pageLabel('Uploads', filteredUploads.length) }}</span>
+          <span>{{ pageLabel('Uploads', filteredUploads.length, uploadsPageSize) }}</span>
           <div>
-            <button class="btn-ghost" type="button" :disabled="pageFor('Uploads', filteredUploads.length) <= 1" @click="setPage('Uploads', pageFor('Uploads', filteredUploads.length) - 1, filteredUploads.length)">Previous</button>
-            <button class="btn-ghost" type="button" :disabled="pageFor('Uploads', filteredUploads.length) >= uploadsPageCount" @click="setPage('Uploads', pageFor('Uploads', filteredUploads.length) + 1, filteredUploads.length)">Next</button>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Uploads', filteredUploads.length, uploadsPageSize) <= 1" @click="setPage('Uploads', pageFor('Uploads', filteredUploads.length, uploadsPageSize) - 1, filteredUploads.length, uploadsPageSize)">Previous</button>
+            <button class="btn-ghost" type="button" :disabled="pageFor('Uploads', filteredUploads.length, uploadsPageSize) >= uploadsPageCount" @click="setPage('Uploads', pageFor('Uploads', filteredUploads.length, uploadsPageSize) + 1, filteredUploads.length, uploadsPageSize)">Next</button>
           </div>
         </div>
       </div>
     </section>
 
-    <section v-if="tab === 'Settings'" class="card settings-page">
+    <FilePreview
+      v-if="previewUpload && previewUploadFile"
+      :file="previewUploadFile"
+      :source-url="publicFileUrl(previewUpload.file_name)"
+      :display-name="uploadDisplayName(previewUpload)"
+      :mime-type="previewUpload.content_type ?? undefined"
+      @close="closeUploadPreview"
+      @download="downloadPreviewUpload"
+    />
+
+    <section v-if="tab === 'Settings'" class="settings-page">
       <div class="settings-intro">
         <h2>Safe global settings</h2>
         <p class="subtle">Public branding and operational limits. Secrets are never displayed here; sensitive values must be replaced through server-side configuration.</p>
       </div>
 
-      <div class="settings-group">
+      <div class="settings-group settings-group-branding">
         <p class="settings-group-label">Branding</p>
         <div class="settings-fields">
-          <label>App name<input v-model="settingsForm.app_name" /></label>
-          <label>Public title<input v-model="settingsForm.public_title" /></label>
-          <label class="span-2">Base API URL<input v-model="settingsForm.base_api_url" placeholder="https://papi.example.com" /></label>
+          <label><span>App name</span><small>The internal name shown in navigation and account areas.</small><input v-model="settingsForm.app_name" /></label>
+          <label><span>Public title</span><small>The browser title and public-facing site name.</small><input v-model="settingsForm.public_title" /></label>
+          <label class="span-2"><span>Base API URL</span><small>Leave blank to use this deployment’s default API.</small><input v-model="settingsForm.base_api_url" placeholder="https://papi.example.com" /></label>
         </div>
       </div>
 
       <div class="settings-group">
         <p class="settings-group-label">Operational limits</p>
         <div class="settings-fields">
-          <label>Storage warning bytes<input v-model.number="settingsForm.storage_warning_bytes" type="number" min="0" /></label>
-          <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> registration enabled</label>
+          <div class="setting-slider span-2">
+            <div class="setting-slider-heading"><div><strong>File size limit</strong><small>Rejects any single upload larger than this amount. This applies to files and text pastes. Disabled means there is no application-level limit.</small></div><output>{{ fileSizeLimitLabel }}</output></div>
+            <input v-model.number="fileSizeLimitGb" type="range" min="0" max="100" step="1" aria-label="Maximum file size in gigabytes" />
+            <div class="range-labels"><span>Disabled</span><span>50 GB</span><span>100 GB</span></div>
+          </div>
+          <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
         </div>
       </div>
 
@@ -470,31 +897,42 @@ onMounted(() => {
     </section>
 
     <section v-if="tab === 'Webhooks'" class="stack">
-      <form class="card form-grid" @submit.prevent="runAction(() => adminCreateWebhook({ url: webhookForm.url, events: webhookForm.events.split(',').map(v => v.trim()).filter(Boolean), secret: webhookForm.secret || undefined, enabled: webhookForm.enabled }), 'Webhook created')">
+      <form class="card form-grid webhook-create" @submit.prevent="runAction(() => adminCreateWebhook({ url: webhookForm.url, events: webhookForm.events.split(',').map(v => v.trim()).filter(Boolean), secret: webhookForm.secret || undefined, enabled: webhookForm.enabled }), 'Webhook created')">
         <h2>Create webhook</h2>
+        <p class="subtle">Choose which events should be delivered to this endpoint. You can test or disable it later.</p>
         <input v-model="webhookForm.url" placeholder="https://example.com/webhook" />
-        <input v-model="webhookForm.events" placeholder="file.uploaded,file.deleted" />
+        <div class="webhook-events"><label v-for="event in webhookEventOptions" :key="event.value" class="event-option"><input :checked="webhookForm.events.split(',').includes(event.value)" type="checkbox" @change="($event.target as HTMLInputElement).checked ? webhookForm.events = [...new Set([...webhookForm.events.split(',').filter(Boolean), event.value])].join(',') : webhookForm.events = webhookForm.events.split(',').filter(value => value !== event.value).join(',')" /><span><strong>{{ event.label }}</strong><small>{{ event.description }}</small></span></label></div>
         <input v-model="webhookForm.secret" type="password" placeholder="secret replacement (optional)" />
         <label class="inline-check"><input v-model="webhookForm.enabled" type="checkbox" /> enabled</label>
         <button class="btn-orange" type="submit">Create webhook</button>
       </form>
       <div class="card">
-        <h2>Endpoints</h2>
-        <div class="table-scroll">
-        <table class="file-table admin-table">
-          <tbody>
-            <tr v-for="hook in pagedWebhooks" :key="hook.id">
-              <td>{{ hook.url }}<div class="subtle">{{ hook.events.join(', ') }}</div></td>
-              <td>{{ hook.enabled ? 'enabled' : 'disabled' }}</td>
-              <td>{{ hook.secret_configured ? 'secret configured' : 'unsigned' }}</td>
-              <td class="actions">
+        <div class="card-heading webhook-section-heading">
+          <div><h2>Endpoints</h2><p class="subtle">Where Yaemipaste sends selected events.</p></div>
+          <span class="subtle">{{ webhooks.length }} configured</span>
+        </div>
+        <div class="webhook-endpoint-list">
+          <article v-for="hook in pagedWebhooks" :key="hook.id" class="webhook-endpoint">
+            <div class="webhook-endpoint-main">
+              <div class="webhook-endpoint-topline">
+                <span class="status-badge" :class="hook.enabled ? 'status-enabled' : 'status-disabled'">
+                  <span class="status-dot" aria-hidden="true"></span>{{ hook.enabled ? 'Enabled' : 'Disabled' }}
+                </span>
+                <span class="webhook-kind">Webhook endpoint</span>
+              </div>
+              <code class="webhook-url" :title="hook.url">{{ hook.url }}</code>
+              <div class="webhook-event-list" aria-label="Subscribed events">
+                <span v-for="event in hook.events" :key="event" class="webhook-event-chip">{{ webhookEventLabel(event) }}</span>
+              </div>
+            </div>
+            <div class="webhook-endpoint-meta">
+              <div class="webhook-endpoint-actions">
                 <button class="btn-ghost" type="button" @click="runAction(() => adminUpdateWebhook(hook.id, { enabled: !hook.enabled }), 'Webhook updated')">{{ hook.enabled ? 'Disable' : 'Enable' }}</button>
                 <button class="btn-ghost" type="button" @click="runAction(() => adminTestWebhook(hook.id), 'Webhook test queued')">Test</button>
                 <button class="btn-red" type="button" @click="deleteWebhookWithConfirmation(hook)">Delete</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+          </article>
         </div>
         <p v-if="!pagedWebhooks.length && !loading" class="empty-state">No webhooks configured yet.</p>
         <div class="pagination-bar" aria-label="Webhook pagination">
@@ -544,20 +982,63 @@ onMounted(() => {
       </section>
     </main>
 
-    <div v-if="showSettings" class="settings-layer">
-      <div class="overlay" @click="showSettings = false" />
-      <SettingsPanel
-        @close="showSettings = false"
-        @logout="router.push('/login')"
-      />
+    <ActionConfirmDialog
+      v-if="confirmationRequest"
+      v-model:acknowledged="confirmationAcknowledged"
+      :title="confirmationRequest.title"
+      :message="confirmationRequest.message"
+      :detail="confirmationRequest.detail"
+      :confirm-label="confirmationRequest.confirmLabel"
+      :busy="confirmationBusy"
+      danger
+      @close="closeConfirmation"
+      @confirm="submitConfirmation"
+    />
+
+    <div v-if="tokenDialog" class="token-dialog-backdrop" @click.self="tokenDialog = null">
+      <div class="token-dialog" role="dialog" aria-modal="true" aria-labelledby="token-dialog-title">
+        <div class="token-dialog-header">
+          <div>
+            <p class="eyebrow">One-time credential</p>
+            <h2 id="token-dialog-title">Upload token ready</h2>
+          </div>
+          <button class="btn-ghost" type="button" aria-label="Close token dialog" @click="tokenDialog = null">✕</button>
+        </div>
+        <p class="subtle">Token for {{ tokenDialog.username }}. Save it now; it will not be shown again.</p>
+        <code class="token-value">{{ tokenDialog.token }}</code>
+        <div class="token-dialog-actions">
+          <button class="btn-ghost" type="button" @click="copyToken">{{ tokenCopied ? 'Copied' : 'Copy token' }}</button>
+          <button class="btn-primary" type="button" @click="tokenDialog = null">Done</button>
+        </div>
+      </div>
     </div>
+
+    <Transition name="settings-layer">
+      <div
+        v-if="showSettings"
+        ref="settingsLayer"
+        class="settings-layer"
+        data-testid="settings-layer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Preferences"
+        tabindex="-1"
+        @keydown="handleSettingsKeydown"
+      >
+        <div class="overlay" aria-hidden="true" @click="closeSettings" />
+        <SettingsPanel
+          @close="closeSettings"
+          @logout="router.push('/login')"
+        />
+      </div>
+    </Transition>
   </div>
 </template>
 
 <style scoped>
 .layout {
   width: 100%;
-  min-height: 100dvh;
+  min-height: max(100vh, 100dvh);
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   overflow-x: hidden;
@@ -567,12 +1048,31 @@ onMounted(() => {
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   background: transparent;
 }
+.admin-shell {
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
 .layout.sidebar-collapsed {
   grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
 }
 .workspace {
   min-width: 0;
+  min-height: 0;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
   padding: var(--space-5) var(--space-5) var(--space-7);
+}
+.admin-shell :deep(.sidebar) {
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  position: sticky;
+  top: 0;
 }
 .admin-layout {
   max-width: 1180px;
@@ -597,10 +1097,64 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.actions .btn-red:not(.btn-red ~ .btn-red) {
-  margin-left: var(--space-1);
-  padding-left: calc(var(--space-2) + var(--space-1));
-  border-left: 1px solid var(--border);
+.user-actions {
+  display: grid;
+  grid-template-columns: 92px 92px 128px 136px 80px;
+  grid-auto-rows: 34px;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 560px;
+}
+.user-actions-cell {
+  display: table-cell;
+  vertical-align: middle;
+  padding-right: var(--space-3);
+}
+.user-actions > button {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  min-height: 34px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: var(--space-2);
+  white-space: nowrap;
+  transform: none !important;
+  transition: background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.user-actions > button:hover:not(:disabled),
+.user-actions > button:focus-visible,
+.user-actions > button:active:not(:disabled) {
+  transform: none !important;
+}
+.user-actions .btn-red {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--border));
+  background: color-mix(in srgb, var(--red) 7%, transparent);
+  color: var(--red-h);
+}
+.user-actions .btn-red:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--red) 72%, var(--border));
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red-h);
+}
+@media (max-width: 900px) {
+  .users-table .user-actions {
+    grid-template-columns: 90px 90px 122px;
+    min-width: 318px;
+  }
+}
+@media (max-width: 600px) {
+  .users-table .user-actions {
+    grid-template-columns: 1fr 1fr;
+    min-width: 190px;
+  }
+  .users-table .user-actions > button {
+    width: auto;
+  }
 }
 .eyebrow {
   color: var(--accent);
@@ -677,7 +1231,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   font-size: var(--fs-xs);
 }
 .settings-page {
-  max-width: 720px;
+  width: 100%;
+  max-width: none;
   display: grid;
   gap: var(--space-6);
 }
@@ -710,6 +1265,128 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .settings-fields .inline-check {
   margin: 0;
 }
+.settings-fields label > span,
+.settings-fields label > small,
+.inline-check small,
+.setting-slider small,
+.event-option small {
+  display: block;
+}
+.settings-fields label > small,
+.inline-check small,
+.setting-slider small,
+.event-option small {
+  margin-top: 4px;
+  color: var(--text3);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+.setting-slider-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+.setting-slider output { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.setting-slider input[type="range"] { width: 100%; margin-top: var(--space-4); accent-color: var(--accent); }
+.range-labels { display: flex; justify-content: space-between; color: var(--text3); font-size: var(--fs-xs); }
+.webhook-create > .subtle { margin-top: calc(var(--space-2) * -1); }
+.webhook-events { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.event-option { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.event-option strong { font-weight: 500; }
+.webhook-section-heading {
+  margin-bottom: var(--space-4);
+}
+.webhook-section-heading h2 {
+  margin-bottom: var(--space-1);
+}
+.webhook-endpoint-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.webhook-endpoint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface2) 48%, transparent);
+}
+.webhook-endpoint-main {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.webhook-endpoint-topline,
+.webhook-event-list,
+.webhook-endpoint-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.status-badge,
+.webhook-signing,
+.webhook-kind,
+.webhook-event-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.status-enabled {
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 52%, var(--border));
+  background: color-mix(in srgb, var(--green) 16%, var(--surface2));
+  font-weight: 600;
+}
+.status-disabled {
+  color: var(--text2);
+  background: color-mix(in srgb, var(--surface3) 72%, transparent);
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.webhook-kind,
+.webhook-signing {
+  color: var(--text2);
+  background: color-mix(in srgb, var(--surface3) 52%, transparent);
+}
+.webhook-signing.is-signed { color: var(--accent); }
+.webhook-signing.is-unsigned { color: var(--text3); }
+.webhook-event-chip {
+  color: var(--text2);
+  border: 1px solid color-mix(in srgb, var(--border2) 70%, transparent);
+  background: transparent;
+}
+.webhook-url {
+  display: block;
+  max-width: min(680px, 62vw);
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.webhook-endpoint-meta {
+  flex: none;
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+}
+.webhook-endpoint-actions button {
+  min-width: 68px;
+}
 .span-2 {
   grid-column: 1 / -1;
 }
@@ -726,11 +1403,108 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   align-items: center;
   gap: var(--space-2);
 }
-.filters {
+.upload-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  justify-content: space-between;
+  gap: var(--space-3);
   align-items: center;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.upload-toolbar-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.upload-search {
+  position: relative;
+  display: block;
+}
+.upload-search input {
+  width: min(450px, 48vw);
+  min-height: 40px;
+  padding-right: 38px;
+}
+.upload-search svg {
+  position: absolute;
+  top: 50%;
+  right: var(--space-3);
+  color: var(--text3);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.upload-live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-sm);
+}
+.upload-live-status i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.upload-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.upload-latest {
+  margin-left: auto;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+.upload-selection-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.upload-selection-bar .select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-sm);
+}
+.upload-selection-bar .selection-count {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+.select-all-pages,
+.all-pages-selected {
+  color: var(--accent-h);
+  font-size: var(--fs-xs);
+}
+.select-all-pages {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.select-all-pages:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.clear-selection {
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text3);
+  font-size: var(--fs-xs);
+}
+.clear-selection:hover:not(:disabled) {
+  color: var(--text);
 }
 .filter-text {
   flex: 1 1 220px;
@@ -746,12 +1520,12 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   font-size: var(--fs-body);
 }
 .admin-table tbody tr {
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: none;
 }
-.admin-table tbody tr:hover {
+.admin-table tbody tr:hover td {
   background: color-mix(in srgb, var(--bg2) 42%, transparent);
 }
-.admin-table tbody tr:has(input[type="checkbox"]:checked) {
+.admin-table tbody tr:has(input[type="checkbox"]:checked) td {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .card {
@@ -780,9 +1554,126 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .table-scroll {
   overflow-x: auto;
 }
+.upload-table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 34px;
+}
+.upload-table-toolbar .page-size-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.upload-table-toolbar .page-size-label {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+.page-size-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg);
+}
+.page-size-btn {
+  min-width: 34px;
+  min-height: 28px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+.page-size-btn.active,
+.page-size-btn:hover:not(:disabled) {
+  background: var(--bg2);
+  color: var(--text);
+}
+.admin-actions-menu {
+  position: relative;
+}
+.upload-actions-trigger {
+  min-height: 34px;
+  padding-inline: var(--space-3);
+}
+.admin-actions-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 8;
+  width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 14px 32px var(--shadow);
+}
+.admin-actions-menu-panel .menu-action {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  text-align: left;
+}
+.admin-actions-menu-panel .menu-action:hover:not(:disabled) {
+  background: var(--surface2);
+  color: var(--text);
+}
+.admin-actions-menu-panel .menu-action.danger:hover:not(:disabled) {
+  color: var(--red-h);
+}
 @media (max-width: 700px) {
   .table-scroll {
     box-shadow: inset -18px 0 14px -14px color-mix(in srgb, black 35%, transparent);
+  }
+}
+@media (max-width: 600px) {
+  .upload-toolbar,
+  .upload-toolbar-main {
+    align-items: stretch;
+  }
+  .upload-search,
+  .upload-search input,
+  .upload-toolbar > .btn-red {
+    width: 100%;
+  }
+  .upload-list-toolbar {
+    align-items: stretch;
+  }
+  .upload-table-toolbar {
+    justify-content: space-between;
+  }
+  .upload-latest {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+  .upload-table-toolbar .page-size-label {
+    display: none;
+  }
+  .upload-table-toolbar .page-size-segment {
+    height: 34px;
+    min-height: 34px;
+    padding: 2px;
+  }
+  .upload-table-toolbar .page-size-btn {
+    width: 34px;
+    min-width: 34px;
+    height: 28px;
+    min-height: 28px !important;
+    margin: 0;
+    padding: 2px 6px;
+    line-height: 1;
+  }
+  .admin-actions-menu-panel {
+    right: 0;
   }
 }
 .error-box {
@@ -829,33 +1720,36 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   margin-top: var(--space-1);
 }
 .admin-layout input:not([type="checkbox"]) {
-  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
 .admin-layout input:not([type="checkbox"]):hover:not(:disabled) {
   border-color: var(--text3);
 }
 .admin-layout input:not([type="checkbox"]):active:not(:disabled) {
-  transform: scale(0.98);
+  transform: none;
 }
 .admin-layout input[type="checkbox"] {
   cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease-out);
 }
-.admin-layout input[type="checkbox"]:hover:not(:disabled) {
-  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
-  outline-offset: 1px;
+.admin-layout .upload-selection-bar .select-all input[type="checkbox"]:disabled,
+.admin-layout .admin-table th.select-col input[type="checkbox"]:disabled {
+  border-color: color-mix(in srgb, var(--text3) 82%, var(--border2));
+  background: color-mix(in srgb, var(--text3) 28%, var(--surface2));
+  color: var(--text3);
+  opacity: 1;
+  cursor: not-allowed;
 }
-.admin-layout input[type="checkbox"]:active:not(:disabled) {
-  transform: scale(0.92);
+.admin-layout .selection-disabled {
+  pointer-events: none;
 }
 .admin-layout button:not(:disabled) {
   transition: transform var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 .admin-layout button:not(:disabled):hover {
-  transform: translateY(-1px);
+  transform: none;
 }
 .admin-layout button:not(:disabled):active {
-  transform: translateY(0) scale(0.96);
+  transform: none;
 }
 .empty-state {
   padding: var(--space-4) 0 0;
@@ -887,6 +1781,30 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   inset: 0;
   z-index: 90;
   pointer-events: none;
+  --settings-panel-left: calc(var(--sidebar-w) + 26px);
+  --settings-panel-right: auto;
+  --settings-panel-top: auto;
+  --settings-panel-bottom: 20px;
+  --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w) - 50px));
+  --settings-panel-max-height: calc(100dvh - 40px);
+}
+.settings-layer-enter-active,
+.settings-layer-leave-active {
+  transition: opacity var(--duration-slow) var(--ease-out);
+}
+.settings-layer-enter-active :deep(.settings-panel),
+.settings-layer-leave-active :deep(.settings-panel) {
+  transition: opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
+  will-change: opacity, transform;
+}
+.settings-layer-enter-from,
+.settings-layer-leave-to {
+  opacity: 0;
+}
+.settings-layer-enter-from :deep(.settings-panel),
+.settings-layer-leave-to :deep(.settings-panel) {
+  opacity: 0;
+  transform: translate3d(-10px, 14px, 0) scale(0.98);
 }
 .overlay {
   position: absolute;
@@ -897,26 +1815,83 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .settings-layer :deep(.settings-panel) {
   pointer-events: auto;
   z-index: 1;
-  position: fixed;
-  left: calc(var(--sidebar-w) + 26px);
-  right: auto;
-  top: auto;
-  bottom: 74px;
-  width: min(380px, calc(100vw - var(--sidebar-w) - 50px));
   height: auto;
   min-height: 0;
-  max-height: calc(100dvh - 92px);
   overflow: auto;
 }
-.sidebar-collapsed .settings-layer :deep(.settings-panel) {
-  left: calc(var(--sidebar-w-collapsed) + 24px);
-  width: min(380px, calc(100vw - var(--sidebar-w-collapsed) - 48px));
+.sidebar-collapsed .settings-layer {
+  --settings-panel-left: calc(var(--sidebar-w-collapsed) + 24px);
+  --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w-collapsed) - 48px));
+}
+.token-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--modal-bg);
+}
+.token-dialog {
+  width: min(520px, calc(100vw - 24px));
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: var(--space-5);
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 90%, transparent);
+}
+.token-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.token-dialog-header h2 {
+  margin-bottom: var(--space-1);
+}
+.token-value {
+  display: block;
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--accent-h);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.token-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 @media (max-width: 760px) {
   .workspace { padding: var(--space-4); }
   .admin-header { flex-direction: column; }
   .admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tabs button { padding: var(--space-2) var(--space-4); }
+  .webhook-endpoint {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .webhook-url {
+    max-width: 100%;
+  }
+  .webhook-endpoint-meta {
+    justify-items: stretch;
+  }
+  .webhook-endpoint-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .webhook-endpoint-actions button {
+    width: 100%;
+  }
 }
 @media (min-width: 601px) and (max-width: 960px) {
   .layout {
@@ -925,9 +1900,12 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .layout.sidebar-collapsed {
     grid-template-columns: var(--sidebar-w-collapsed-tablet) minmax(0, 1fr);
   }
-  .settings-layer :deep(.settings-panel) {
-    left: calc(var(--sidebar-w-tablet) + 26px);
-    width: min(380px, calc(100vw - var(--sidebar-w-tablet) - 50px));
+  .settings-layer {
+    --settings-panel-left: calc(var(--sidebar-w-tablet) + 26px);
+    --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w-tablet) - 50px));
+    --settings-panel-top: auto;
+    --settings-panel-bottom: 20px;
+    --settings-panel-max-height: calc(100dvh - 40px);
   }
 }
 @media (max-width: 600px) {
@@ -946,8 +1924,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     grid-template-columns: 1fr;
   }
   .workspace {
-    min-height: 100dvh;
-    padding: var(--space-3) var(--space-3) calc(var(--mobile-bar-space) + 22px);
+    padding: var(--space-3) var(--space-3) calc(var(--mobile-bar-space) + 42px);
   }
   .admin-header {
     padding: var(--space-4);
@@ -970,20 +1947,243 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     width: 20px;
     height: 20px;
   }
-  .admin-table td,
-  .admin-table th {
-    padding: var(--space-2) var(--space-3);
+}
+.admin-table td,
+.admin-table th {
+  padding: var(--space-2) var(--space-3);
+}
+.upload-name-cell {
+  min-width: 220px;
+  white-space: nowrap;
+}
+.upload-preview-trigger,
+.upload-name-link {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  vertical-align: middle;
+}
+.upload-preview-trigger {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-right: var(--space-2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+}
+.upload-preview-trigger:hover,
+.upload-preview-trigger:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-h);
+}
+.upload-name-link {
+  max-width: min(38vw, 340px);
+  overflow: hidden;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-name-link:hover,
+.upload-name-link:focus-visible {
+  color: var(--accent-h);
+  text-decoration: underline;
+}
+.upload-sharex-icon {
+  width: 17px;
+  height: 17px;
+  margin-left: var(--space-2);
+  object-fit: contain;
+  vertical-align: middle;
+}
+.upload-row-actions {
+  min-width: 234px;
+  text-align: right;
+  white-space: nowrap;
+}
+.upload-action,
+.upload-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 86px;
+  min-height: 34px;
+  margin-left: var(--space-2);
+  text-decoration: none;
+}
+.upload-copy-action {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent) 13%, var(--bg1));
+  color: var(--accent-h);
+}
+.upload-copy-action:hover:not(:disabled),
+.upload-copy-action:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg1));
+  color: var(--text);
+}
+.upload-row-menu {
+  position: relative;
+  display: inline-block;
+}
+.upload-more {
+  min-width: 36px;
+  padding-inline: var(--space-2);
+  font-size: var(--fs-h2);
+  line-height: 1;
+}
+.upload-row-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 12;
+  width: 156px;
+  padding: 4px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 14px 32px var(--shadow);
+  text-align: left;
+}
+.upload-row-menu-panel .menu-action {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  text-align: left;
+  text-decoration: none;
+}
+.upload-row-menu-panel .menu-action:hover:not(:disabled) {
+  background: var(--surface2);
+  color: var(--text);
+}
+.upload-row-menu-panel .menu-action.danger:hover:not(:disabled) {
+  color: var(--red-h);
+}
+@media (max-width: 820px) {
+  .upload-row-actions {
+    min-width: 118px;
+    width: 118px;
   }
-  .settings-layer :deep(.settings-panel) {
-    left: 12px;
-    right: 12px;
-    top: auto;
-    bottom: calc(var(--mobile-bar-space) + 14px);
-    width: auto;
-    max-height: calc(100dvh - var(--mobile-bar-space) - 30px);
+  .upload-action,
+  .upload-more {
+    width: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    margin-left: var(--space-1);
+    padding: 3px !important;
+  }
+  .upload-action span { display: none; }
+  .upload-action svg { width: 14px; height: 14px; }
+  .upload-name-cell { min-width: 190px; }
+}
+@media (max-width: 600px) {
+  .settings-layer {
+    --settings-panel-left: 12px;
+    --settings-panel-right: 12px;
+    --settings-panel-top: auto;
+    --settings-panel-bottom: calc(var(--mobile-bar-space) + 14px);
+    --settings-panel-width: auto;
+    --settings-panel-max-height: calc(100dvh - var(--mobile-bar-space) - 30px);
+  }
+  .webhook-section-heading {
+    align-items: flex-start;
+  }
+  .webhook-endpoint {
+    padding: var(--space-3);
+  }
+  .webhook-endpoint-actions {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 480px) {
   .admin-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.settings-page {
+  width: min(100%, 980px);
+  gap: clamp(var(--space-5), 4vw, var(--space-7));
+}
+.settings-intro {
+  max-width: 680px;
+}
+.settings-intro h2 {
+  margin-bottom: var(--space-1);
+  font-size: clamp(22px, 2.6vw, 30px);
+  letter-spacing: -0.025em;
+}
+.settings-intro p {
+  color: var(--text2);
+  font-size: var(--fs-sm);
+}
+.settings-page > .settings-group {
+  grid-template-columns: minmax(130px, 0.3fr) minmax(0, 1fr);
+  column-gap: clamp(var(--space-5), 5vw, var(--space-8));
+  padding: clamp(var(--space-5), 3vw, var(--space-6)) 0;
+}
+.settings-group-label {
+  padding-top: 3px;
+  color: var(--text);
+  letter-spacing: 0.08em;
+}
+.settings-fields {
+  gap: var(--space-5) var(--space-4);
+}
+.settings-fields label > span {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.settings-fields label > small {
+  max-width: 42ch;
+  line-height: 1.45;
+}
+.settings-fields input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 40px;
+  margin-top: var(--space-2);
+  background: color-mix(in srgb, var(--bg2) 78%, var(--surface));
+}
+.settings-page > .settings-group-branding .settings-fields label:last-child {
+  grid-column: 1 / -1;
+}
+.settings-page > .settings-group-branding .settings-fields label:last-child input {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+@media (max-width: 700px) {
+  .settings-page > .settings-group {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+  .settings-page > .settings-group-branding .settings-fields label:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 900px) {
+  .settings-page > .settings-group-branding .settings-fields label > small {
+    min-height: calc(1.45em * 2);
+  }
+  .settings-page > .settings-group-branding .settings-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 901px) {
+  .settings-page > .settings-group-branding .settings-fields label > small {
+    min-height: calc(1.45em * 2);
+  }
+  .settings-page > .settings-group-branding .settings-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

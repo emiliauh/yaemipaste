@@ -130,3 +130,17 @@ export function credentialToJson(credential: PublicKeyCredential): JsonValue {
 export function isPasskeySupported(): boolean {
   return typeof window !== 'undefined' && 'PublicKeyCredential' in window && !!navigator.credentials
 }
+
+/** Keep browser/vendor WebAuthn details out of user-facing error messages. */
+export function passkeyErrorMessage(error: unknown, fallback = 'Passkey operation failed'): string {
+  const name = error instanceof DOMException ? error.name : ''
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  if (name === 'NotAllowedError' || name === 'AbortError' || name === 'TimeoutError') return 'Passkey unavailable or cancelled (PK-001)'
+  if (name === 'InvalidStateError' || name === 'ConstraintError') return 'Passkey is not available for this account (PK-002)'
+  if (name === 'SecurityError' || name === 'NotSupportedError') return 'Passkeys are not supported here (PK-003)'
+  if (name === 'NetworkError') return 'Passkey service unavailable (PK-004)'
+  if (/passkey login failed|invalid credentials|verification failed/i.test(message)) return 'Passkey verification failed (PK-101)'
+  if (/login was not started|state expired/i.test(message)) return 'Passkey request expired (PK-102)'
+  if (/invalid passkey login payload/i.test(message)) return 'Passkey response was invalid (PK-103)'
+  return fallback
+}

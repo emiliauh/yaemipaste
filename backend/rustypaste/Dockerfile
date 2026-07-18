@@ -11,12 +11,12 @@ COPY Cargo.toml Cargo.toml
 COPY Cargo.lock Cargo.lock
 RUN mkdir -p src/
 RUN echo "fn main() {println!(\"failed to build\")}" > src/main.rs
-RUN cargo build --locked --release
+RUN cargo build --locked
 RUN rm -f target/release/deps/rustypaste*
 COPY . .
-RUN cargo build --locked --release
+RUN cargo build --locked
 RUN mkdir -p build-out/
-RUN cp target/release/rustypaste build-out/
+RUN cp target/debug/rustypaste build-out/
 
 FROM debian:bookworm-slim
 WORKDIR /app

@@ -4,6 +4,10 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173'
 const disableWebServer = process.env.PLAYWRIGHT_DISABLE_WEBSERVER === '1'
 const webServerCommand = process.env.PLAYWRIGHT_SERVER_COMMAND || 'npm run dev -- --host 127.0.0.1'
 const webServerUrl = process.env.PLAYWRIGHT_SERVER_URL || baseURL
+const browserChannel = process.env.PLAYWRIGHT_CHANNEL || undefined
+const browserArgs = process.env.PLAYWRIGHT_CONTAINER === '1'
+  ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-crash-reporter']
+  : undefined
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -23,15 +27,15 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      use: { browserName: 'chromium', viewport: { width: 1280, height: 720 } },
+      use: { browserName: 'chromium', channel: browserChannel, launchOptions: { args: browserArgs }, viewport: { width: 1280, height: 720 } },
     },
     {
       name: 'tablet',
-      use: { browserName: 'chromium', viewport: { width: 768, height: 1024 } },
+      use: { browserName: 'chromium', channel: browserChannel, launchOptions: { args: browserArgs }, viewport: { width: 768, height: 1024 } },
     },
     {
       name: 'mobile',
-      use: { browserName: 'chromium', viewport: { width: 390, height: 844 } },
+      use: { browserName: 'chromium', channel: browserChannel, launchOptions: { args: browserArgs }, viewport: { width: 390, height: 844 } },
     },
   ],
 })

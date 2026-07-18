@@ -383,6 +383,19 @@ export async function authMe() {
   return readJson(r, 'Could not load account details')
 }
 
+/** Refresh the cached role so admin changes are reflected without a relogin. */
+export async function refreshAuthAdmin(): Promise<boolean> {
+  if (!hasAccountAuth()) return isAuthAdmin()
+  try {
+    const data = await authMe() as { is_admin?: unknown }
+    const storage = sessionStorage.getItem('rp_jwt') ? sessionStorage : localStorage
+    storage.setItem('rp_is_admin', data.is_admin === true ? '1' : '0')
+    return data.is_admin === true
+  } catch {
+    return isAuthAdmin()
+  }
+}
+
 function tokenOwnerUrl(origin = publicSiteOrigin()): string {
   const base = TOKEN_OWNER_PATH.trim()
   if (!base) throw new Error('Token owner lookup is disabled for this deployment')
@@ -604,7 +617,10 @@ export async function getShareXConfig(): Promise<Blob> {
   // - `file/hash/preview`
   parsed.URL = `${publicSiteOrigin()}/file/{regex:^(?:https?://[^/]+/)?(?:file/)?([A-Za-z0-9_-]+)|1}/preview`
 
-  const uploaderLabel = `${await uploaderIdentity()} (ShareX)`
+  // Ownership and provenance are separate fields.  Keeping the account name
+  // canonical here prevents the Admin library from rendering both a
+  // "name (ShareX)" label and a ShareX badge for the same upload.
+  const uploaderLabel = await uploaderIdentity()
   const replaceUploaderSyntax = (value: string): string => value
     .replace(/\$uploader[^$]*\$/gi, uploaderLabel)
     .replace(/%uploader%/gi, uploaderLabel)
@@ -661,7 +677,10 @@ interface RawPasteFile {
 }
 
 export async function listFiles(): Promise<PasteFile[]> {
-  const r = await fetch(`${getPasteApiBase()}/list`, {
+  // Authenticated list responses must never be reused after an admin purge.
+  // The request cache mode protects the browser; the nonce also prevents an
+  // intermediary from replaying an older authenticated response.
+  const r = await fetch(`${getPasteApiBase()}/list?cb=${Date.now().toString(36)}`, {
     cache: 'no-store',
     headers: tokenHeader(),
   })
@@ -1113,6 +1132,9 @@ export interface AdminUpload {
   path: string
   owner: string | null
   file_name: string
+  display_name: string | null
+  uploader: string | null
+  source: string | null
   size_bytes: number
   created_at: number | null
   expires_at: number | null
@@ -1149,7 +1171,8 @@ export interface AdminSettings {
   app_name?: string
   public_title?: string
   registration_enabled?: string
-  storage_warning_bytes?: string
+  file_size_limit_bytes?: string
+  file_size_limit_unlimited?: string
   base_api_url?: string
 }
 
@@ -1158,6 +1181,8 @@ export interface PublicAdminSettings {
   public_title: string
   registration_enabled: boolean
   base_api_url?: string
+  file_size_limit_bytes: number
+  file_size_limit_unlimited: boolean
   turnstile_site_key?: string
   turnstile_required?: boolean
 }
@@ -1212,7 +1237,11 @@ async function adminRequest<T>(path: string, options: RequestInit = {}, fallback
   const headers = new Headers(options.headers)
   if (!headers.has('Content-Type') && options.body) headers.set('Content-Type', 'application/json')
   for (const [key, value] of Object.entries(jwtBearerHeader())) headers.set(key, value)
-  const response = await fetch(`${AUTH_API}/admin${path}`, { ...options, headers })
+  const method = (options.method ?? 'GET').toString().toUpperCase()
+  const requestPath = method === 'GET'
+    ? `${path}${path.includes('?') ? '&' : '?'}cb=${Date.now().toString(36)}`
+    : path
+  const response = await fetch(`${AUTH_API}/admin${requestPath}`, { cache: 'no-store', ...options, headers })
   if (!response.ok) throw new Error(await responseDetail(response, fallback))
   return readJson<T>(response, fallback)
 }
@@ -1318,7 +1347,7 @@ export function adminSettings() {
   return adminRequest<AdminSettings>('/settings', {}, 'Could not load settings')
 }
 
-export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; storage_warning_bytes?: number }) {
+export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; file_size_limit_bytes?: number; file_size_limit_unlimited?: boolean }) {
   return adminRequest<AdminSettings>('/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),
@@ -1366,6 +1395,11 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+}
+
+export function formatGigabytes(bytes: number): string {
+  const gigabytes = bytes / (1024 ** 3)
+  return `${Number.isInteger(gigabytes) ? gigabytes : gigabytes.toFixed(1)} GB`
 }
 
 export function formatTimestamp(value: number | null | undefined): string {

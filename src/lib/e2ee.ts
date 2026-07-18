@@ -258,9 +258,9 @@ async function decryptBlobWithKey(blob: Blob, key: CryptoKey): Promise<Decryptio
   let plaintext: ArrayBuffer
   try {
     plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: bytesToArrayBuffer(base64UrlToBytes(header.iv)) },
+      { name: 'AES-GCM', iv: base64UrlToBytes(header.iv) as unknown as BufferSource },
       key,
-      bytesToArrayBuffer(ciphertext),
+      ciphertext as unknown as BufferSource,
     )
   } catch {
     throw new Error('Decryption failed. The key or password is incorrect.')

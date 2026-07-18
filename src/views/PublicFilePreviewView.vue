@@ -348,7 +348,7 @@ h1 {
 @media (max-width: 620px) {
   .preview-page {
     align-items: flex-start;
-    padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 28px 12px calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
   .preview-card {

@@ -8,6 +8,8 @@ const FALLBACK_SETTINGS: PublicAdminSettings = {
   base_api_url: '',
   turnstile_site_key: '',
   turnstile_required: false,
+  file_size_limit_bytes: 0,
+  file_size_limit_unlimited: false,
 }
 
 const publicSettings = ref<PublicAdminSettings>({ ...FALLBACK_SETTINGS })

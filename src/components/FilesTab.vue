@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
-import { publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
+import { computed, nextTick, ref, watch } from 'vue'
+import { formatGigabytes, publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
 import { supportsBrowserEncryption } from '../lib/e2ee'
 import ExpirySelector from './ExpirySelector.vue'
 import { defaultExpiryValue, isValidExpiryValue, type ExpiryValue } from '../lib/expiry'
 import { useNotificationStore } from '../stores/notifications'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const EXPIRY_KEY = 'rp_expiry'
 const KEEP_NAME_KEY = 'rp_keep_file_name'
@@ -31,6 +32,9 @@ const showEncryptPassword = ref(false)
 const browserEncryptionReady = supportsBrowserEncryption()
 let shareLinkId = 0
 const notificationStore = useNotificationStore()
+const { publicSettings, refreshPublicSettings } = usePublicSettings()
+const fileSizeLimitLabel = computed(() => publicSettings.value.file_size_limit_bytes > 0 ? formatGigabytes(publicSettings.value.file_size_limit_bytes) : '')
+void refreshPublicSettings()
 
 watch(keepFileName, (value) => {
   localStorage.setItem(KEEP_NAME_KEY, value ? '1' : '0')
@@ -245,6 +249,7 @@ function onPasteAreaLongPressCancel() {
             <template v-else-if="encryptMode === 'encrypt'">Encrypted in this browser before upload.</template>
             <template v-else>Public short link, ready to copy.</template>
           </p>
+          <p v-if="fileSizeLimitLabel" class="upload-limit-note">Maximum file size: <strong>{{ fileSizeLimitLabel }}</strong></p>
         </div>
 
         <div class="upload-options">
@@ -393,8 +398,8 @@ function onPasteAreaLongPressCancel() {
   position: relative;
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
-  box-shadow: 0 20px 48px color-mix(in srgb, var(--shadow) 60%, transparent);
+  background: var(--surface);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -432,9 +437,9 @@ function onPasteAreaLongPressCancel() {
 .encrypt-toggle,
 .name-toggle {
   border: 1px solid color-mix(in srgb, var(--border2) 82%, transparent);
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--bg1) 84%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
+  border-radius: var(--radius);
+  background: var(--surface2);
+  box-shadow: none;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -455,12 +460,9 @@ function onPasteAreaLongPressCancel() {
   border-color: var(--border2);
   color: var(--text);
 }
-.name-toggle:active {
-  transform: scale(0.97);
-}
 .encrypt-btn {
   cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 .encrypt-btn:disabled {
   cursor: not-allowed;
@@ -469,10 +471,9 @@ function onPasteAreaLongPressCancel() {
 .encrypt-btn:not(:disabled):hover {
   border-color: var(--accent);
   color: var(--text);
-  transform: translateY(-1px);
 }
 .encrypt-btn:not(:disabled):active {
-  transform: translateY(0) scale(0.97);
+  transform: none;
 }
 .encrypt-btn.active-encrypt {
   border-color: var(--accent);
@@ -485,34 +486,16 @@ function onPasteAreaLongPressCancel() {
   background: color-mix(in srgb, var(--orange-h, #f0963a) 10%, transparent);
 }
 .name-toggle input {
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 1px solid var(--border2);
-  border-radius: 5px;
-  background: var(--bg);
-  display: inline-block;
-  flex-shrink: 0;
-  position: relative;
-}
-.name-toggle input:checked {
-  border-color: var(--accent);
-  background: var(--checked-bg);
-}
-.name-toggle input:checked::after {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  background: var(--accent);
-  border-radius: 2px;
+  width: 17px;
+  height: 17px;
+  flex-basis: 17px;
 }
 .pw-input {
   width: 150px;
   min-height: 38px;
   font-size: var(--fs-sm);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius);
   box-sizing: border-box;
 }
 .password-wrap {
@@ -620,7 +603,7 @@ function onPasteAreaLongPressCancel() {
   min-height: 180px;
   padding: 34px 22px;
   text-align: center;
-  transition: border-color var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+  transition: border-color var(--duration-base) var(--ease-out), background var(--duration-base) var(--ease-out);
 }
 .upload-zone svg {
   color: var(--text2);
@@ -630,14 +613,10 @@ function onPasteAreaLongPressCancel() {
 .upload-zone.drag-over {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--bg1) 78%, transparent);
-  transform: translateY(-2px);
 }
 .upload-zone:hover svg,
 .upload-zone.drag-over svg {
   color: var(--accent);
-}
-.upload-zone:active {
-  transform: translateY(0) scale(0.99);
 }
 .upload-zone-title {
   color: var(--text);
@@ -652,8 +631,8 @@ function onPasteAreaLongPressCancel() {
 }
 .paste-area {
   border: 1px solid color-mix(in srgb, var(--border2) 76%, transparent);
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--bg1) 72%, transparent);
+  border-radius: var(--radius);
+  background: var(--surface2);
   color: var(--text2);
   padding: 11px var(--space-4);
   cursor: pointer;
@@ -673,9 +652,6 @@ function onPasteAreaLongPressCancel() {
 .paste-area:hover {
   border-color: var(--text2);
   color: var(--text);
-}
-.paste-area:active {
-  transform: scale(0.98);
 }
 .paste-area.pressing {
   border-color: var(--accent);
@@ -726,7 +702,7 @@ function onPasteAreaLongPressCancel() {
 .progress-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, var(--accent), var(--accent-h));
+  background: var(--accent);
   transition: width 0.12s ease;
 }
 @media (min-width: 601px) and (max-height: 820px) {

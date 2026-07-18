@@ -17,7 +17,7 @@ import {
   setPasteApiBase,
   type PasskeySummary,
 } from '../lib/api'
-import { credentialToJson, isPasskeySupported, toCreationOptions } from '../lib/passkeys'
+import { credentialToJson, isPasskeySupported, passkeyErrorMessage, toCreationOptions } from '../lib/passkeys'
 import { useNotificationStore } from '../stores/notifications'
 import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
@@ -130,7 +130,7 @@ async function registerPasskey() {
     notificationStore.push('Passkey added')
     await refreshPasskeys()
   } catch (e: any) {
-    passkeyError.value = e.message ?? 'Could not register passkey'
+    passkeyError.value = passkeyErrorMessage(e, 'Could not register passkey')
   } finally {
     passkeyBusy.value = false
   }
@@ -144,7 +144,7 @@ async function deletePasskey(id: number) {
     notificationStore.push('Passkey removed')
     passkeys.value = passkeys.value.filter((item) => item.id !== id)
   } catch (e: any) {
-    passkeyError.value = e.message ?? 'Could not remove passkey'
+    passkeyError.value = passkeyErrorMessage(e, 'Could not remove passkey')
   } finally {
     passkeyBusy.value = false
   }
