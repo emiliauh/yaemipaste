@@ -815,10 +815,10 @@ onBeforeUnmount(() => {
                 <button class="upload-preview-trigger" type="button" :aria-label="`Preview ${uploadDisplayName(upload)}`" @click="openUploadPreview(upload)">
                   <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                 </button>
+                <img v-if="isShareXUpload(upload)" class="upload-sharex-icon" :src="sharexLogoUrl" alt="Uploaded with ShareX" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX" />
                 <button class="upload-name-link" type="button" @click="openUploadPreview(upload)">
                   {{ uploadDisplayName(upload) }}
                 </button>
-                <img v-if="isShareXUpload(upload)" class="upload-sharex-icon" :src="sharexLogoUrl" alt="Uploaded with ShareX" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX" />
               </td>
               <td>{{ formatBytes(upload.size_bytes) }}</td>
               <td>{{ upload.expired ? 'Expired' : (upload.expires_at ? ts(upload.expires_at) : 'Never') }}</td>
@@ -827,7 +827,7 @@ onBeforeUnmount(() => {
                   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   <span>Download</span>
                 </a>
-                <button class="btn-ghost upload-action upload-copy-action" type="button" aria-label="Copy preview link" @click="copyUploadLink(upload)">
+                <button class="btn-orange upload-action" type="button" aria-label="Copy preview link" @click="copyUploadLink(upload)">
                   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   <span>Copy</span>
                 </button>
@@ -1997,7 +1997,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .upload-sharex-icon {
   width: 17px;
   height: 17px;
-  margin-left: var(--space-2);
+  margin-right: var(--space-1);
   object-fit: contain;
   vertical-align: middle;
 }
@@ -2015,18 +2015,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   min-width: 86px;
   min-height: 34px;
   margin-left: var(--space-2);
+  border-radius: var(--radius-sm);
   text-decoration: none;
-}
-.upload-copy-action {
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-  background: color-mix(in srgb, var(--accent) 13%, var(--bg1));
-  color: var(--accent-h);
-}
-.upload-copy-action:hover:not(:disabled),
-.upload-copy-action:focus-visible {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 22%, var(--bg1));
-  color: var(--text);
 }
 .upload-row-menu {
   position: relative;

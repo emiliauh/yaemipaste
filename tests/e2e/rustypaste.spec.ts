@@ -3490,6 +3490,9 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   expect(badgeBox).not.toBeNull()
   if (nameBox && badgeBox) {
     expect(badgeBox.x).toBeGreaterThan(nameBox.x)
+    const nameButtonBox = await nameButton.boundingBox()
+    expect(nameButtonBox).not.toBeNull()
+    if (nameButtonBox) expect(badgeBox.x + badgeBox.width).toBeLessThan(nameButtonBox.x)
     expect(Math.abs((badgeBox.y + badgeBox.height / 2) - (nameBox.y + nameBox.height / 2))).toBeLessThan(12)
   }
 
@@ -3499,6 +3502,7 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   await expect(downloadLink).toBeVisible()
   await expect(downloadLink).toHaveAttribute('href', /\/file\/upload-1\/download$/)
   await expect(copyButton).toBeVisible()
+  await expect(copyButton).toHaveCSS('border-radius', '7px')
   await expect(moreButton).toHaveAttribute('aria-expanded', 'false')
 
   const previewHref = '/file/upload-1/preview'
