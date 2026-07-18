@@ -216,6 +216,13 @@ function uploadDisplayName(upload: AdminUpload): string {
   return (upload.display_name?.trim() || upload.file_name).replace(/\.\d{6,}$/, '')
 }
 
+function splitUploadDisplayName(upload: AdminUpload): { base: string; ext: string } {
+  const name = uploadDisplayName(upload)
+  const dot = name.lastIndexOf('.')
+  if (dot <= 0 || dot === name.length - 1) return { base: name, ext: '' }
+  return { base: name.slice(0, dot), ext: name.slice(dot) }
+}
+
 function isShareXUpload(upload: AdminUpload): boolean {
   const source = (upload.source ?? '').trim().toLowerCase()
   const uploader = (upload.uploader ?? upload.owner ?? '').trim().toLowerCase()
@@ -857,8 +864,9 @@ onBeforeUnmount(() => {
                 <span class="upload-file-icon" aria-hidden="true">
                   <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                 </span>
-                <button class="upload-name-link" type="button" @click="openUploadPreview(upload)" @mouseenter="showUploadHover(upload, $event)" @mousemove="moveUploadHover" @mouseleave="hideUploadHover">
-                  {{ uploadDisplayName(upload) }}
+                <button class="upload-name-link" type="button" :aria-label="uploadDisplayName(upload)" @click="openUploadPreview(upload)" @mouseenter="showUploadHover(upload, $event)" @mousemove="moveUploadHover" @mouseleave="hideUploadHover">
+                  <span class="upload-filename-base">{{ splitUploadDisplayName(upload).base }}</span>
+                  <span v-if="splitUploadDisplayName(upload).ext" class="upload-filename-ext">{{ splitUploadDisplayName(upload).ext }}</span>
                 </button>
               </td>
               <td class="upload-owner-cell">
@@ -2030,6 +2038,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   vertical-align: middle;
 }
 .upload-name-link {
+  display: inline-flex;
+  align-items: baseline;
   max-width: min(38vw, 340px);
   overflow: hidden;
   padding: 0;
@@ -2041,6 +2051,17 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   white-space: nowrap;
 }
 .upload-name-link:hover { color: var(--text); }
+.upload-filename-base {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-filename-ext {
+  flex-shrink: 0;
+  color: var(--text2);
+  white-space: nowrap;
+}
 .upload-owner-cell {
   white-space: nowrap;
 }

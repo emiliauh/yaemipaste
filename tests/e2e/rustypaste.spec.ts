@@ -3472,7 +3472,10 @@ test('admin previews expiring text uploads whose stored name has a timestamp suf
 
   await page.goto('/admin')
   await page.getByRole('button', { name: 'Uploads', exact: true }).click()
-  await page.getByRole('button', { name: 'expiring-paste.txt', exact: true }).click()
+  const expiringName = page.getByRole('button', { name: 'expiring-paste.txt', exact: true })
+  await expect(expiringName.locator('.upload-filename-base')).toHaveText('expiring-paste')
+  await expect(expiringName.locator('.upload-filename-ext')).toHaveText('.txt')
+  await expiringName.click()
 
   const dialog = page.getByRole('dialog', { name: 'Preview expiring-paste.txt' })
   await expect(dialog.getByText('expiring paste preview')).toBeVisible()
