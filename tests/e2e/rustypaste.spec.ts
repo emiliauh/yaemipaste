@@ -3377,7 +3377,7 @@ test('admin panel covers every tab and responsive viewport class', async ({ page
   await page.getByLabel('Search uploads').fill('')
 
   await tabs.getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Shape the public service' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Configure your service' })).toBeVisible()
   await expect(page.getByLabel('App name')).toHaveValue('yaemipaste')
   await expect(page.getByLabel('Public title')).toHaveValue('yaemipaste')
   await expect(page.getByLabel('Base API URL')).toBeVisible()

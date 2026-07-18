@@ -1006,9 +1006,9 @@ onBeforeUnmount(() => {
 
     <section v-if="tab === 'Settings'" class="settings-page">
       <header class="settings-intro">
-        <p class="settings-eyebrow">Administration / Configuration</p>
-        <h2>Shape the public service</h2>
-        <p class="subtle">Manage public identity and practical guardrails from one place. Secrets stay server-side and are never shown here.</p>
+        <p class="settings-eyebrow">Global settings</p>
+        <h2>Configure your service</h2>
+        <p class="subtle">Manage how your service appears and set limits for uploads and registrations.</p>
       </header>
 
       <div class="settings-groups">
