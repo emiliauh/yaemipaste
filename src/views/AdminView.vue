@@ -741,8 +741,14 @@ onBeforeUnmount(() => {
           <table class="file-table admin-table">
             <tbody>
               <tr v-for="upload in dashboard.recent_uploads.slice(0, 6)" :key="upload.path">
-                <td>{{ upload.path }}</td>
-                <td>{{ upload.owner ?? 'Unattributed' }}</td>
+                <td>{{ uploadDisplayName(upload) }}</td>
+                <td class="upload-owner-cell">
+                  <span>{{ uploadOwner(upload) }}</span>
+                  <span v-if="isShareXUpload(upload)" class="upload-sharex-badge" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX">
+                    <img :src="sharexLogoUrl" alt="" aria-hidden="true" />
+                    ShareX
+                  </span>
+                </td>
                 <td>{{ formatBytes(upload.size_bytes) }}</td>
                 <td>{{ ts(upload.created_at) }}</td>
               </tr>
@@ -2166,8 +2172,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.upload-name-link:hover,
-.upload-name-link:hover .upload-filename-ext { color: var(--accent); }
+.upload-name-link:hover .upload-filename-base { color: var(--accent); }
 .upload-filename-base {
   max-width: min(38vw, 300px);
   min-width: 0;
@@ -2177,7 +2182,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .upload-filename-ext {
   flex-shrink: 0;
-  color: var(--text2);
+  color: var(--text2) !important;
   white-space: nowrap;
 }
 .upload-owner-cell {
