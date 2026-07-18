@@ -37,9 +37,10 @@ const copyUrl = computed(() => {
   return url.value.startsWith('blob:') ? shareUrl(props.file.file_name) : url.value
 })
 const name = computed(() => props.displayName ?? props.file.file_name)
-const isImage = computed(() => props.mimeType?.startsWith('image/') ?? /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)$/i.test(name.value))
-const isVideo = computed(() => props.mimeType?.startsWith('video/') ?? /\.(mp4|webm|mov|avi|mkv|ogv|m4v|3gp)$/i.test(name.value))
-const isText = computed(() => props.mimeType?.startsWith('text/') ?? /\.(txt|md|markdown|csv|log|json|xml|ya?ml|toml|ini|conf|cfg|js|ts|tsx|jsx|py|rs|go|java|c|cc|cpp|h|hpp|css|html?)$/i.test(name.value))
+const EXPIRY_SUFFIX = '(?:\\.\\d{6,})?'
+const isImage = computed(() => props.mimeType?.startsWith('image/') ?? new RegExp(`\\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
+const isVideo = computed(() => props.mimeType?.startsWith('video/') ?? new RegExp(`\\.(mp4|webm|mov|avi|mkv|ogv|m4v|3gp)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
+const isText = computed(() => props.mimeType?.startsWith('text/') ?? new RegExp(`\\.(txt|md|markdown|csv|log|json|xml|ya?ml|toml|ini|conf|cfg|js|ts|tsx|jsx|py|rs|go|java|c|cc|cpp|h|hpp|css|html?)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
 const isFallbackPreview = computed(() => !isImage.value && !isVideo.value && !isText.value)
 const sizeLabel = computed(() => formatBytes(props.file.file_size ?? 0))
 const textPreview = ref('')

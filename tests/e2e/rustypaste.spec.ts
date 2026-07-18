@@ -144,17 +144,17 @@ async function mockAdminApi(page: Page, userCount = 12) {
     disk_usage_bytes: 2048 * (index + 1),
   }))
   const uploads = Array.from({ length: 12 }, (_, index) => ({
-    path: `files/upload-${index + 1}.txt`,
+    path: index === 2 ? 'files/expiring-paste.txt.1785612876517' : `files/upload-${index + 1}.txt`,
     owner: index % 2 === 0 ? 'user-1' : 'user-2',
-    file_name: `upload-${index + 1}.txt`,
-    display_name: index === 0 ? 'ShareX screenshot.png' : `upload-${index + 1}.txt`,
+    file_name: index === 2 ? 'expiring-paste.txt.1785612876517' : `upload-${index + 1}.txt`,
+    display_name: index === 0 ? 'ShareX screenshot.png' : index === 2 ? 'expiring-paste.txt.1785612876517' : `upload-${index + 1}.txt`,
     uploader: index % 2 === 0 ? 'user-1' : 'user-2',
     source: index === 0 ? 'ShareX' : 'WebUI',
     size_bytes: 1024 * (index + 1),
     created_at: 1_775_100_000 + index,
     expires_at: index % 3 === 0 ? 1_775_200_000 + index : null,
     expired: index === 3,
-    content_type: index % 2 === 0 ? 'text/plain' : 'image/png',
+    content_type: index === 2 ? null : index === 0 || index % 2 === 1 ? 'image/png' : 'text/plain',
   }))
   const audit = Array.from({ length: 12 }, (_, index) => ({
     id: index + 1,
@@ -3463,6 +3463,21 @@ test('admin uploads show the original name and ShareX provenance', async ({ page
   await expect(page.getByText('ShareX screenshot.png')).toBeVisible()
 })
 
+test('admin previews expiring text uploads whose stored name has a timestamp suffix', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.route('**/expiring-paste/file.txt.1785612876517', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: 'expiring paste preview' })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+  await page.getByRole('button', { name: 'expiring-paste.txt.1785612876517', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Preview expiring-paste.txt.1785612876517' })
+  await expect(dialog.getByText('expiring paste preview')).toBeVisible()
+})
+
 test('admin upload library keeps ShareX provenance beside the name and exposes row actions', async ({ page }) => {
   await signInAsAdmin(page)
   await mockAdminApi(page)
@@ -3481,7 +3496,7 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   const ownerCell = row.locator('.upload-owner-cell')
   const shareXBadge = ownerCell.getByText('ShareX', { exact: true })
   await expect(row).toBeVisible()
-  await expect(nameCell.getByRole('button', { name: 'Preview ShareX screenshot.png' })).toBeVisible()
+  await expect(nameCell.getByRole('button', { name: 'Preview ShareX screenshot.png' })).toHaveCount(0)
   await expect(nameButton).toBeVisible()
   await expect(shareXBadge).toHaveAttribute('title', 'Captured and uploaded with ShareX')
 
@@ -3496,6 +3511,12 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
     expect(badgeBox.x).toBeGreaterThan(ownerBox.x)
     expect(Math.abs((badgeBox.y + badgeBox.height / 2) - (ownerBox.y + ownerBox.height / 2))).toBeLessThan(12)
   }
+
+  await nameButton.hover()
+  const hoverPreview = page.locator('.upload-hover-preview')
+  await expect(hoverPreview).toBeVisible()
+  await expect(hoverPreview.getByRole('img', { name: 'ShareX screenshot.png' })).toBeVisible()
+  await expect(hoverPreview).toHaveCSS('pointer-events', 'none')
 
   const downloadLink = row.getByRole('link', { name: 'Download' })
   const copyButton = row.getByRole('button', { name: 'Copy preview link' })
@@ -3547,7 +3568,8 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   const copyButtonBox = await copyMenuButton.boundingBox()
   expect(openButtonBox?.width).toBe(copyButtonBox?.width)
   expect(openButtonBox?.height).toBe(copyButtonBox?.height)
-  await dialog.getByRole('button', { name: 'Close preview' }).click()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
 })
 
@@ -3567,7 +3589,7 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
   await expect(row.getByLabel('Uploaded with ShareX')).toBeVisible()
   await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
 
-  const previewButton = row.getByRole('button', { name: 'Preview ShareX screenshot.png' })
+  const previewButton = row.getByRole('button', { name: 'ShareX screenshot.png', exact: true })
   await previewButton.scrollIntoViewIfNeeded()
   await previewButton.focus()
   await expect(previewButton).toBeFocused()

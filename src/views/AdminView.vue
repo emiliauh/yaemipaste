@@ -58,6 +58,11 @@ type ConfirmationRequest = {
   success: string
   work: () => Promise<unknown>
 }
+type UploadHoverPreview = {
+  upload: AdminUpload
+  x: number
+  y: number
+}
 
 const tab = ref<AdminTab>('Overview')
 const showSettings = ref(false)
@@ -101,6 +106,9 @@ const uploadsPageSize = ref<UploadPageSize>(15)
 const uploadsActionsOpen = ref(false)
 const uploadRowMenuOpen = ref<string | null>(null)
 const previewUpload = ref<AdminUpload | null>(null)
+const hoverUploadPreview = ref<UploadHoverPreview | null>(null)
+const uploadHoverEnabled = typeof window !== 'undefined'
+  && window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const previewUploadFile = computed<PasteFile | null>(() => {
   const upload = previewUpload.value
   if (!upload) return null
@@ -234,7 +242,32 @@ async function copyUploadLink(upload: AdminUpload) {
 
 function openUploadPreview(upload: AdminUpload) {
   uploadRowMenuOpen.value = null
+  hideUploadHover()
   previewUpload.value = upload
+}
+
+function isImageUpload(upload: AdminUpload): boolean {
+  return (upload.content_type ?? '').toLowerCase().startsWith('image/')
+    || /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)(?:\.\d{6,})?$/i.test(upload.file_name)
+}
+
+function showUploadHover(upload: AdminUpload, event: MouseEvent) {
+  if (!uploadHoverEnabled || !isImageUpload(upload)) return
+  hoverUploadPreview.value = {
+    upload,
+    x: event.clientX + 18,
+    y: event.clientY + 18,
+  }
+}
+
+function moveUploadHover(event: MouseEvent) {
+  if (!hoverUploadPreview.value) return
+  hoverUploadPreview.value.x = event.clientX + 18
+  hoverUploadPreview.value.y = event.clientY + 18
+}
+
+function hideUploadHover() {
+  hoverUploadPreview.value = null
 }
 
 function closeUploadPreview() {
@@ -549,12 +582,16 @@ onMounted(() => {
   window.addEventListener('focus', refreshAdminWhenVisible)
   document.addEventListener('visibilitychange', refreshAdminWhenVisible)
   document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
+  window.addEventListener('blur', hideUploadHover)
+  window.addEventListener('scroll', hideUploadHover, true)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('focus', refreshAdminWhenVisible)
   document.removeEventListener('visibilitychange', refreshAdminWhenVisible)
   document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
+  window.removeEventListener('blur', hideUploadHover)
+  window.removeEventListener('scroll', hideUploadHover, true)
 })
 </script>
 
@@ -817,10 +854,10 @@ onBeforeUnmount(() => {
             <tr v-for="upload in pagedUploads" :key="upload.path">
               <td class="select-col"><input type="checkbox" :checked="selectedUploads.has(upload.path)" :aria-label="`Select ${upload.path}`" @change="toggleSelection(upload.path, ($event.target as HTMLInputElement).checked)" /></td>
               <td class="upload-name-cell">
-                <button class="upload-preview-trigger" type="button" :aria-label="`Preview ${uploadDisplayName(upload)}`" @click="openUploadPreview(upload)">
+                <span class="upload-file-icon" aria-hidden="true">
                   <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                </button>
-                <button class="upload-name-link" type="button" @click="openUploadPreview(upload)">
+                </span>
+                <button class="upload-name-link" type="button" @click="openUploadPreview(upload)" @mouseenter="showUploadHover(upload, $event)" @mousemove="moveUploadHover" @mouseleave="hideUploadHover">
                   {{ uploadDisplayName(upload) }}
                 </button>
               </td>
@@ -875,6 +912,11 @@ onBeforeUnmount(() => {
       @close="closeUploadPreview"
       @download="downloadPreviewUpload"
     />
+
+    <div v-if="hoverUploadPreview" class="upload-hover-preview" :style="{ left: `${hoverUploadPreview.x}px`, top: `${hoverUploadPreview.y}px` }">
+      <img :src="publicFileUrl(hoverUploadPreview.upload.file_name)" :alt="uploadDisplayName(hoverUploadPreview.upload)" />
+      <div class="upload-hover-name">{{ uploadDisplayName(hoverUploadPreview.upload) }}</div>
+    </div>
 
     <section v-if="tab === 'Settings'" class="settings-page">
       <div class="settings-intro">
@@ -1968,14 +2010,14 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   min-width: 220px;
   white-space: nowrap;
 }
-.upload-preview-trigger,
+.upload-file-icon,
 .upload-name-link {
   border: 0;
   background: transparent;
   color: var(--text);
   vertical-align: middle;
 }
-.upload-preview-trigger {
+.upload-file-icon {
   display: inline-grid;
   place-items: center;
   width: 32px;
@@ -1983,12 +2025,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   margin-right: var(--space-2);
   border: 1px solid var(--border2);
   border-radius: var(--radius-sm);
+  box-sizing: border-box;
   color: var(--text2);
-}
-.upload-preview-trigger:hover,
-.upload-preview-trigger:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent-h);
+  vertical-align: middle;
 }
 .upload-name-link {
   max-width: min(38vw, 340px);
@@ -2001,11 +2040,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.upload-name-link:hover,
-.upload-name-link:focus-visible {
-  color: var(--accent-h);
-  text-decoration: underline;
-}
+.upload-name-link:hover { color: var(--text); }
 .upload-owner-cell {
   white-space: nowrap;
 }
@@ -2026,6 +2061,35 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   width: 14px;
   height: 14px;
   object-fit: contain;
+}
+.upload-hover-preview {
+  position: fixed;
+  z-index: 300;
+  width: 232px;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  padding: var(--space-2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  background: var(--bg1);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--shadow) 88%, transparent);
+  pointer-events: none;
+}
+.upload-hover-preview img {
+  display: block;
+  width: 100%;
+  max-height: 150px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  object-fit: contain;
+}
+.upload-hover-name {
+  overflow: hidden;
+  margin-top: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .upload-row-actions {
   min-width: 234px;
