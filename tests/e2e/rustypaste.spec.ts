@@ -3463,6 +3463,44 @@ test('admin users show one page and disable navigation for a single user', async
   await expect(pagination.getByRole('button', { name: 'Next' })).toBeDisabled()
 })
 
+test('admin users render as balanced cards on mobile', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Users', exact: true }).click()
+
+  const table = page.locator('.users-table')
+  const row = table.locator('tbody tr').filter({ hasText: 'user-1' }).first()
+  await expect.poll(() => table.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBeTruthy()
+  await expect(row.getByText('user-1', { exact: true })).toBeVisible()
+  await expect(row.locator('[data-label="Role"]')).toBeVisible()
+  await expect(row.locator('[data-label="Storage"]')).toBeVisible()
+
+  const more = row.getByRole('button', { name: 'More actions' })
+  const remove = row.getByRole('button', { name: 'Delete', exact: true })
+  await expect(more.getByText('More', { exact: true })).toBeVisible()
+  const moreBox = await more.boundingBox()
+  const deleteBox = await remove.boundingBox()
+  expect(moreBox).not.toBeNull()
+  expect(deleteBox).not.toBeNull()
+  if (moreBox && deleteBox) {
+    expect(Math.abs(moreBox.y - deleteBox.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(moreBox.width - deleteBox.width)).toBeLessThanOrEqual(1)
+  }
+
+  await more.click()
+  const panel = page.locator('.user-row-menu-panel')
+  await expect(panel).toBeVisible()
+  const panelBox = await panel.boundingBox()
+  const viewport = page.viewportSize()!
+  expect(panelBox).not.toBeNull()
+  if (panelBox) {
+    expect(panelBox.x).toBeGreaterThanOrEqual(8)
+    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width - 8)
+  }
+})
+
 test('admin uploads show the original name and ShareX provenance', async ({ page }) => {
   await signInAsAdmin(page)
   await mockAdminApi(page)
@@ -3628,7 +3666,17 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
   await downloadLink.scrollIntoViewIfNeeded()
   await expect(downloadLink).toBeVisible()
   await expect(downloadLink).toHaveAttribute('href', /\/file\/upload-1\/download$/)
-  await expect(downloadLink).toHaveCSS('min-width', '40px')
+  const actionBox = await row.locator('.upload-row-actions').boundingBox()
+  const downloadBox = await downloadLink.boundingBox()
+  const copyBox = await copyButton.boundingBox()
+  expect(actionBox).not.toBeNull()
+  expect(downloadBox).not.toBeNull()
+  expect(copyBox).not.toBeNull()
+  if (actionBox && downloadBox && copyBox) {
+    expect(downloadBox.y).toBeGreaterThanOrEqual(actionBox.y)
+    expect(Math.abs(downloadBox.y - copyBox.y)).toBeLessThanOrEqual(1)
+    expect(downloadBox.width).toBeGreaterThan(70)
+  }
 
   await copyButton.focus()
   await expect(copyButton).toBeFocused()

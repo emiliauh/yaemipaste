@@ -784,19 +784,19 @@ onBeforeUnmount(() => {
 
       <div class="card">
         <h2>Users</h2>
-        <div ref="usersTableScroll" class="table-scroll">
+        <div ref="usersTableScroll" class="table-scroll users-table-scroll">
         <table class="file-table admin-table users-table">
-          <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Uploads</th><th>Storage</th><th>Actions</th></tr></thead>
+          <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Uploads</th><th scope="col">Storage</th><th scope="col">Actions</th></tr></thead>
           <tbody>
             <tr v-for="user in pagedUsers" :key="user.username">
-              <td><span>{{ user.username }}</span><div class="subtle">{{ user.upload_token_preview ? 'token configured' : 'no token' }}</div></td>
-              <td>{{ user.is_admin ? 'admin' : 'user' }}</td>
-              <td>{{ user.suspended_at ? `suspended ${ts(user.suspended_at)}` : 'active' }}</td>
-              <td>{{ user.upload_count }}</td>
-              <td>{{ formatBytes(user.disk_usage_bytes) }}</td>
+              <td class="user-name-cell" data-label="User"><span>{{ user.username }}</span><div class="subtle">{{ user.upload_token_preview ? 'token configured' : 'no token' }}</div></td>
+              <td data-label="Role">{{ user.is_admin ? 'admin' : 'user' }}</td>
+              <td data-label="Status">{{ user.suspended_at ? `suspended ${ts(user.suspended_at)}` : 'active' }}</td>
+              <td class="user-uploads-cell" data-label="Uploads">{{ user.upload_count }}</td>
+              <td data-label="Storage">{{ formatBytes(user.disk_usage_bytes) }}</td>
               <td class="actions user-actions-cell">
                 <div class="user-actions">
-                  <button class="btn-ghost user-more" type="button" aria-label="More actions" :aria-controls="`user-actions-${user.username}`" :aria-expanded="userRowMenuOpen === user.username ? 'true' : 'false'" @click="toggleUserRowMenu(user.username, $event)">⋯</button>
+                  <button class="btn-ghost user-more" type="button" aria-label="More actions" :aria-controls="`user-actions-${user.username}`" :aria-expanded="userRowMenuOpen === user.username ? 'true' : 'false'" @click="toggleUserRowMenu(user.username, $event)"><span class="user-more-icon" aria-hidden="true">⋯</span><span class="user-more-label" aria-hidden="true">More</span></button>
                   <button class="btn-red" type="button" @click="requestUserDelete(user.username)">Delete</button>
                 </div>
               </td>
@@ -1267,6 +1267,7 @@ onBeforeUnmount(() => {
   font-size: var(--fs-h2);
   line-height: 1;
 }
+.user-more-label { display: none; }
 .user-row-menu-panel {
   position: fixed;
   z-index: 1000;
@@ -2350,7 +2351,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
   .uploads-table tbody tr {
     display: grid;
-    grid-template-columns: 24px minmax(0, 1fr) 40px;
+    grid-template-columns: 24px minmax(0, 1fr);
     gap: var(--space-2) var(--space-3);
     padding: var(--space-3);
     border: 1px solid var(--border);
@@ -2363,7 +2364,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
   .uploads-table .select-col {
     grid-column: 1;
-    grid-row: 1 / -1;
+    grid-row: 1 / span 6;
   }
   .uploads-table .upload-name-cell,
   .uploads-table td[data-label] {
@@ -2392,25 +2393,122 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     overflow-wrap: anywhere;
   }
   .uploads-table .upload-row-actions {
-    grid-column: 3;
-    grid-row: 1 / -1;
-    display: flex;
-    flex-direction: column;
+    grid-column: 2;
+    grid-row: auto;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
     align-items: stretch;
-    width: 40px;
-    min-width: 40px;
+    width: auto;
+    min-width: 0;
     padding: 0;
+    margin-top: var(--space-1);
   }
-  .admin-layout .uploads-table .upload-action,
-  .admin-layout .uploads-table .upload-more {
-    width: 40px;
-    min-width: 40px;
+  .admin-layout .uploads-table .upload-row-actions .upload-action,
+  .admin-layout .uploads-table .upload-row-actions .upload-more {
+    width: 100%;
+    min-width: 0;
     min-height: 40px;
     margin: 0;
-    padding: 0 !important;
+    padding: 0 var(--space-2) !important;
   }
   .uploads-table .upload-action span {
+    display: inline;
+  }
+  .uploads-table .upload-owner-cell {
+    flex-wrap: wrap;
+  }
+  .users-table-scroll {
+    overflow-x: visible;
+    box-shadow: none;
+  }
+  .users-table {
+    min-width: 0;
+  }
+  .users-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .users-table,
+  .users-table tbody,
+  .users-table tr,
+  .users-table td {
+    display: block;
+    width: 100%;
+  }
+  .users-table tbody {
+    display: grid;
+    gap: var(--space-2);
+  }
+  .users-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+  }
+  .users-table td {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+  .users-table .user-name-cell,
+  .users-table .user-actions-cell {
+    grid-column: 1 / -1;
+  }
+  .users-table td[data-label]:not(.user-name-cell):not(.user-actions-cell) {
+    display: grid;
+    gap: 2px;
+    color: var(--text2);
+    font-size: var(--fs-sm);
+    overflow-wrap: anywhere;
+  }
+  .users-table td[data-label]:not(.user-name-cell):not(.user-actions-cell)::before {
+    content: attr(data-label);
+    color: var(--text3);
+    font-size: var(--fs-xs);
+  }
+  .users-table .user-name-cell > span {
+    color: var(--text);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .users-table .user-uploads-cell {
     display: none;
+  }
+  .users-table .user-actions-cell {
+    display: block;
+    margin-top: var(--space-1);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+  .users-table .user-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+    gap: var(--space-2);
+  }
+  .users-table .user-more,
+  .users-table .user-actions > .btn-red {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+  }
+  .users-table .user-more {
+    font-size: var(--fs-sm);
+  }
+  .users-table .user-more-icon {
+    display: none;
+  }
+  .users-table .user-more-label {
+    display: inline;
   }
 }
 @media (max-width: 480px) {
