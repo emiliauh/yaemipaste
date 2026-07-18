@@ -3430,7 +3430,18 @@ test('admin destructive actions send explicit confirmations', async ({ page }) =
   await expect(page.getByTestId('notification-list')).toContainText('Expired uploads purged')
 
   await page.getByRole('button', { name: 'Users' }).click()
-  await page.locator('tr').filter({ has: page.getByText('user-1', { exact: true }) }).getByRole('button', { name: 'Purge uploads' }).click()
+  const userRow = page.locator('tr').filter({ has: page.getByText('user-1', { exact: true }) })
+  await expect(userRow.getByRole('button', { name: 'Delete', exact: true })).toBeVisible()
+  await userRow.getByRole('button', { name: 'More actions' }).click()
+  await expect(userRow.getByRole('button', { name: 'Suspend', exact: true })).toBeVisible()
+  await expect(userRow.getByRole('button', { name: /Promote|Demote/, exact: true })).toBeVisible()
+  await expect(userRow.getByRole('button', { name: 'Rotate token', exact: true })).toBeVisible()
+  await userRow.getByRole('button', { name: 'Suspend', exact: true }).press('Escape')
+  await expect(userRow.getByRole('button', { name: 'Purge uploads', exact: true })).toHaveCount(0)
+  const moreActions = userRow.getByRole('button', { name: 'More actions' })
+  await expect(moreActions).toBeFocused()
+  await moreActions.click()
+  await userRow.getByRole('button', { name: 'Purge uploads', exact: true }).click()
   confirmation = page.getByRole('dialog', { name: 'Purge user uploads?' })
   await expect(confirmation).toBeVisible()
   await confirmation.getByRole('checkbox').check()
@@ -3475,6 +3486,7 @@ test('admin previews expiring text uploads whose stored name has a timestamp suf
   const expiringName = page.getByRole('button', { name: 'expiring-paste.txt', exact: true })
   await expect(expiringName.locator('.upload-filename-base')).toHaveText('expiring-paste')
   await expect(expiringName.locator('.upload-filename-ext')).toHaveText('.txt')
+  await expect(expiringName).toHaveCSS('overflow', 'visible')
   await expiringName.click()
 
   const dialog = page.getByRole('dialog', { name: 'Preview expiring-paste.txt' })
@@ -3516,6 +3528,7 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   }
 
   await nameButton.hover()
+  await expect(nameButton).toHaveCSS('color', 'rgb(78, 120, 170)')
   const hoverPreview = page.locator('.upload-hover-preview')
   await expect(hoverPreview).toBeVisible()
   await expect(hoverPreview.getByRole('img', { name: 'ShareX screenshot.png' })).toBeVisible()

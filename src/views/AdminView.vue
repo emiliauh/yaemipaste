@@ -105,6 +105,7 @@ type UploadPageSize = typeof UPLOAD_PAGE_SIZES[number]
 const uploadsPageSize = ref<UploadPageSize>(15)
 const uploadsActionsOpen = ref(false)
 const uploadRowMenuOpen = ref<string | null>(null)
+const userRowMenuOpen = ref<string | null>(null)
 const previewUpload = ref<AdminUpload | null>(null)
 const hoverUploadPreview = ref<UploadHoverPreview | null>(null)
 const uploadHoverEnabled = typeof window !== 'undefined'
@@ -591,6 +592,13 @@ function closeUploadMenusOnOutsidePointer(event: PointerEvent) {
   const target = event.target as Element | null
   if (!target?.closest('.admin-actions-menu')) uploadsActionsOpen.value = false
   if (!target?.closest('.upload-row-menu')) uploadRowMenuOpen.value = null
+  if (!target?.closest('.user-row-menu')) userRowMenuOpen.value = null
+}
+
+function closeUserRowMenuAndRestoreFocus(event: KeyboardEvent) {
+  const trigger = (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>('.user-more')
+  userRowMenuOpen.value = null
+  void nextTick(() => trigger?.focus())
 }
 
 onMounted(() => {
@@ -733,16 +741,17 @@ onBeforeUnmount(() => {
               <td>{{ user.upload_count }}</td>
               <td>{{ formatBytes(user.disk_usage_bytes) }}</td>
               <td class="actions user-actions-cell">
-                <div class="user-actions">
-                <button class="btn-ghost" type="button" @click="runAction(() => adminUpdateUser(user.username, { suspended: !user.suspended_at, suspension_reason: 'Suspended by administrator' }), user.suspended_at ? 'User unsuspended' : 'User suspended')">
-                  {{ user.suspended_at ? 'Unsuspend' : 'Suspend' }}
-                </button>
-                <button class="btn-ghost" type="button" @click="runAction(() => adminUpdateUser(user.username, { is_admin: !user.is_admin }), 'Role updated')">
-                  {{ user.is_admin ? 'Demote' : 'Promote' }}
-                </button>
-                <button class="btn-ghost" type="button" @click="rotateToken(user.username)">Rotate token</button>
-                <button class="btn-red" type="button" @click="requestUserPurge(user.username)">Purge uploads</button>
-                <button class="btn-red" type="button" @click="requestUserDelete(user.username)">Delete</button>
+                <div class="user-actions" :class="{ 'is-expanded': userRowMenuOpen === user.username }" @keydown.escape="closeUserRowMenuAndRestoreFocus">
+                  <div class="user-row-menu">
+                    <button class="btn-ghost user-more" type="button" aria-label="More actions" :aria-expanded="userRowMenuOpen === user.username ? 'true' : 'false'" @click="userRowMenuOpen = userRowMenuOpen === user.username ? null : user.username">⋯</button>
+                    <div v-if="userRowMenuOpen === user.username" class="user-row-menu-panel">
+                      <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(user.username, { suspended: !user.suspended_at, suspension_reason: 'Suspended by administrator' }), user.suspended_at ? 'User unsuspended' : 'User suspended'); userRowMenuOpen = null">{{ user.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
+                      <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(user.username, { is_admin: !user.is_admin }), 'Role updated'); userRowMenuOpen = null">{{ user.is_admin ? 'Demote' : 'Promote' }}</button>
+                      <button class="menu-action" type="button" @click="rotateToken(user.username); userRowMenuOpen = null">Rotate token</button>
+                      <button class="menu-action danger" type="button" @click="requestUserPurge(user.username); userRowMenuOpen = null">Purge uploads</button>
+                    </div>
+                  </div>
+                  <button class="btn-red" type="button" @click="requestUserDelete(user.username)">Delete</button>
                 </div>
               </td>
             </tr>
@@ -945,7 +954,6 @@ onBeforeUnmount(() => {
       <div class="settings-groups">
       <section class="settings-group settings-group-branding">
         <header class="settings-group-heading">
-          <span class="settings-group-number">01</span>
           <div><h3>Identity</h3><p>How the service presents itself to visitors.</p></div>
         </header>
         <div class="settings-fields">
@@ -957,7 +965,6 @@ onBeforeUnmount(() => {
 
       <section class="settings-group">
         <header class="settings-group-heading">
-          <span class="settings-group-number">02</span>
           <div><h3>Guardrails</h3><p>Set the boundaries for uploads and account access.</p></div>
         </header>
         <div class="settings-fields">
@@ -1179,38 +1186,53 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
 }
 .user-actions {
-  display: grid;
-  grid-template-columns: 92px 92px 128px 136px 80px;
-  grid-auto-rows: 34px;
-  align-items: stretch;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--space-2);
-  min-width: 560px;
+  min-width: 124px;
 }
+.user-actions.is-expanded { width: 440px; }
 .user-actions-cell {
   display: table-cell;
   vertical-align: middle;
   padding-right: var(--space-3);
 }
-.user-actions > button {
-  width: 100%;
-  min-width: 0;
-  height: 34px;
+.user-actions > .btn-red,
+.user-more {
   min-height: 34px;
-  box-sizing: border-box;
+}
+.user-actions > .btn-red {
+  min-width: 80px;
+}
+.user-row-menu {
+  display: contents;
+}
+.user-more {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding-inline: var(--space-2);
-  white-space: nowrap;
-  transform: none !important;
-  transition: background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+  min-width: 36px;
+  font-size: var(--fs-h2);
+  line-height: 1;
 }
-.user-actions > button:hover:not(:disabled),
-.user-actions > button:focus-visible,
-.user-actions > button:active:not(:disabled) {
-  transform: none !important;
+.user-row-menu-panel {
+  display: flex;
+  order: 3;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.user-row-menu-panel .menu-action {
+  min-height: 34px;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+}
+.user-row-menu-panel .menu-action.danger {
+  color: var(--red-h);
 }
 .user-actions .btn-red {
   border-color: color-mix(in srgb, var(--red) 42%, var(--border));
@@ -1221,21 +1243,6 @@ onBeforeUnmount(() => {
   border-color: color-mix(in srgb, var(--red) 72%, var(--border));
   background: color-mix(in srgb, var(--red) 14%, transparent);
   color: var(--red-h);
-}
-@media (max-width: 900px) {
-  .users-table .user-actions {
-    grid-template-columns: 90px 90px 122px;
-    min-width: 318px;
-  }
-}
-@media (max-width: 600px) {
-  .users-table .user-actions {
-    grid-template-columns: 1fr 1fr;
-    min-width: 190px;
-  }
-  .users-table .user-actions > button {
-    width: auto;
-  }
 }
 .eyebrow {
   color: var(--accent);
@@ -1358,19 +1365,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-}
-.settings-group-number {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border));
-  border-radius: var(--radius-sm);
-  color: var(--accent);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 700;
 }
 .settings-group-heading h3 {
   margin: 0 0 4px;
@@ -2099,8 +2093,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .upload-name-link {
   display: inline-flex;
   align-items: baseline;
-  max-width: min(38vw, 340px);
-  overflow: hidden;
   padding: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
@@ -2109,8 +2101,10 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.upload-name-link:hover { color: var(--text); }
+.upload-name-link:hover,
+.upload-name-link:hover .upload-filename-ext { color: var(--accent); }
 .upload-filename-base {
+  max-width: min(38vw, 300px);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
