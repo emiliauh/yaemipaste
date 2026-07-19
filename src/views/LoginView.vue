@@ -276,7 +276,7 @@ async function loginWithPasskey() {
             <button v-if="tokenUsed" type="button" class="inline-link" @click="goToAccountLogin">Do you have an account?</button>
           </div>
 
-          <div class="form-footer">
+          <div class="form-footer" :class="{ 'single-action': mode === 'account' && !publicSettings.registration_enabled }">
             <button type="submit" class="btn-primary" :disabled="loading">
               {{ loading ? 'Logging in…' : 'Login' }}
             </button>
@@ -367,18 +367,23 @@ async function loginWithPasskey() {
 .login-info strong { display: block; color: var(--text); font-weight: 580; }
 .login-info p { margin-top: 2px; color: var(--text2); }
 .login-info .registration-notice {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
-  color: var(--text2);
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, #d4a72c 34%, var(--border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, #d4a72c 12%, transparent);
+  color: color-mix(in srgb, #f0c84b 74%, var(--text));
   font-size: var(--fs-xs);
+  line-height: 1.25;
 }
 .registration-notice svg {
   width: 14px;
   height: 14px;
   flex: 0 0 14px;
-  color: var(--accent-h);
+  color: #f0c84b;
 }
 .login-card {
   position: relative;
@@ -489,6 +494,7 @@ async function loginWithPasskey() {
   flex-wrap: wrap;
   margin-top: var(--space-1);
 }
+.form-footer.single-action { grid-template-columns: 1fr; }
 .form-footer button {
   border-radius: var(--radius-sm);
   transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);

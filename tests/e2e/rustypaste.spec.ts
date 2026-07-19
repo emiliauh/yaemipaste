@@ -3590,6 +3590,13 @@ test('login page explains when registration is disabled', async ({ page }) => {
   await page.goto('/#/login')
   await expect(page.getByText('Registration is disabled.', { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Register' })).toHaveCount(0)
+  const footer = page.locator('.form-footer')
+  const loginButton = footer.getByRole('button', { name: 'Login' })
+  const footerBox = await footer.boundingBox()
+  const loginBox = await loginButton.boundingBox()
+  expect(footerBox).not.toBeNull()
+  expect(loginBox).not.toBeNull()
+  if (footerBox && loginBox) expect(Math.abs(footerBox.width - loginBox.width)).toBeLessThanOrEqual(1)
 })
 
 test('login password field toggles visibility', async ({ page }) => {
