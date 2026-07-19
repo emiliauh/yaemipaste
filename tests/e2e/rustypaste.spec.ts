@@ -4190,6 +4190,15 @@ test('admin upload filenames truncate their base while keeping extensions visibl
   await expect(extension).toHaveText('.jpg')
   await expect.poll(() => base.evaluate((element) => element.scrollWidth > element.clientWidth)).toBeTruthy()
   await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
+
+  const shortName = page.getByRole('button', { name: 'upload-2.txt', exact: true })
+  const shortBaseBox = await shortName.locator('.upload-filename-base').boundingBox()
+  const shortExtensionBox = await shortName.locator('.upload-filename-ext').boundingBox()
+  expect(shortBaseBox).not.toBeNull()
+  expect(shortExtensionBox).not.toBeNull()
+  if (shortBaseBox && shortExtensionBox) {
+    expect(shortExtensionBox.x - (shortBaseBox.x + shortBaseBox.width)).toBeLessThanOrEqual(1)
+  }
 })
 
 test('admin upload filters stay inside the mobile viewport', async ({ page }) => {
