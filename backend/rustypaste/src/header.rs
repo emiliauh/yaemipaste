@@ -2,6 +2,7 @@ use actix_web::http::header::{
     ContentDisposition as ActixContentDisposition, DispositionParam, DispositionType, HeaderMap,
 };
 use actix_web::{error, Error as ActixError};
+use std::path::Path;
 use std::time::Duration;
 
 /// Custom HTTP header for expiry dates.
@@ -24,6 +25,13 @@ pub fn parse_expiry_date(headers: &HeaderMap, time: Duration) -> Result<Option<u
 /// Parses the filename from the header.
 pub fn parse_header_filename(headers: &HeaderMap) -> Result<Option<String>, ActixError> {
     if let Some(file_name) = headers.get(FILENAME).and_then(|v| v.to_str().ok()) {
+        let path = Path::new(file_name);
+        if file_name.is_empty()
+            || matches!(file_name, "." | "..")
+            || path.file_name().and_then(|name| name.to_str()) != Some(file_name)
+        {
+            return Err(error::ErrorBadRequest("invalid filename header"));
+        }
         Ok(Some(file_name.to_string()))
     } else {
         Ok(None)
@@ -114,5 +122,14 @@ mod tests {
         thread::sleep(Duration::from_millis(10));
         assert!(expiry_time < util::get_system_time()?.as_millis());
         Ok(())
+    }
+
+    #[test]
+    fn test_header_filename_rejects_paths() {
+        for file_name in ["../outside.txt", "/tmp/outside.txt", "nested/file.txt", ".."] {
+            let mut headers = HeaderMap::new();
+            headers.insert(HeaderName::from_static(FILENAME), HeaderValue::from_str(file_name).unwrap());
+            assert!(parse_header_filename(&headers).is_err());
+        }
     }
 }

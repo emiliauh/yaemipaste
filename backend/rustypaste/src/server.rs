@@ -455,7 +455,15 @@ async fn serve_impl(
             let download_name = metadata
                 .and_then(|value| value.display_name)
                 .unwrap_or_else(|| file_name.clone());
-            let disposition_type = if force_download {
+            let unsafe_inline_type = matches!(
+                mime_type.essence_str(),
+                "text/html"
+                    | "application/xhtml+xml"
+                    | "image/svg+xml"
+                    | "application/javascript"
+                    | "text/javascript"
+            );
+            let disposition_type = if force_download || unsafe_inline_type {
                 DispositionType::Attachment
             } else {
                 DispositionType::Inline

@@ -65,7 +65,10 @@ fn setup(config_folder: &Path) -> IoResult<(Data<RwLock<Config>>, ServerConfig, 
         std::process::exit(1);
     }
     let config = Config::parse(&config_path).expect("failed to parse config");
-    trace!("{:#?}", config);
+    if env::var("JWT_SECRET").map(|value| value.trim().len() >= 32).unwrap_or(false) == false {
+        error!("JWT_SECRET must be set to a random value of at least 32 characters.");
+        std::process::exit(1);
+    }
     config.warn_deprecation();
     let server_config = config.server.clone();
     let paste_config = RwLock::new(config.paste.clone());
