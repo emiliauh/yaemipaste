@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Bootstrap installer endpoint for curl|bash usage.
-# This script intentionally downloads the latest full installer from the public repo.
-SCRIPT_URL="https://raw.githubusercontent.com/emiliauh/yaemipaste/main/install.sh"
+# The contents API avoids stale raw.githubusercontent.com branch caches.
+SCRIPT_URL="https://api.github.com/repos/emiliauh/yaemipaste/contents/install.sh?ref=main"
 TMP_SCRIPT="$(mktemp)"
 
 cleanup() {
@@ -11,7 +11,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-curl -fsSL "$SCRIPT_URL" -o "$TMP_SCRIPT"
+curl -fsSL \
+  -H 'Accept: application/vnd.github.raw+json' \
+  -H 'X-GitHub-Api-Version: 2022-11-28' \
+  "${SCRIPT_URL}&cache_bust=$(date +%s)" \
+  -o "$TMP_SCRIPT"
 if [[ -t 0 ]]; then
   bash "$TMP_SCRIPT" "$@"
 elif { true </dev/tty; } 2>/dev/null; then
