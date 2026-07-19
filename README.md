@@ -8,6 +8,14 @@ history, expiry controls, accounts, and an admin panel.
 Requirements: Linux, Docker Compose, `git`, `curl`, and `rsync`. A DNS name
 with HTTPS handled by Caddy or Nginx is recommended for public deployments.
 
+Run the installer directly:
+
+```bash
+curl -fsSL https://paste.yaemi.one/install.sh | sudo bash
+```
+
+Or clone the repository:
+
 ```bash
 git clone https://github.com/emiliauh/yaemipaste.git
 cd yaemipaste
