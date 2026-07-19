@@ -114,18 +114,6 @@ pub(crate) fn handle_unauthorized_error<B>(
     let connection = res.request().connection_info().clone();
     let host = connection.realip_remote_addr().unwrap_or("unknown host");
 
-    #[cfg(debug_assertions)]
-    {
-        let auth_header = res
-            .request()
-            .headers()
-            .get(AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("none");
-
-        warn!("authorization failure for {host} (token: {auth_header})",);
-    }
-    #[cfg(not(debug_assertions))]
     warn!("authorization failure for {host}");
 
     Ok(ErrorHandlerResponse::Response(res.map_into_left_body()))
