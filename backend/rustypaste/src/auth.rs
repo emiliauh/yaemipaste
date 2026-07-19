@@ -86,8 +86,13 @@ pub(crate) async fn extract_tokens(req: &ServiceRequest) -> Result<HashSet<Token
         }
         if db_token_valid {
             user_tokens.insert(token_type);
-        } else if token_type == TokenType::Auth && maybe_tokens.is_none() {
-            // not configured `auth_tokens` means that the user is allowed to access the endpoints
+        } else if token_type == TokenType::Auth
+            && maybe_tokens.is_none()
+            && std::env::var("ALLOW_ANONYMOUS_UPLOADS")
+                .unwrap_or_else(|_| "1".to_string())
+                == "1"
+        {
+            // Anonymous uploads are an explicit deployment choice.
             user_tokens.insert(token_type);
         } else if token_type == TokenType::Delete
             && req.method() == Method::DELETE

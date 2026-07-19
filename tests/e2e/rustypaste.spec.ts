@@ -4,7 +4,7 @@ import { encryptFileWithPassword } from '../../src/lib/e2ee'
 
 const APP_ORIGIN = (process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173').replace(/\/$/, '')
 const PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\/preview$/
-const ENCRYPTED_PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\+(?:pw:)?[A-Za-z0-9_-]+\/preview$/
+const ENCRYPTED_PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\/preview#[A-Za-z0-9_-]+$/
 const PUBLIC_ORIGIN = 'https://paste.example.test'
 const API_ORIGIN = 'https://api.example.test'
 
@@ -1628,7 +1628,7 @@ test('history copy includes decryption key for encrypted files', async ({ page }
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByRole('button', { name: 'Copy' }).click()
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`+${decryptKey}/preview`)
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`/preview#${decryptKey}`)
 })
 
 test('history encrypted modal copy includes key and hides raw media URL action', async ({ page }) => {
@@ -1688,7 +1688,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
   await expect(modal.getByText('Size: 345 B', { exact: true })).toBeVisible()
   await modal.getByRole('button', { name: 'Copy' }).click()
   await modal.getByRole('menuitem', { name: /Copy preview URL/ }).click()
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`+${decryptKey}/preview`)
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`/preview#${decryptKey}`)
 })
 
 test('history marks rpenc files as encrypted and explains locked preview', async ({ page }) => {
@@ -1878,8 +1878,7 @@ test('encrypted upload keeps history key when server returns /file/<token>/previ
   })
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByRole('button', { name: 'Copy' }).click()
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('+')
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/preview')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/preview#')
 })
 
 test('encrypted upload keeps history key when server returns /file/<id>/preview URL', async ({ page }) => {
@@ -1917,8 +1916,7 @@ test('encrypted upload keeps history key when server returns /file/<id>/preview 
   })
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByRole('button', { name: 'Copy' }).click()
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('+')
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/preview')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain('/preview#')
 })
 
 test('history password-encrypted download requires password prompt', async ({ page }) => {

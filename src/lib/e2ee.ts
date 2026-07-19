@@ -390,7 +390,8 @@ export function getStoredEncryptedFile(fileName: string): StoredKey | null {
 }
 
 export function encryptedShareUrl(fileName: string, key: string, origin = window.location.origin): string {
-  return `${origin}/file/${encodeFileTokenFromName(fileName)}+${key}/preview`
+  if (key.startsWith('pw:')) return passwordEncryptedShareUrl(fileName, key.slice(3), origin)
+  return `${origin}/file/${encodeFileTokenFromName(fileName)}/preview#${encodeURIComponent(key)}`
 }
 
 export function passwordEncryptedShareUrl(fileName: string, salt: string, origin = window.location.origin): string {

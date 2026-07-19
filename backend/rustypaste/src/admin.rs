@@ -23,6 +23,7 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::{Duration, UNIX_EPOCH};
@@ -814,6 +815,48 @@ fn validate_url(url: &str) -> bool {
                 && parsed.password().is_none()
         })
         .unwrap_or(false)
+}
+
+fn validate_webhook_url(url: &str) -> bool {
+    url::Url::parse(url)
+        .map(|parsed| {
+            parsed.scheme() == "https"
+                && parsed.username().is_empty()
+                && parsed.password().is_none()
+                && parsed.host_str().is_some_and(is_public_webhook_host)
+        })
+        .unwrap_or(false)
+}
+
+fn is_public_webhook_host(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") {
+        return false;
+    }
+    let Ok(address) = host.parse::<IpAddr>() else {
+        return true;
+    };
+    match address {
+        IpAddr::V4(address) => {
+            !(address.is_private()
+                || address.is_loopback()
+                || address.is_link_local()
+                || address.is_unspecified()
+                || address.is_multicast()
+                || address.is_broadcast()
+                || address.is_documentation())
+        }
+        IpAddr::V6(address) => {
+            if let Some(address) = address.to_ipv4() {
+                return is_public_webhook_host(&address.to_string());
+            }
+            let first_segment = address.segments()[0];
+            !(address.is_loopback()
+                || address.is_unspecified()
+                || address.is_multicast()
+                || (first_segment & 0xfe00) == 0xfc00
+                || (first_segment & 0xffc0) == 0xfe80)
+        }
+    }
 }
 
 fn webhook_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WebhookSummary> {
@@ -2208,10 +2251,10 @@ async fn create_webhook(request: HttpRequest, body: web::Json<WebhookRequest>) -
         Ok(actor) => actor,
         Err(response) => return response,
     };
-    if !validate_url(&body.url) {
+    if !validate_webhook_url(&body.url) {
         return json_error(
             StatusCode::BAD_REQUEST,
-            "Webhook URL must be http(s) without credentials",
+            "Webhook URL must use a public HTTPS origin",
         );
     }
     let events = normalized_events(&body.events);
@@ -2284,10 +2327,10 @@ async fn update_webhook(
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
     {
-        if !validate_url(url) {
+        if !validate_webhook_url(url) {
             return json_error(
                 StatusCode::BAD_REQUEST,
-                "Webhook URL must be http(s) without credentials",
+                "Webhook URL must use a public HTTPS origin",
             );
         }
         let _ = connection.execute(

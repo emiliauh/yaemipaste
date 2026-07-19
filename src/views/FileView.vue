@@ -9,13 +9,14 @@ import PublicFilePreviewView from './PublicFilePreviewView.vue'
 const route = useRoute()
 const filekey = computed(() => String(route.params.filekey ?? ''))
 const keyPart = computed(() => filekey.value.includes('+') ? filekey.value.split('+').slice(1).join('+') : '')
+const fragmentKey = computed(() => route.hash ? decodeURIComponent(route.hash.slice(1)) : '')
 const isPasswordEncrypted = computed(() => keyPart.value.startsWith('pw:'))
-const isKeyEncrypted = computed(() => !!keyPart.value && !isPasswordEncrypted.value)
+const isKeyEncrypted = computed(() => !!fragmentKey.value || (!!keyPart.value && !isPasswordEncrypted.value))
 
 const decodedName = computed(() => {
   try { return decodeFileToken(filekey.value.split('+')[0]) } catch { return '' }
 })
-const isEncryptedNoKey = computed(() => !keyPart.value && decodedName.value.endsWith('.rpenc'))
+const isEncryptedNoKey = computed(() => !fragmentKey.value && !keyPart.value && decodedName.value.endsWith('.rpenc'))
 </script>
 
 <template>
