@@ -225,27 +225,9 @@ function normalizeShareXField(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase()
 }
 
-function isExplicitShareXUploader(value: string): boolean {
-  return value === 'sharex' || value.endsWith('(sharex)')
-}
-
-function isLegacyTokenMediaUpload(meta: PublicFileMeta): boolean {
-  const uploader = normalizeShareXField(meta.uploader)
-  if (uploader !== 'unknown (token user)') return false
-  const mime = normalizeShareXField(meta.mime_type)
-  if (!mime.startsWith('image/') && !mime.startsWith('video/')) return false
-  const displayName = normalizeShareXField(meta.display_name)
-  const fileName = normalizeShareXField(meta.file_name)
-  return !!displayName && displayName === fileName
-}
-
 function hasShareXBadge(fileName: string): boolean {
   const meta = fileMetaMap.value[fileName]
-  if (!meta) return false
-  const source = normalizeShareXField(meta.source)
-  if (source) return source === 'sharex'
-  if (isExplicitShareXUploader(normalizeShareXField(meta.uploader))) return true
-  return isLegacyTokenMediaUpload(meta)
+  return normalizeShareXField(meta?.source) === 'sharex'
 }
 
 async function ensureVisibleMeta() {

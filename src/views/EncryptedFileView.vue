@@ -8,7 +8,7 @@ import {
   rawFileNameFromPublicPath,
   type EncryptedMetadata,
 } from '../lib/e2ee'
-import { decodeFileToken, formatBytes, publicApiFileUrl, publicFileUrl, publicSiteOrigin, resolveFileName } from '../lib/api'
+import { decodeFileToken, formatBytes, publicApiFileUrl, publicSiteOrigin, resolveFileName } from '../lib/api'
 import { useNotificationStore } from '../stores/notifications'
 
 const route = useRoute()
@@ -67,9 +67,8 @@ async function loadTextPreview(blob: Blob) {
 }
 
 async function downloadEncryptedPayload(name: string): Promise<Blob> {
-  const publicUrl = publicFileUrl(name)
   const apiUrl = publicApiFileUrl(name)
-  const attempts = [publicUrl, `${apiUrl}?raw=1`, `${apiUrl}?download=true`, apiUrl]
+  const attempts = [`${apiUrl}?raw=1`, `${apiUrl}?download=true`, apiUrl]
   let sawHtmlPayload = false
   let sawNotFound = false
 

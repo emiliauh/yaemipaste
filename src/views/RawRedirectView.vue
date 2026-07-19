@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { resolveFileName, publicFileUrl } from '../lib/api'
+import { fileUrl, resolveFileName } from '../lib/api'
 
 const route = useRoute()
 const filePart = String(route.params.filekey ?? '').split('+')[0]
@@ -8,7 +8,7 @@ const filePart = String(route.params.filekey ?? '').split('+')[0]
 async function redirect() {
   try {
     const fileName = await resolveFileName(filePart)
-    window.location.replace(publicFileUrl(fileName))
+    window.location.replace(fileUrl(fileName))
   } catch {
     window.location.replace('/files')
   }

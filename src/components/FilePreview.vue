@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { type PasteFile, formatBytes, publicFileUrl, shareUrl } from '../lib/api'
+import { type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
 import { encryptedShareUrl, getStoredEncryptedFile } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 
@@ -15,7 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; download: [file: PasteFile] }>()
 const notificationStore = useNotificationStore()
 
-const url = computed(() => props.sourceUrl ?? publicFileUrl(props.file.file_name))
+const url = computed(() => props.sourceUrl ?? fileUrl(props.file.file_name))
 const storedEncrypted = computed(() => getStoredEncryptedFile(props.file.file_name))
 function isRpencFileName(value: string): boolean {
   return /\.rpenc(?:$|[?#])/i.test(value.trim())
@@ -29,7 +29,7 @@ const isEncrypted = computed(() => !!storedEncrypted.value || hasEncryptedSuffix
 const isDecryptedBlobSource = computed(() => url.value.startsWith('blob:'))
 const encryptedPreviewLocked = computed(() => isEncrypted.value && !isDecryptedBlobSource.value)
 const previewPageUrl = computed(() => shareUrl(props.file.file_name))
-const rawFileUrl = computed(() => publicFileUrl(props.file.file_name))
+const rawFileUrl = computed(() => fileUrl(props.file.file_name))
 const copyUrl = computed(() => {
   if (storedEncrypted.value) {
     return encryptedShareUrl(props.file.file_name, storedEncrypted.value.key, storedEncrypted.value.origin)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, formatBytes, publicApiFileUrl, publicFileUrl, publicSiteOrigin, resolveFileName } from '../lib/api'
+import { decodeFileToken, formatBytes, publicApiFileUrl, publicSiteOrigin, resolveFileName } from '../lib/api'
 import { decryptBlobWithPassword, isRustypasteEncryptedBlob, rememberEncryptedFile, type EncryptedMetadata } from '../lib/e2ee'
 
 const route = useRoute()
@@ -35,9 +35,8 @@ function clearObjectUrl() {
 }
 
 async function downloadPayload(): Promise<Blob> {
-  const publicUrl = publicFileUrl(resolvedFileName.value)
   const apiUrl = publicApiFileUrl(resolvedFileName.value)
-  const attempts = [publicUrl, `${apiUrl}?raw=1`, `${apiUrl}?download=true`, apiUrl]
+  const attempts = [`${apiUrl}?raw=1`, `${apiUrl}?download=true`, apiUrl]
   const timeoutMs = 12_000
   let sawNotFound = false
 
