@@ -8,6 +8,7 @@ DEFAULT_INSTALL_DIR="/opt/yaemipaste"
 DEFAULT_UI_PORT="8080"
 COMPOSE_FILE="docker-compose.yml"
 ENV_FILE=".env"
+NETWORK_CHECK_URL="${YAEMIPASTE_NETWORK_CHECK_URL:-https://github.com/}"
 
 INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 REPO_URL="$DEFAULT_REPO_URL"
@@ -36,6 +37,9 @@ UI_GOOD=""
 UI_WARN=""
 UI_BAD=""
 UI_RULE_WIDTH=58
+INSTALL_DIR_CREATED_THIS_RUN=0
+STACK_STARTED_THIS_RUN=0
+ROLLBACK_IN_PROGRESS=0
 
 setup_ui() {
   if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
@@ -144,6 +148,28 @@ on_error() {
 
 trap 'on_error "$?" "$LINENO"' ERR
 
+rollback_new_install() {
+  [[ "$INSTALL_DIR_CREATED_THIS_RUN" -eq 1 && "$DRY_RUN" -eq 0 && "$ROLLBACK_IN_PROGRESS" -eq 0 ]] || return 0
+  ROLLBACK_IN_PROGRESS=1
+  warn "Installation failed. Reverting the newly created installation at ${INSTALL_DIR}."
+  trap - ERR
+  set +e
+  if [[ "$STACK_STARTED_THIS_RUN" -eq 1 && -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
+    compose down --remove-orphans >/dev/null 2>&1 || warn "Could not fully stop the failed stack; inspect Docker with: docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} ps"
+  fi
+  safe_install_path "$INSTALL_DIR" && rm -rf "$INSTALL_DIR" || warn "Could not remove ${INSTALL_DIR}; remove it manually after reviewing its contents."
+  set -e
+}
+
+on_exit() {
+  local status="$1"
+  if [[ "$status" -ne 0 ]]; then
+    rollback_new_install
+  fi
+}
+
+trap 'on_exit "$?"' EXIT
+
 run() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     printf '[DRY-RUN] %q ' "$@"
@@ -162,9 +188,38 @@ require_command() {
   command_exists "$cmd" || die "Required command not found: ${cmd}"
 }
 
+network_failure_message() {
+  local purpose="$1"
+  local detail="${2:-}"
+  error "Internet access is required to ${purpose}."
+  [[ -n "$detail" ]] && error "$detail"
+  error "Check DNS, firewall or security-group rules, and proxy/VPN settings. Cloudflare WARP can route traffic through a virtual interface or reset connections; pause or disconnect it, then retry."
+}
+
+ensure_internet_access() {
+  local purpose="$1"
+  [[ "$DRY_RUN" -eq 1 ]] && return 0
+  local output=""
+  if command_exists curl; then
+    if output="$(curl -fsS --connect-timeout 5 --max-time 10 -o /dev/null "$NETWORK_CHECK_URL" 2>&1)"; then
+      return 0
+    fi
+  elif command_exists timeout; then
+    if timeout 10 bash -c ':</dev/tcp/github.com/443' 2>/dev/null; then
+      return 0
+    fi
+    output="Could not establish a TCP connection to github.com:443"
+  else
+    output="Install curl or timeout so the installer can verify connectivity."
+  fi
+  network_failure_message "$purpose" "$output"
+  die "Installation stopped before making network-dependent changes."
+}
+
 apt_install_packages() {
   local packages=("$@")
   [[ ${#packages[@]} -gt 0 ]] || return 0
+  ensure_internet_access "install system packages (${packages[*]})"
   run apt-get update
   run env DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
 }
@@ -479,8 +534,9 @@ http_json() {
   local url="$2"
   local payload="${3:-}"
   local bearer="${4:-}"
-  local response_file
+  local response_file error_file curl_exit
   response_file="$(mktemp)"
+  error_file="$(mktemp)"
   local -a headers
   headers=(-H "Accept: application/json")
   if [[ -n "$payload" ]]; then
@@ -493,14 +549,19 @@ http_json() {
     log "[DRY-RUN] ${method} ${url}"
     HTTP_STATUS="200"
     HTTP_BODY='{"dry_run":true}'
-    rm -f "$response_file"
+    rm -f "$response_file" "$error_file"
     return 0
   fi
-  HTTP_STATUS="$(
-    curl -sS -o "$response_file" -w "%{http_code}" -X "$method" "${headers[@]}" "$url"
-  )"
+  if HTTP_STATUS="$(curl -sS --connect-timeout 10 --max-time 30 -o "$response_file" -w "%{http_code}" -X "$method" "${headers[@]}" "$url" 2>"$error_file")"; then
+    :
+  else
+    curl_exit=$?
+    network_failure_message "contact ${url}" "curl exited ${curl_exit}: $(tr '\n' ' ' < "$error_file")"
+    rm -f "$response_file" "$error_file"
+    die "Request could not be completed. No partial installation was kept."
+  fi
   HTTP_BODY="$(cat "$response_file")"
-  rm -f "$response_file"
+  rm -f "$response_file" "$error_file"
 }
 
 expect_2xx() {
@@ -538,7 +599,7 @@ wait_for_http() {
   local expected_pattern='^2[0-9][0-9]$'
   local attempts="${4:-30}"
   local delay="${5:-2}"
-  local code=""
+  local code="" curl_error="" error_file=""
   local i
   if [[ $# -ge 3 && -n "$3" ]]; then
     expected_pattern="$3"
@@ -548,14 +609,19 @@ wait_for_http() {
       log "[DRY-RUN] would probe ${label} (${url})"
       return 0
     fi
-    code="$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)"
+    error_file="$(mktemp)"
+    code="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "$url" 2>"$error_file" || true)"
     if [[ "$code" =~ $expected_pattern ]]; then
       log "${label} is responding (HTTP ${code})"
+      rm -f "$error_file"
       return 0
     fi
+    [[ -s "$error_file" ]] && curl_error="$(tr '\n' ' ' < "$error_file")" || curl_error=""
+    rm -f "$error_file"
+    [[ -n "$curl_error" ]] && warn "Waiting for ${label}: ${curl_error}"
     sleep "$delay"
   done
-  warn "${label} did not become ready in time (${url})"
+  warn "${label} did not become ready in time (${url}). Check Docker logs with: docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} logs"
   return 1
 }
 
@@ -589,6 +655,9 @@ configure_env() {
   [[ "$ui_port" =~ ^[1-9][0-9]{0,4}$ ]] && (( ui_port <= 65535 )) || die "UI port must be between 1 and 65535."
   public_url="$(prompt "Public site URL (HTTPS preferred; HTTP/IP supported)" "${PUBLIC_URL_OVERRIDE:-$(env_get_nonempty PASTE_URL "$(default_public_url "$ui_port")")}")"
   valid_origin "$public_url" || die "Public site URL must be an origin such as https://paste.example.com or http://192.0.2.10:8080."
+  if is_ip_origin "$public_url"; then
+    warn "An IP-based public URL cannot be verified from this host. Confirm it is reachable from another network; VPNs such as Cloudflare WARP can select an unreachable virtual address."
+  fi
   if [[ "$public_url" == http://* ]]; then
     warn "Using HTTP for the public URL. HTTPS with a DNS name is recommended for internet-facing deployments."
   fi
@@ -795,6 +864,7 @@ clone_or_update_repo() {
 
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
     log "Updating existing repository at ${INSTALL_DIR}"
+    ensure_internet_access "update the repository"
     run git -C "$INSTALL_DIR" fetch --prune origin
     run git -C "$INSTALL_DIR" checkout "$BRANCH"
     run git -C "$INSTALL_DIR" pull --ff-only origin "$BRANCH"
@@ -806,6 +876,7 @@ clone_or_update_repo() {
   fi
 
   run mkdir -p "$INSTALL_DIR"
+  ensure_internet_access "clone the repository"
   run git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$INSTALL_DIR"
 }
 
@@ -813,6 +884,7 @@ stack_install_or_update() {
   section "Yaemipaste Install"
   ensure_runtime_prereqs
   safe_install_path "$INSTALL_DIR" || die "Refusing unsafe install path: ${INSTALL_DIR}"
+  [[ ! -e "$INSTALL_DIR" ]] && INSTALL_DIR_CREATED_THIS_RUN=1
   maybe_use_local_checkout_as_repo
   step "Syncing repository"
   clone_or_update_repo
@@ -822,9 +894,13 @@ stack_install_or_update() {
   image_mode="$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
   if [[ "$image_mode" == "build" ]]; then
     warn "Local image builds are enabled; npm and Cargo compilation may take several minutes."
+    ensure_internet_access "build Docker images and download build dependencies"
+    STACK_STARTED_THIS_RUN=1
     compose up -d --build
   else
+    ensure_internet_access "pull Docker images"
     compose pull
+    STACK_STARTED_THIS_RUN=1
     compose up -d
   fi
   local ui_port api_port probe_host deployment_mode split_role
@@ -1034,8 +1110,12 @@ init_admin_claim() {
 
 stack_uninstall() {
   section "Uninstall"
-  ensure_runtime_prereqs
   safe_install_path "$INSTALL_DIR" || die "Refusing unsafe uninstall path: ${INSTALL_DIR}"
+  if [[ ! -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
+    warn "${APP_NAME} is not installed at ${INSTALL_DIR}; nothing to uninstall."
+    return 0
+  fi
+  ensure_runtime_prereqs
   if ! confirm "This will stop ${APP_NAME} services. Continue?" n; then
     log "Cancelled."
     return 0
