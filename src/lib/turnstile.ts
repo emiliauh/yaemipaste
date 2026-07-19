@@ -114,9 +114,7 @@ export function useTurnstile() {
       },
       'error-callback': (errorCode?: string) => {
         token.value = ''
-        if (isUnrecoverable(errorCode)) {
-          fatalError.value = 'The security check is not configured for this domain. Contact the site administrator.'
-        }
+        if (isUnrecoverable(errorCode)) fatalError.value = 'Turnstile rejected this site key for this domain. Replace the site key and try again.'
         // Otherwise Turnstile has already exhausted its own auto-retry;
         // leave the widget in place so the visitor can retry manually.
       },

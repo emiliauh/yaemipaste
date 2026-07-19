@@ -111,6 +111,7 @@ const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', reg
 const turnstileTestContainer = ref<HTMLElement | null>(null)
 const turnstileTestBusy = ref(false)
 const turnstileTest = useTurnstile()
+const turnstileTestSiteKey = ref('')
 const webhookEventOptions = [
   { value: 'file.uploaded', label: 'File uploaded', description: 'When a new file or paste is stored.' },
   { value: 'file.deleted', label: 'File deleted', description: 'When a file is removed manually or by cleanup.' },
@@ -503,7 +504,11 @@ async function testTurnstile() {
   }
   await nextTick()
   try {
-    await turnstileTest.mount(turnstileTestContainer.value!, settingsForm.value.turnstile_site_key.trim(), 'always')
+    const siteKey = settingsForm.value.turnstile_site_key.trim()
+    if (turnstileTestSiteKey.value && turnstileTestSiteKey.value !== siteKey) turnstileTest.destroy()
+    turnstileTestSiteKey.value = siteKey
+    await turnstileTest.mount(turnstileTestContainer.value!, siteKey, 'always')
+    if (turnstileTest.fatalError.value) throw new Error(turnstileTest.fatalError.value)
     if (!turnstileTest.token.value) {
       notifications.push('Complete the Turnstile challenge, then verify the credentials.', 'error')
       return
@@ -1079,6 +1084,7 @@ onBeforeUnmount(() => {
       :source-url="adminUploadContentUrl(previewUpload.path)"
       :display-name="uploadDisplayName(previewUpload)"
       :mime-type="previewUpload.content_type ?? undefined"
+      :password-salt="previewUpload.password_salt ?? undefined"
       @close="closeUploadPreview"
       @download="downloadPreviewUpload"
     />
@@ -1127,7 +1133,7 @@ onBeforeUnmount(() => {
           <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
           <label class="inline-check span-2"><input v-model="settingsForm.turnstile_enabled" type="checkbox" /> <span><strong>Enable Turnstile</strong><small>Require Cloudflare Turnstile verification before account login.</small></span></label>
           <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
-            <label class="turnstile-key-field"><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" /></label>
+            <label class="turnstile-key-field"><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" placeholder="Enter a new key to replace the existing one" /></label>
             <label class="turnstile-key-field"><span>Turnstile secret key</span><small>Private server verification key. It is never displayed after saving.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" placeholder="Enter a new key to replace the existing one" /></label>
             <div class="turnstile-test-actions span-2">
               <div ref="turnstileTestContainer" class="turnstile-test-widget"></div>
@@ -2704,6 +2710,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .turnstile-key-field { display: grid; grid-template-rows: auto minmax(calc(1.45em * 2), auto) auto; align-content: start; }
 .turnstile-test-actions { display: grid; gap: var(--space-2); }
 .turnstile-test { width: 100%; background: #d69e00; }
+.turnstile-test:hover:not(:disabled), .turnstile-test:focus-visible { background: #f0b900; border-color: #f0b900; color: #1b1600; }
 .settings-group-branding .settings-fields label:last-child {
   grid-column: 1 / -1;
 }

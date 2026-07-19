@@ -117,6 +117,7 @@ struct UploadMetaField {
     original_name: String,
     uploader: String,
     source: String,
+    password_salt: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -124,6 +125,7 @@ struct StoredUploadMeta {
     display_name: Option<String>,
     uploader: Option<String>,
     source: Option<String>,
+    password_salt: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -403,6 +405,11 @@ fn persist_upload_metadata(
             None
         } else {
             Some(meta.source.trim().to_string())
+        },
+        password_salt: if meta.password_salt.len() == 22 && meta.password_salt.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_') {
+            Some(meta.password_salt.clone())
+        } else {
+            None
         },
     };
     fs::write(

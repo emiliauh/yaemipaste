@@ -664,6 +664,7 @@ interface UploadMeta {
   originalName: string
   uploader: string
   source: string
+  passwordSalt?: string
 }
 
 function extractUploadTargetFromJson(value: unknown): string | null {
@@ -763,6 +764,7 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
     originalName: file.name,
     uploader: resolvedUploader,
     source: 'WebUI',
+    ...(encryptedSalt ? { passwordSalt: encryptedSalt } : {}),
   }
   form.append('meta', JSON.stringify(uploadMeta))
   form.append('file', uploadFileValue)
@@ -1136,6 +1138,7 @@ export interface AdminUpload {
   expires_at: number | null
   expired: boolean
   content_type: string | null
+  password_salt?: string | null
 }
 
 export interface AdminUser {

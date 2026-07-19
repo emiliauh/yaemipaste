@@ -152,6 +152,7 @@ struct AdminUploadItem {
     expires_at: Option<i64>,
     expired: bool,
     content_type: Option<String>,
+    password_salt: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Default)]
@@ -159,6 +160,7 @@ struct UploadSidecarMeta {
     display_name: Option<String>,
     uploader: Option<String>,
     source: Option<String>,
+    password_salt: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -720,7 +722,7 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
                 file_name: name,
                 display_name: sidecar.as_ref().and_then(|meta| meta.display_name.clone()),
                 uploader: sidecar.as_ref().and_then(|meta| meta.uploader.clone()),
-                source: sidecar.and_then(|meta| meta.source),
+                source: sidecar.as_ref().and_then(|meta| meta.source.clone()),
                 size_bytes: metadata.len(),
                 created_at: metadata
                     .created()
@@ -730,6 +732,7 @@ fn collect_uploads(upload_root: &Path, users: &[DbUser]) -> Vec<AdminUploadItem>
                 expires_at,
                 expired: expires_at.map(|exp| exp <= now).unwrap_or(false),
                 content_type,
+                password_salt: sidecar.as_ref().and_then(|meta| meta.password_salt.clone()),
             });
         }
     }

@@ -12,6 +12,7 @@ const props = defineProps<{
   mimeType?: string
   textContent?: string
   loading?: boolean
+  passwordSalt?: string
 }>()
 const emit = defineEmits<{ close: []; download: [file: PasteFile] }>()
 const notificationStore = useNotificationStore()
@@ -24,6 +25,7 @@ const encryptedPayload = ref<Blob | null>(null)
 const decryptionKey = ref('')
 const decryptionBusy = ref(false)
 const decryptionError = ref('')
+const legacyPasswordLink = ref('')
 const url = computed(() => decryptedUrl.value || props.sourceUrl || fileUrl(props.file.file_name))
 const isAdminContentUrl = computed(() => url.value.includes('/auth/admin/uploads/content'))
 // Admin upload records may use a server-side storage name while the local
@@ -32,6 +34,12 @@ const storedEncrypted = computed(() =>
   getStoredEncryptedFile(props.file.file_name)
   ?? (props.displayName ? getStoredEncryptedFile(props.displayName) : null),
 )
+const passwordSalt = computed(() => {
+  if (storedEncrypted.value?.key.startsWith('pw:')) return storedEncrypted.value.key.slice(3)
+  if (props.passwordSalt) return props.passwordSalt
+  const match = legacyPasswordLink.value.match(/\+pw:([A-Za-z0-9_-]{22})(?:\/|$)/)
+  return match?.[1] ?? ''
+})
 function isRpencFileName(value: string): boolean {
   return /\.rpenc(?:$|[?#])/i.test(value.trim())
 }
@@ -108,9 +116,8 @@ async function decryptPreview() {
       payload = await response.blob()
     }
     if (!(await isRustypasteEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
-    const stored = storedEncrypted.value
-    const decrypted = stored?.key.startsWith('pw:')
-      ? await decryptBlobWithPassword(payload, key, stored.key.slice(3))
+    const decrypted = passwordSalt.value
+      ? await decryptBlobWithPassword(payload, key, passwordSalt.value)
       : await decryptEncryptedBlob(payload, key)
     clearDecryptedUrl()
     decryptedUrl.value = URL.createObjectURL(decrypted.blob)
@@ -348,8 +355,8 @@ onBeforeUnmount(() => {
   <div v-if="encryptedPreviewLocked" class="modal-backdrop" @click.self="emit('close')">
     <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="encrypted-preview-title">
       <div class="password-modal-header"><strong id="encrypted-preview-title">Preview encrypted file</strong><button class="modal-close btn-ghost" :disabled="decryptionBusy" aria-label="Close key prompt" @click="emit('close')">✕</button></div>
-      <div class="password-modal-copy">Enter the decryption {{ storedEncrypted?.key.startsWith('pw:') ? 'password' : 'key' }} to preview this file in-app.</div>
-      <div class="password-form"><label>Decryption {{ storedEncrypted?.key.startsWith('pw:') ? 'password' : 'key' }}<input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" :placeholder="storedEncrypted?.key.startsWith('pw:') ? 'Enter decryption password' : 'Paste decryption key'" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" /></label></div>
+      <div class="password-modal-copy">Enter the decryption {{ passwordSalt ? 'password' : 'key' }} to preview this file in-app.</div>
+      <div class="password-form"><label>Decryption {{ passwordSalt ? 'password' : 'key' }}<input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" :placeholder="passwordSalt ? 'Enter decryption password' : 'Paste decryption key'" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" /></label><label v-if="!passwordSalt">Password-encrypted file link<input v-model="legacyPasswordLink" type="url" autocomplete="off" placeholder="Paste the complete +pw: preview link" :disabled="decryptionBusy" /></label></div>
       <div v-if="decryptionError" class="password-modal-error">{{ decryptionError }}</div>
       <div class="password-modal-actions"><button class="btn-ghost" :disabled="decryptionBusy" @click="emit('close')">Cancel</button><button class="btn-primary" :disabled="decryptionBusy || !decryptionKey.trim()" @click="decryptPreview">{{ decryptionBusy ? 'Decrypting…' : 'Preview file' }}</button></div>
     </div>
