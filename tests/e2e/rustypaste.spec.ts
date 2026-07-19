@@ -353,8 +353,7 @@ test('public upload mode opens Files without a login', async ({ page }) => {
   await page.goto('/files?tab=history')
   await expect(page.getByText('History needs an account')).toBeVisible()
   await page.getByRole('button', { name: 'Log in to view history' }).click()
-  await expect(page.getByRole('dialog', { name: 'Keep your uploads in reach' })).toBeVisible()
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Create account' })).toHaveCount(0)
+  await expect(page).toHaveURL(/\/login$/)
 })
 
 test('public registration setting offers account creation to guests', async ({ page }) => {
@@ -376,8 +375,6 @@ test('public registration setting offers account creation to guests', async ({ p
   await page.goto('/files?tab=history')
 
   await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
-  await page.getByRole('button', { name: 'Log in to view history' }).click()
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Create account' })).toBeVisible()
 })
 
 test('plain preview ignores a stale decryption fragment', async ({ page }) => {
@@ -1371,7 +1368,7 @@ test('public preview infers media type and cleans generated timestamp suffix whe
   await expect(page.getByText('vDuzjHyC.mp4')).toBeVisible()
   await expect(page.getByText(/video\/mp4 · 5\.8 MiB/i)).toBeVisible()
   await expect(page.locator('.preview-frame video')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', '/file/vDuzjHyC/raw')
+  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', '/api/vDuzjHyC.mp4.1777818730459?raw=1')
 })
 
 test('direct short file URL boots into preview route', async ({ page }) => {

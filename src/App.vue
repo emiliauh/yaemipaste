@@ -18,7 +18,11 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 </script>
 
 <template>
-  <router-view />
+  <router-view v-slot="{ Component, route }">
+    <Transition :name="route.meta.transition === 'login-fade' ? 'login-fade' : ''" mode="out-in">
+      <component :is="Component" />
+    </Transition>
+  </router-view>
   <a
     v-if="repoUrl"
     class="github-link"
@@ -73,5 +77,15 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 .github-link svg {
   width: 16px;
   height: 16px;
+}
+
+.login-fade-enter-active,
+.login-fade-leave-active {
+  transition: opacity 180ms var(--ease-out);
+}
+
+.login-fade-enter-from,
+.login-fade-leave-to {
+  opacity: 0;
 }
 </style>

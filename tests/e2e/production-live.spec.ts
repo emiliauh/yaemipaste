@@ -105,7 +105,7 @@ test('production: password encryption upload + preview + history thumbnail', asy
   if (await previewFrame.count()) await expect(previewFrame).toBeVisible()
   else await expect(page.locator('img')).toBeVisible()
   const rawHref = await page.getByRole('link', { name: 'View raw' }).getAttribute('href')
-  expect(rawHref ?? '').toMatch(/^(https?:\/\/[^/]+)?\/file\/[A-Za-z0-9_-]+\/raw$/)
+  expect(rawHref ?? '').toMatch(/^(https?:\/\/[^/]+)?\/api\/[^?]+\?raw=1$/)
 
   await page.goto(`${liveBrowserBaseUrl}/#/files`)
   await page.waitForURL('**/files')

@@ -80,12 +80,11 @@ const deleteConfirmOpen = ref(false)
 const deleteConfirmMode = ref<DeleteConfirmMode>('selected')
 const deleteAcknowledged = ref(false)
 const wsConnected = ref(false)
-const accountPromptOpen = ref(false)
 const compactFileNames = ref(window.matchMedia('(max-width: 820px)').matches)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const notificationStore = useNotificationStore()
 const router = useRouter()
-const { publicSettings, refreshPublicSettings } = usePublicSettings()
+const { refreshPublicSettings } = usePublicSettings()
 let hoverToken = 0
 let previewToken = 0
 let compactFileNamesMediaQuery: MediaQueryList | null = null
@@ -1368,7 +1367,7 @@ onBeforeUnmount(() => {
       <div v-if="accountRequired" class="state-card account-state">
         <strong>History needs an account</strong>
         <p>Public uploads are available to everyone, but your history stays private to your account.</p>
-        <button class="btn-primary empty-action" type="button" @click="accountPromptOpen = true">Log in to view history</button>
+        <button class="btn-primary empty-action" type="button" @click="router.push('/login')">Log in to view history</button>
       </div>
 
       <div v-else-if="loading" class="skeleton-table" aria-label="Loading history">
@@ -1552,20 +1551,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </section>
-
-    <div v-if="accountPromptOpen" class="modal-backdrop" @click.self="accountPromptOpen = false">
-      <section class="account-modal" role="dialog" aria-modal="true" aria-labelledby="account-required-title">
-        <div class="account-modal-mark" aria-hidden="true">+</div>
-        <button class="modal-close btn-ghost" aria-label="Close account prompt" @click="accountPromptOpen = false">x</button>
-        <span class="eyebrow">Personal workspace</span>
-        <h3 id="account-required-title">Keep your uploads in reach</h3>
-        <p>Log in to view, organize, and manage the uploads connected to your account.</p>
-        <div class="account-modal-actions">
-          <button class="btn-primary" type="button" @click="router.push('/login')">Log in</button>
-          <button v-if="publicSettings.registration_enabled" class="btn-ghost" type="button" @click="router.push('/register')">Create account</button>
-        </div>
-      </section>
-    </div>
 
     <div
       v-if="hoverPreview"
@@ -2095,33 +2080,6 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 .account-state { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
-.account-modal {
-  position: relative;
-  width: min(390px, calc(100vw - 24px));
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-lg);
-  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 36%), var(--bg1);
-  padding: var(--space-5);
-  box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 90%, transparent);
-}
-.account-modal-mark {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  margin-bottom: var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-  border-radius: var(--radius-sm);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  font-size: 20px;
-  font-weight: 500;
-}
-.account-modal .modal-close { position: absolute; top: var(--space-3); right: var(--space-3); }
-.account-modal h3 { margin: var(--space-2) 0; color: var(--text); font-size: var(--fs-h2); }
-.account-modal p { color: var(--text2); font-size: var(--fs-sm); line-height: var(--lh-body); }
-.account-modal-actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
-.account-modal-actions button { flex: 1; }
 
 .error-state {
   border-color: var(--error-border);

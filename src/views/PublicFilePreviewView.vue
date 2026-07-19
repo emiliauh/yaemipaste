@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, effectivePublicMimeType, encodeFileToken, fileUrl, formatBytes, getAuthUsername, getPublicFileMeta, preferredPublicFileName, publicApiFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, effectivePublicMimeType, fileUrl, formatBytes, getAuthUsername, getPublicFileMeta, preferredPublicFileName, publicApiFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
@@ -25,11 +25,6 @@ const requestedFileName = computed(() => {
 })
 
 const rawUrl = computed(() => (resolvedFileName.value ? fileUrl(resolvedFileName.value) : ''))
-const rawRouteUrl = computed(() => {
-  const token = routeFileKey.value.split('+')[0]
-  if (token) return `/file/${token}/raw`
-  return resolvedFileName.value ? `/file/${encodeFileToken(resolvedFileName.value)}/raw` : ''
-})
 const downloadUrl = computed(() => {
   const token = routeFileKey.value.split('+')[0]
   if (token) return `/file/${token}/download`
@@ -79,7 +74,7 @@ const shouldShowSecondaryAction = computed(() => shouldPreferAppOpen.value || ca
 
 const openActionHref = computed(() => {
   if (shouldPreferAppOpen.value) return downloadUrl.value
-  return rawRouteUrl.value
+  return rawUrl.value
 })
 
 async function loadTextPreview() {

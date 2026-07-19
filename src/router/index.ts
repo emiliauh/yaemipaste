@@ -39,7 +39,7 @@ const router = createRouter({
         return '/files'
       },
     },
-    { path: '/login', component: () => import('../views/LoginView.vue') },
+    { path: '/login', component: () => import('../views/LoginView.vue'), meta: { transition: 'login-fade' } },
     { path: '/register', component: () => import('../views/RegisterView.vue') },
     { path: '/admin/claim', component: () => import('../views/AdminClaimView.vue') },
     {
