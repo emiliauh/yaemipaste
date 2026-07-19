@@ -10,6 +10,7 @@ const FALLBACK_SETTINGS: PublicAdminSettings = {
   turnstile_required: false,
   file_size_limit_bytes: 0,
   file_size_limit_unlimited: false,
+  upload_access_mode: 'private',
 }
 
 const publicSettings = ref<PublicAdminSettings>({ ...FALLBACK_SETTINGS })

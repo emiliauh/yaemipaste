@@ -1193,6 +1193,7 @@ export interface AdminSettings {
   registration_enabled?: string
   file_size_limit_bytes?: string
   file_size_limit_unlimited?: string
+  upload_access_mode?: string
   base_api_url?: string
 }
 
@@ -1203,6 +1204,7 @@ export interface PublicAdminSettings {
   base_api_url?: string
   file_size_limit_bytes: number
   file_size_limit_unlimited: boolean
+  upload_access_mode: 'private' | 'public'
   turnstile_site_key?: string
   turnstile_required?: boolean
 }
@@ -1367,7 +1369,7 @@ export function adminSettings() {
   return adminRequest<AdminSettings>('/settings', {}, 'Could not load settings')
 }
 
-export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; file_size_limit_bytes?: number; file_size_limit_unlimited?: boolean }) {
+export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; file_size_limit_bytes?: number; file_size_limit_unlimited?: boolean; upload_access_mode?: 'private' | 'public' }) {
   return adminRequest<AdminSettings>('/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),

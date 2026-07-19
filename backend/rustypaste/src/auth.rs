@@ -87,12 +87,11 @@ pub(crate) async fn extract_tokens(req: &ServiceRequest) -> Result<HashSet<Token
         if db_token_valid {
             user_tokens.insert(token_type);
         } else if token_type == TokenType::Auth
-            && maybe_tokens.is_none()
-            && std::env::var("ALLOW_ANONYMOUS_UPLOADS")
-                .unwrap_or_else(|_| "1".to_string())
-                == "1"
+            && req.method() == Method::POST
+            && req.path() == "/"
+            && crate::admin::anonymous_uploads_enabled()
         {
-            // Anonymous uploads are an explicit deployment choice.
+            // Public mode only grants the upload endpoint, never list/version access.
             user_tokens.insert(token_type);
         } else if token_type == TokenType::Delete
             && req.method() == Method::DELETE
@@ -137,13 +136,13 @@ mod tests {
     async fn test_extract_tokens() -> Result<(), Error> {
         let mut config = Config::default();
 
-        // request without configured auth-tokens
+        // A fresh installation is private unless its persisted setting is public.
         let request = TestRequest::default()
             .app_data(Data::new(RwLock::new(config.clone())))
             .insert_header((AUTHORIZATION, HeaderValue::from_static("basic test_token")))
             .to_srv_request();
         let tokens = extract_tokens(&request).await?;
-        assert_eq!(HashSet::from([TokenType::Auth]), tokens);
+        assert_eq!(HashSet::new(), tokens);
 
         // request with configured auth-tokens
         config.server.auth_tokens = Some(["test_token".to_string()].into());

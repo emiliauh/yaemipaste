@@ -87,7 +87,7 @@ let refreshSequence = 0
 
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
-const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false })
+const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public' })
 const webhookEventOptions = [
   { value: 'file.uploaded', label: 'File uploaded', description: 'When a new file or paste is stored.' },
   { value: 'file.deleted', label: 'File deleted', description: 'When a file is removed manually or by cleanup.' },
@@ -424,6 +424,7 @@ async function refreshAll() {
       registration_enabled: nextSettings.registration_enabled !== 'false',
       file_size_limit_bytes: Number(nextSettings.file_size_limit_bytes ?? 0) || 0,
       file_size_limit_unlimited: nextSettings.file_size_limit_unlimited === 'true',
+      upload_access_mode: nextSettings.upload_access_mode === 'public' ? 'public' : 'private',
     }
   } catch (e: any) {
     if (sequence === refreshSequence) error.value = e.message ?? 'Could not load admin data'
@@ -1032,6 +1033,7 @@ onBeforeUnmount(() => {
             <input v-model.number="fileSizeLimitGb" type="range" min="0" max="100" step="1" aria-label="Maximum file size in gigabytes" />
             <div class="range-labels"><span>Disabled</span><span>50 GB</span><span>100 GB</span></div>
           </div>
+          <label class="span-2"><span>Anonymous uploads</span><small>Private requires an account or upload token. Public lets anyone upload without signing in.</small><select v-model="settingsForm.upload_access_mode"><option value="private">Private</option><option value="public">Public</option></select></label>
           <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
         </div>
       </section>

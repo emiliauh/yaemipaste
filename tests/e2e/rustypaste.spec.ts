@@ -192,6 +192,7 @@ async function mockAdminApi(page: Page, userCount = 12) {
     registration_enabled: 'true',
     file_size_limit_bytes: '1073741824',
     file_size_limit_unlimited: 'false',
+    upload_access_mode: 'private',
   }
 
   await page.route('**/auth/admin/dashboard**', async (route) => {
@@ -291,6 +292,7 @@ async function mockAdminApi(page: Page, userCount = 12) {
         registration_enabled: false,
         file_size_limit_bytes: 2147483648,
         file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
       })
       await route.fulfill({
         status: 200,
@@ -300,6 +302,7 @@ async function mockAdminApi(page: Page, userCount = 12) {
           public_title: 'Verified public title',
           registration_enabled: 'false',
           file_size_limit_bytes: '2147483648',
+          upload_access_mode: 'public',
         }),
       })
       return
@@ -3328,6 +3331,7 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await page.getByLabel('App name').fill('Verified Paste')
   await page.getByLabel('Public title').fill('Verified public title')
   await page.getByLabel('Maximum file size in gigabytes').fill('2')
+  await page.getByLabel('Anonymous uploads').selectOption('public')
   await page.getByRole("checkbox", { name: /Allow new registrations/ }).uncheck()
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')

@@ -87,6 +87,7 @@ struct SettingsRequest {
     registration_enabled: Option<bool>,
     file_size_limit_bytes: Option<u64>,
     file_size_limit_unlimited: Option<bool>,
+    upload_access_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -251,6 +252,12 @@ fn pending_claim_exists(connection: &Connection) -> bool {
 
 fn ensure_setting_defaults(connection: &Connection) -> rusqlite::Result<()> {
     let now = now_seconds();
+    let upload_access_mode =
+        if env::var("ALLOW_ANONYMOUS_UPLOADS").ok().as_deref() == Some("1") {
+            "public"
+        } else {
+            "private"
+        };
     for (key, value) in [
         ("app_name", "yaemipaste"),
         ("public_title", "yaemipaste"),
@@ -258,6 +265,7 @@ fn ensure_setting_defaults(connection: &Connection) -> rusqlite::Result<()> {
         ("registration_enabled", "true"),
         ("file_size_limit_bytes", "0"),
         ("file_size_limit_unlimited", "false"),
+        ("upload_access_mode", upload_access_mode),
     ] {
         connection.execute(
             "INSERT OR IGNORE INTO admin_settings (key, value, updated_at, updated_by) VALUES (?1, ?2, ?3, 'system')",
@@ -296,6 +304,18 @@ pub(crate) fn registration_enabled(connection: &Connection) -> bool {
         .and_then(|settings| settings.get("registration_enabled").cloned())
         .map(|value| value != "false")
         .unwrap_or(true)
+}
+
+pub(crate) fn anonymous_uploads_enabled() -> bool {
+    let auth_env = AuthEnv::from_env();
+    let connection = match open_db(&auth_env.db_path) {
+        Ok(connection) => connection,
+        Err(_) => return false,
+    };
+    setting_map(&connection)
+        .ok()
+        .and_then(|settings| settings.get("upload_access_mode").cloned())
+        .is_some_and(|value| value == "public")
 }
 
 pub(crate) fn audit(
@@ -2193,6 +2213,15 @@ async fn put_settings(request: HttpRequest, body: web::Json<SettingsRequest>) ->
     if let Some(value) = body.file_size_limit_unlimited {
         updates.push(("file_size_limit_unlimited", value.to_string()));
     }
+    if let Some(value) = body.upload_access_mode.as_deref() {
+        if !matches!(value, "private" | "public") {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "Upload access mode must be private or public",
+            );
+        }
+        updates.push(("upload_access_mode", value.to_string()));
+    }
     for (key, value) in updates {
         if let Err(error) = connection.execute(
             "INSERT INTO admin_settings (key, value, updated_at, updated_by) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by",
@@ -2501,6 +2530,10 @@ async fn public_settings() -> HttpResponse {
         "public_title": settings.get("public_title").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "base_api_url": settings.get("base_api_url").cloned().unwrap_or_default(),
         "registration_enabled": registration_enabled(&connection),
+        "upload_access_mode": settings
+            .get("upload_access_mode")
+            .cloned()
+            .unwrap_or_else(|| "private".to_string()),
         "file_size_limit_bytes": settings.get("file_size_limit_bytes").and_then(|value| value.parse::<u64>().ok()).unwrap_or(0),
         "file_size_limit_unlimited": settings.get("file_size_limit_unlimited").map(|value| value == "true").unwrap_or(false),
         "turnstile_site_key": turnstile_site_key,
@@ -2713,6 +2746,10 @@ mod tests {
         let settings = read_public_settings!();
         assert_eq!("", settings["turnstile_site_key"]);
         assert_eq!(false, settings["turnstile_required"]);
+        assert!(matches!(
+            settings["upload_access_mode"].as_str(),
+            Some("private" | "public")
+        ));
 
         unsafe {
             env::set_var("TURNSTILE_SECRET_KEY", "runtime-secret");
