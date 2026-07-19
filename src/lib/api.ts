@@ -954,7 +954,7 @@ export async function getPublicFileMeta(fileName: string): Promise<PublicFileMet
   let lastError = 'Could not load file metadata'
   for (const url of urls) {
     try {
-      const response = await fetch(url, { headers: tokenHeader() })
+      const response = await fetch(url)
       if (response.ok) {
         rememberResolvedFileName(fileName)
         return readJson(response, 'Could not load file metadata')

@@ -1246,7 +1246,9 @@ test('encrypted decrypt success uses auto-clearing notification on mobile', asyn
 })
 
 test('public preview page shows metadata and download action', async ({ page }) => {
+  await signInWithAccount(page)
   await page.route('**/api/meta/preview-check.txt', async (route) => {
+    expect(route.request().headers().authorization).toBeUndefined()
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
