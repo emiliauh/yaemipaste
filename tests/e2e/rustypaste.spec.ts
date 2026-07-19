@@ -365,7 +365,18 @@ test('public upload mode opens Files without a login', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/files$/)
   await expect(page.getByTestId('desktop-nav-files')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible()
+  const loginButton = page.getByRole('button', { name: 'Log in' })
+  await expect(loginButton).toBeVisible()
+  const loginBox = await loginButton.boundingBox()
+  const guestAccessBox = await page.locator('.guest-access').boundingBox()
+  const dividerBox = await page.locator('.sidebar-divider').boundingBox()
+  expect(loginBox).not.toBeNull()
+  expect(guestAccessBox).not.toBeNull()
+  expect(dividerBox).not.toBeNull()
+  if (loginBox && guestAccessBox && dividerBox) {
+    expect(loginBox.y + loginBox.height).toBeLessThan(dividerBox.y)
+    expect(loginBox.width).toBe(guestAccessBox.width)
+  }
   await expect(page.getByRole('button', { name: 'Create account' })).toHaveCount(0)
 
   await page.goto('/files?tab=history')
@@ -3636,6 +3647,12 @@ test('admin panel covers every tab and responsive viewport class', async ({ page
   await expect(page.getByText('Auto-refreshing')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Delete all', exact: true })).toBeVisible()
   expect(await page.locator('.admin-table thead th').allTextContents()).toEqual(['', 'Name', 'Owner', 'Size', 'Created', 'Expires', ''])
+  await page.getByRole('button', { name: 'Owner' }).click()
+  await page.getByRole('option', { name: 'user-1', exact: true }).click()
+  await expect(page.getByText('ShareX screenshot.png', { exact: true })).toBeVisible()
+  await expect(page.getByText('upload-2.txt', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Owner' }).click()
+  await page.getByRole('option', { name: 'All owners' }).click()
   await expect(page.getByRole('group', { name: 'Uploads per page' }).getByRole('button', { name: '15', exact: true })).toHaveAttribute('aria-pressed', 'true')
   const uploadPagination = page.locator('[aria-label="Upload pagination"]')
   await expect(uploadPagination).toContainText('1-12 of 12')

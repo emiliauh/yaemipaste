@@ -42,6 +42,7 @@ import SettingsPanel from '../components/SettingsPanel.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 import ActionConfirmDialog from '../components/ActionConfirmDialog.vue'
 import FilePreview from '../components/FilePreview.vue'
+import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
@@ -99,6 +100,8 @@ function webhookEventLabel(event: string): string {
     ?? event.replace(/\./g, ' ')
 }
 const filterText = ref('')
+const filterOwner = ref('')
+const filterExpired = ref<'all' | 'expired' | 'active'>('all')
 const PAGE_SIZE = 10
 const UPLOAD_PAGE_SIZES = [15, 30, 45] as const
 type UploadPageSize = typeof UPLOAD_PAGE_SIZES[number]
@@ -140,6 +143,7 @@ const sidebarCollapsed = ref(
   typeof window !== 'undefined' && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
 )
 const filteredUploads = computed(() => uploads.value.filter((upload) => {
+  const ownerOk = !filterOwner.value || uploadOwner(upload) === filterOwner.value
   const text = filterText.value.trim().toLowerCase()
   const textOk = !text
     || upload.path.toLowerCase().includes(text)
@@ -147,8 +151,22 @@ const filteredUploads = computed(() => uploads.value.filter((upload) => {
     || (upload.display_name ?? '').toLowerCase().includes(text)
     || (upload.source ?? '').toLowerCase().includes(text)
     || (upload.content_type ?? '').toLowerCase().includes(text)
-  return textOk
+  const expiryOk = filterExpired.value === 'all'
+    || (filterExpired.value === 'expired' ? upload.expired : !upload.expired)
+  return ownerOk && textOk && expiryOk
 }))
+const ownerFilterOptions = computed<SelectOption[]>(() => {
+  const owners = new Set(uploads.value.map((upload) => uploadOwner(upload)).filter(Boolean))
+  return [
+    { value: '', label: 'All owners', hint: 'Every upload owner' },
+    ...Array.from(owners).sort((left, right) => left.localeCompare(right)).map((owner) => ({ value: owner, label: owner })),
+  ]
+})
+const expiryFilterOptions: SelectOption[] = [
+  { value: 'all', label: 'All expiry states', hint: 'Active and expired' },
+  { value: 'active', label: 'Active', hint: 'Still available' },
+  { value: 'expired', label: 'Expired', hint: 'Ready to purge' },
+]
 const pagedUsers = computed(() => paginate(users.value, 'Users'))
 const pagedUploads = computed(() => paginate(filteredUploads.value, 'Uploads', uploadsPageSize.value))
 const pagedWebhooks = computed(() => paginate(webhooks.value, 'Webhooks'))
@@ -833,6 +851,8 @@ onBeforeUnmount(() => {
       <div class="card">
         <div class="upload-toolbar">
           <div class="upload-toolbar-main">
+            <CustomSelect v-model="filterOwner" label="Owner" :options="ownerFilterOptions" />
+            <CustomSelect v-model="filterExpired" label="Expiry" :options="expiryFilterOptions" />
             <label class="upload-search">
               <input v-model="filterText" placeholder="Search uploads" aria-label="Search uploads" />
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>

@@ -156,6 +156,7 @@ function toggleCompactTheme() {
           <button class="guest-login" type="button" @click="emit('login')">Log in</button>
           <button v-if="publicSettings.registration_enabled" class="guest-register" type="button" @click="emit('register')">Create account</button>
         </div>
+        <div class="sidebar-divider" aria-hidden="true"></div>
         <div class="utility-label">Theme</div>
         <div class="theme-switch" role="group" :aria-label="themeLabel" data-testid="theme-switch">
           <button
@@ -550,7 +551,6 @@ function toggleCompactTheme() {
   display: grid;
   gap: var(--space-2);
   padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
   margin-top: auto;
 }
 
@@ -567,12 +567,17 @@ function toggleCompactTheme() {
   gap: var(--space-2);
 }
 .guest-access {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  width: 100%;
   gap: var(--space-2);
+}
+.sidebar-divider {
+  height: 1px;
+  background: var(--border);
 }
 .guest-login,
 .guest-register {
+  width: 100%;
   min-height: 34px;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
@@ -580,6 +585,7 @@ function toggleCompactTheme() {
   font-weight: 600;
 }
 .guest-login {
+  flex: 1 1 auto;
   color: var(--bg);
   background: var(--accent);
 }
