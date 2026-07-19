@@ -5,12 +5,17 @@ import { usePublicSettings } from '../lib/publicSettings'
 
 const route = useRoute()
 const { refreshPublicSettings } = usePublicSettings()
-const filePart = String(route.params.filekey ?? '').split('+')[0]
+const fileKey = String(route.params.filekey ?? '')
+const filePart = fileKey.split('+')[0]
 
 async function redirect() {
   try {
     await refreshPublicSettings()
     const fileName = await resolveFileName(filePart)
+    if (fileName.endsWith('.rpenc')) {
+      window.location.replace(`/file/${encodeURIComponent(fileKey)}/preview${window.location.hash}`)
+      return
+    }
     const rawUrl = downloadFileUrl(fileName)
     const previewUrl = `/file/${encodeFileToken(fileName)}/preview`
     const link = document.createElement('a')

@@ -446,6 +446,21 @@ compose() {
   run "${COMPOSE_CMD[@]}" "${compose_files[@]}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
 }
 
+compose_for_uninstall() {
+  [[ ${#COMPOSE_CMD[@]} -gt 0 ]] || detect_compose_cmd
+  local uninstall_env
+  uninstall_env="$(mktemp)"
+  # `down` must still work when the installation .env is incomplete or corrupt.
+  # Keep production validation in compose(); these placeholders only satisfy
+  # Compose interpolation while it removes the existing project resources.
+  printf 'JWT_SECRET=uninstall-placeholder\nAUTH_ADMIN_BEARER=uninstall-placeholder\n' > "$uninstall_env"
+  if ! run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" down "$@"; then
+    rm -f "$uninstall_env"
+    return 1
+  fi
+  rm -f "$uninstall_env"
+}
+
 ensure_repo_present() {
   if [[ -d "${INSTALL_DIR}/.git" || -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
     return 0
@@ -641,7 +656,7 @@ configure_env() {
     fi
   fi
 
-  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin configure_features turnstile_enabled direct_ip_access
+  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin internal_admin_origin configure_features turnstile_enabled direct_ip_access api_port
   deployment_mode="$(prompt "Deployment mode (same or split)" "${DEPLOYMENT_MODE_OVERRIDE:-$(env_get DEPLOYMENT_MODE "same")}")"
   [[ "$deployment_mode" =~ ^(same|split)$ ]] || die "Deployment mode must be same or split."
   split_role="$(env_get SPLIT_ROLE "")"
@@ -692,6 +707,14 @@ configure_env() {
   if [[ "$deployment_mode" == "split" ]]; then
     auth_admin_origin="$api_origin"
   fi
+  # Installer control-plane calls stay on the local listener. This avoids a
+  # WSL/Windows NAT hairpin through a LAN address while preserving public URLs
+  # for browser-facing links and registration.
+  internal_admin_origin="http://127.0.0.1:${ui_port}"
+  if [[ "$deployment_mode" == "split" && "$split_role" == "api" ]]; then
+    api_port="$(env_get API_PUBLISH_PORT "8000")"
+    internal_admin_origin="http://127.0.0.1:${api_port}"
+  fi
   sharex_enabled="$(env_get VITE_ENABLE_SHAREX "1")"
   auth_enabled="$(env_get VITE_ENABLE_AUTH "1")"
   turnstile_key="$(env_get VITE_TURNSTILE_SITE_KEY "")"
@@ -736,7 +759,7 @@ configure_env() {
   fi
 
   jwt_secret="$(env_get JWT_SECRET "")"
-  admin_base="$(env_get_nonempty AUTH_ADMIN_BASE_URL "${auth_admin_origin%/}/auth/admin")"
+  admin_base="$(env_get_nonempty AUTH_ADMIN_BASE_URL "${internal_admin_origin%/}/auth/admin")"
   bootstrap_path="$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")"
   token_create_path="$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")"
   token_revoke_path="$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")"
@@ -957,9 +980,17 @@ stack_status() {
 }
 
 read_auth_settings() {
-  local inferred_public_url
+  local inferred_public_url deployment_mode split_role ui_port api_port inferred_admin_origin
   inferred_public_url="$(env_get_nonempty PASTE_URL "$(default_public_url "$(env_get UI_PORT "$DEFAULT_UI_PORT")")")"
-  AUTH_ADMIN_BASE_URL_VALUE="$(env_get_nonempty AUTH_ADMIN_BASE_URL "${inferred_public_url%/}/auth/admin")"
+  deployment_mode="$(env_get DEPLOYMENT_MODE "same")"
+  split_role="$(env_get SPLIT_ROLE "")"
+  ui_port="$(env_get UI_PORT "$DEFAULT_UI_PORT")"
+  inferred_admin_origin="http://127.0.0.1:${ui_port}"
+  if [[ "$deployment_mode" == "split" && "$split_role" == "api" ]]; then
+    api_port="$(env_get API_PUBLISH_PORT "8000")"
+    inferred_admin_origin="http://127.0.0.1:${api_port}"
+  fi
+  AUTH_ADMIN_BASE_URL_VALUE="$(env_get_nonempty AUTH_ADMIN_BASE_URL "${inferred_admin_origin%/}/auth/admin")"
   AUTH_BOOTSTRAP_PATH_VALUE="$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")"
   AUTH_TOKEN_CREATE_PATH_VALUE="$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")"
   AUTH_TOKEN_REVOKE_PATH_VALUE="$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")"
@@ -1122,9 +1153,9 @@ stack_uninstall() {
   fi
   if [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
     if confirm "Remove Docker volumes too? (destructive)" n; then
-      compose down --volumes --remove-orphans
+      compose_for_uninstall --volumes --remove-orphans
     else
-      compose down --remove-orphans
+      compose_for_uninstall --remove-orphans
     fi
   fi
   if confirm "Delete install directory ${INSTALL_DIR}?" n; then
@@ -1382,4 +1413,6 @@ main() {
   run_action "$ACTION"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

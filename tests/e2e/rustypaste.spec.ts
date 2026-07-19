@@ -605,6 +605,15 @@ test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page 
   await popup.close()
 })
 
+test('encrypted raw and download aliases stay in the decrypt preview flow', async ({ page }) => {
+  const token = Buffer.from('private-note.txt.rpenc').toString('base64url')
+
+  for (const mode of ['raw', 'download']) {
+    await page.goto(`/file/${token}+password-salt/${mode}#decrypt-key`)
+    await expect(page).toHaveURL(/\/preview#decrypt-key$/)
+  }
+})
+
 test('History copies an absolute raw URL from the server API base', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)

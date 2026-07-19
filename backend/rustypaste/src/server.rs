@@ -727,6 +727,12 @@ async fn file_route_redirect(
         .map_err(|_| error::ErrorInternalServerError("cannot acquire config"))?;
     let clean_token = token.split('+').next().unwrap_or(token.as_str());
     let resolved = resolve_token_to_file(clean_token, &config.server.upload_path)?;
+    if matches!(mode.as_str(), "raw" | "download") && resolved.file_name.ends_with(".rpenc") {
+        return Ok(HttpResponse::Found()
+            .append_header(("Location", format!("/file/{token}/preview")))
+            .append_header(("Cache-Control", "no-store"))
+            .finish());
+    }
     Ok(HttpResponse::Found()
         .append_header(("Location", public_path_from_file_name(&resolved.file_name)))
         .append_header(("Cache-Control", "no-store"))
@@ -1925,6 +1931,47 @@ mod tests {
         .await;
         assert_eq!(StatusCode::OK, raw_response.status());
         assert_body(raw_response.into_body(), contents).await?;
+
+        fs::remove_dir_all(upload_path)?;
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_encrypted_file_raw_and_download_routes_redirect_to_preview() -> Result<(), Error> {
+        let mut config = Config::default();
+        let upload_path = env::temp_dir().join(format!(
+            "rustypaste-encrypted-route-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&upload_path)?;
+        config.server.upload_path = upload_path.clone();
+        fs::write(upload_path.join("encrypted-note.txt.rpenc"), b"encrypted bytes")?;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(config)))
+                .app_data(Data::new(Client::default()))
+                .configure(configure_routes),
+        )
+        .await;
+
+        for mode in ["raw", "download"] {
+            let response = test::call_service(
+                &app,
+                TestRequest::get()
+                    .uri(&format!("/file/encrypted-note+salt/{mode}"))
+                    .to_request(),
+            )
+            .await;
+            assert_eq!(StatusCode::FOUND, response.status());
+            assert_eq!(
+                response
+                    .headers()
+                    .get("location")
+                    .and_then(|value| value.to_str().ok()),
+                Some("/file/encrypted-note+salt/preview")
+            );
+        }
 
         fs::remove_dir_all(upload_path)?;
         Ok(())
