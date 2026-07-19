@@ -111,36 +111,6 @@ function publicOriginFromApiOrigin(origin: string): string {
   return origin
 }
 
-function getRuntimeOrigin(): string | null {
-  if (typeof window === 'undefined') return sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
-  return sanitizePublicOrigin(window.location.origin) ?? sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
-}
-
-function shouldIgnoreStoredApiBase(value: string): boolean {
-  if (!value.trim() || value.startsWith('/')) return false
-  const runtimeOrigin = getRuntimeOrigin()
-  if (!runtimeOrigin) return false
-  try {
-    const configured = new URL(value)
-    const normalized = normalizeApiBase(configured.toString())
-    const sameOriginRoot = normalizeApiBase(configured.origin)
-    if (normalized === sameOriginRoot) return true
-    if (configured.origin === runtimeOrigin && /^\/auth\/?$/i.test(configured.pathname)) return true
-    if (!DEFAULT_PASTE_API.startsWith('/')) return false
-    return configured.origin !== runtimeOrigin
-  } catch {
-    return false
-  }
-}
-
-function pruneStoredApiBase() {
-  if (typeof localStorage === 'undefined') return
-  const configured = localStorage.getItem(API_BASE_KEY)
-  if (configured && shouldIgnoreStoredApiBase(configured)) localStorage.removeItem(API_BASE_KEY)
-}
-
-pruneStoredApiBase()
-
 export function applyRuntimePublicSettings(settings: PublicAdminSettings) {
   runtimePublicSettings = settings
 }
@@ -149,64 +119,27 @@ export function getDefaultPasteApiBase(): string {
   return runtimeBaseApi() ?? DEFAULT_PASTE_API
 }
 
-function browserApiProxyBase(): string {
-  const origin = publicSiteOrigin()
-  const path = '/api'
-  if (typeof window !== 'undefined' && origin === window.location.origin) return path
-  return `${origin}${path}`
-}
-
 export function getPasteApiBase(): string {
-  const runtimeBase = runtimeBaseApi()
-  // Browser API traffic uses the public UI proxy so split-host API DNS or firewall
-  // issues cannot turn ordinary metadata and history requests into SPA failures.
-  if (typeof window !== 'undefined' && runtimeBase) return browserApiProxyBase()
-  // The server-wide setting must override stale per-browser API preferences.
-  if (runtimeBase) return runtimeBase
-  const defaultBase = DEFAULT_PASTE_API
+  const defaultBase = runtimeBaseApi() ?? DEFAULT_PASTE_API
   if (typeof localStorage === 'undefined') return defaultBase
   const configured = localStorage.getItem(API_BASE_KEY)
-  if (!configured) return defaultBase
-  if (shouldIgnoreStoredApiBase(configured)) {
+  if (configured?.trim()) {
+    if (isSafeApiBase(configured)) return normalizeApiBase(configured)
     localStorage.removeItem(API_BASE_KEY)
-    return defaultBase
   }
-  return isSafeApiBase(configured) ? normalizeApiBase(configured) : defaultBase
+  return runtimeBaseApi() ?? DEFAULT_PASTE_API
 }
 
 export function setPasteApiBase(value: string) {
   if (typeof localStorage === 'undefined') return
   if (!isSafeApiBase(value)) throw new Error('Invalid API base URL. Use a relative path or http(s) URL.')
-  const normalized = normalizeApiBase(value)
-  const defaultBase = getDefaultPasteApiBase()
-  if (!value.trim() || normalized === defaultBase) localStorage.removeItem(API_BASE_KEY)
-  else localStorage.setItem(API_BASE_KEY, normalized)
+  if (!value.trim()) localStorage.removeItem(API_BASE_KEY)
+  else localStorage.setItem(API_BASE_KEY, normalizeApiBase(value))
 }
 
 export function resetPasteApiBase() {
   if (typeof localStorage === 'undefined') return
   localStorage.removeItem(API_BASE_KEY)
-}
-
-function currentStoredPasteApiBase(): string | null {
-  if (typeof localStorage === 'undefined') return null
-  const configured = localStorage.getItem(API_BASE_KEY)?.trim() ?? ''
-  return configured || null
-}
-
-function shouldRetryUploadWithDefault(error: unknown): boolean {
-  const configured = currentStoredPasteApiBase()
-  if (!configured) return false
-  const normalized = normalizeApiBase(configured)
-  if (!normalized || normalized === DEFAULT_PASTE_API) return false
-  if (!(error instanceof Error)) return false
-  const message = error.message.toLowerCase()
-  return (
-    message.includes('unexpected json')
-    || message.includes('upload failed')
-    || message.includes('invalid file url')
-    || message.includes('empty response')
-  )
 }
 
 interface AuthSessionResponse {
@@ -831,36 +764,24 @@ export async function uploadFile(file: File, options: UploadOptions = {}): Promi
   form.append('file', uploadFileValue)
   const headers: Record<string, string> = tokenHeader()
   if (expiry) headers.expire = expiry
-  let retriedWithDefault = false
-  while (true) {
-    try {
-      const uploadTarget = extractUploadTarget(await uploadForm(form, headers, onProgress))
-      const fileName = fileNameFromUrl(uploadTarget)
-      if (!fileName || fileName.includes('{') || fileName.includes('}') || fileName.includes('"')) {
-        throw new Error('Upload endpoint returned an invalid file URL')
-      }
-      const origin = publicSiteOrigin(originFromUrl(uploadTarget))
-      rememberResolvedFileName(fileName)
-      if (encryptedSalt && encryptedMetadata) {
-        rememberEncryptedFile(fileName, `pw:${encryptedSalt}`, encryptedMetadata, origin)
-      } else if (encryptedKey && encryptedMetadata) {
-        rememberEncryptedFile(fileName, encryptedKey, encryptedMetadata, origin)
-      } else {
-        forgetEncryptedFile(fileName)
-      }
-      onProgress?.({ phase: 'complete', percent: 100 })
-      if (encryptedSalt) return { fileName, url: passwordEncryptedShareUrl(fileName, encryptedSalt, origin) }
-      if (encryptedKey) return { fileName, url: encryptedShareUrl(fileName, encryptedKey, origin) }
-      return { fileName, url: publicPreviewUrl(fileName, origin) }
-    } catch (error) {
-      if (!retriedWithDefault && shouldRetryUploadWithDefault(error)) {
-        resetPasteApiBase()
-        retriedWithDefault = true
-        continue
-      }
-      throw error
-    }
+  const uploadTarget = extractUploadTarget(await uploadForm(form, headers, onProgress))
+  const fileName = fileNameFromUrl(uploadTarget)
+  if (!fileName || fileName.includes('{') || fileName.includes('}') || fileName.includes('"')) {
+    throw new Error('Upload endpoint returned an invalid file URL')
   }
+  const origin = publicSiteOrigin(originFromUrl(uploadTarget))
+  rememberResolvedFileName(fileName)
+  if (encryptedSalt && encryptedMetadata) {
+    rememberEncryptedFile(fileName, `pw:${encryptedSalt}`, encryptedMetadata, origin)
+  } else if (encryptedKey && encryptedMetadata) {
+    rememberEncryptedFile(fileName, encryptedKey, encryptedMetadata, origin)
+  } else {
+    forgetEncryptedFile(fileName)
+  }
+  onProgress?.({ phase: 'complete', percent: 100 })
+  if (encryptedSalt) return { fileName, url: passwordEncryptedShareUrl(fileName, encryptedSalt, origin) }
+  if (encryptedKey) return { fileName, url: encryptedShareUrl(fileName, encryptedKey, origin) }
+  return { fileName, url: publicPreviewUrl(fileName, origin) }
 }
 
 export async function uploadText(text: string, options: UploadOptions = {}): Promise<UploadResult> {

@@ -10,10 +10,12 @@ import {
 } from '../lib/e2ee'
 import { browserFileUrl, decodeFileToken, downloadFileUrl, fileUrl, formatBytes, publicSiteOrigin, resolveFileName } from '../lib/api'
 import { useNotificationStore } from '../stores/notifications'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const route = useRoute()
 const router = useRouter()
 const notificationStore = useNotificationStore()
+const { refreshPublicSettings } = usePublicSettings()
 const loading = ref(true)
 const error = ref('')
 const objectUrl = ref('')
@@ -111,6 +113,7 @@ async function load() {
 
   loading.value = true
   try {
+    await refreshPublicSettings()
     const startedAt = performance.now()
     await setStage('resolving', 'Resolving encrypted paste…')
     const resolvedName = await resolveFileName(fileName.value)

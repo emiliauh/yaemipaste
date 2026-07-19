@@ -3,8 +3,10 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { browserFileUrl, decodeFileToken, downloadFileUrl, fileUrl, formatBytes, publicSiteOrigin, resolveFileName } from '../lib/api'
 import { decryptBlobWithPassword, isRustypasteEncryptedBlob, rememberEncryptedFile, type EncryptedMetadata } from '../lib/e2ee'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const route = useRoute()
+const { refreshPublicSettings } = usePublicSettings()
 
 const filekey = computed(() => String(route.params.filekey ?? ''))
 const fileName = computed(() => {
@@ -80,6 +82,7 @@ async function decrypt() {
   decrypting.value = true
   decryptStatus.value = 'Downloading encrypted payload…'
   try {
+    await refreshPublicSettings()
     resolvedFileName.value = await resolveFileName(fileName.value)
     const payload = await downloadPayload()
     decryptStatus.value = 'Deriving decryption key…'

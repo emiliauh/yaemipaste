@@ -385,6 +385,43 @@ test('public upload mode opens Files without a login', async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/)
 })
 
+test('guest mobile settings offers a full-width login and shows the configured API base', async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: false,
+        base_api_url: 'https://papi.example.test',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/files')
+  await page.getByRole('button', { name: 'Preferences' }).click()
+
+  const settings = page.locator('.settings-panel')
+  const loginButton = settings.getByRole('button', { name: 'Log in' })
+  await expect(loginButton).toBeVisible()
+  await expect(settings.getByRole('button', { name: 'Logout' })).toHaveCount(0)
+  await expect(page.getByLabel('Upload API base URL')).toHaveValue('https://papi.example.test')
+
+  const loginBox = await loginButton.boundingBox()
+  const dividerBox = await settings.locator('.settings-divider').boundingBox()
+  expect(loginBox).not.toBeNull()
+  expect(dividerBox).not.toBeNull()
+  if (loginBox && dividerBox) expect(loginBox.width).toBe(dividerBox.width)
+
+  await loginButton.click()
+  await expect(page).toHaveURL(/\/login$/)
+})
+
 test('public registration setting offers account creation to guests', async ({ page }) => {
   await page.route('**/auth/admin/public-settings', async (route) => {
     await route.fulfill({
@@ -432,8 +469,7 @@ test('plain preview ignores a stale decryption fragment', async ({ page }) => {
   await expect(page.getByText('This file is not a rustypaste encrypted file')).toHaveCount(0)
 })
 
-test('raw actions use the server API base instead of a stale browser override', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('rp_api_base', '/api'))
+test('raw actions use the configured server API base by default', async ({ page }) => {
   await page.route('**/auth/admin/public-settings', async (route) => {
     await route.fulfill({
       status: 200,
@@ -449,7 +485,7 @@ test('raw actions use the server API base instead of a stale browser override', 
       }),
     })
   })
-  await page.route('https://paste.example.test/api/meta/server-api.txt', async (route) => {
+  await page.route('https://papi.example.test/meta/server-api.txt', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -463,7 +499,7 @@ test('raw actions use the server API base instead of a stale browser override', 
       }),
     })
   })
-  await page.route('https://paste.example.test/api/server-api.txt?raw=1', async (route) => {
+  await page.route('https://papi.example.test/server-api.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -476,7 +512,7 @@ test('raw actions use the server API base instead of a stale browser override', 
   await page.goto(`/file/${token}/preview`)
 
   await expect(page.getByText('server API raw text')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://paste.example.test/api/server-api.txt?raw=1')
+  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://papi.example.test/server-api.txt?raw=1')
 })
 
 test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page }) => {
@@ -514,7 +550,6 @@ test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page 
 test('History copies an absolute raw URL from the server API base', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
-  await page.addInitScript(() => localStorage.setItem('rp_api_base', '/api'))
   await page.route('**/auth/admin/public-settings', async (route) => {
     await route.fulfill({
       status: 200,
@@ -530,7 +565,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
       }),
     })
   })
-  await page.route('https://paste.example.test/api/list**', async (route) => {
+  await page.route('https://papi.example.test/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -543,7 +578,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
       }]),
     })
   })
-  await page.route('https://paste.example.test/api/meta/history-server-api.txt', async (route) => {
+  await page.route('https://papi.example.test/meta/history-server-api.txt', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -557,7 +592,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
       }),
     })
   })
-  await page.route('https://paste.example.test/api/history-server-api.txt?raw=1', async (route) => {
+  await page.route('https://papi.example.test/history-server-api.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -572,7 +607,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
   await modal.getByRole('button', { name: 'Copy' }).click()
   await modal.getByRole('menuitem', { name: /Copy raw URL/ }).click()
 
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://paste.example.test/api/history-server-api.txt?raw=1')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://papi.example.test/history-server-api.txt?raw=1')
 })
 
 async function expandExpiryIfCollapsed(page: Page) {
@@ -1813,26 +1848,44 @@ test('history actions and settings buttons work', async ({ page }) => {
   await expect(page.locator('.settings-panel')).toBeHidden()
 })
 
-test('production resets stale absolute API override back to the deployment default', async ({ page }) => {
+test('saved API override wins over the deployment default and persists', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('rp_token', 'demo-token')
-    localStorage.setItem('rp_api_base', 'https://papi.example.test')
+    localStorage.setItem('rp_api_base', 'https://custom.example.test')
+  })
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: false,
+        base_api_url: 'https://papi.example.test',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
   })
 
   await page.goto('/#/files')
 
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('rp_api_base')))
-    .toBeNull()
+    .toBe('https://custom.example.test')
 })
 
-test('upload retries with deployment default after a bad relative API override', async ({ page }) => {
+test('upload keeps a user API override after an upload failure', async ({ page }) => {
+  let overrideRequested = false
+  let fallbackRequested = false
   await page.addInitScript(() => {
     localStorage.setItem('rp_token', 'demo-token')
     localStorage.setItem('rp_api_base', '/api-bad')
   })
 
   await page.route('**/api-bad/', async (route) => {
+    overrideRequested = true
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -1841,6 +1894,7 @@ test('upload retries with deployment default after a bad relative API override',
   })
 
   await page.route('**/api/', async (route) => {
+    fallbackRequested = true
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -1855,10 +1909,11 @@ test('upload retries with deployment default after a bad relative API override',
     buffer: Buffer.from('retry me'),
   })
 
-  await expect(page.getByTestId('share-row')).toContainText('/file/retry-ok/preview')
+  await expect.poll(() => overrideRequested).toBeTruthy()
+  await expect.poll(() => fallbackRequested).toBeFalsy()
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('rp_api_base')))
-    .toBeNull()
+    .toBe('/api-bad')
 })
 
 test('history copy includes decryption key for encrypted files', async ({ page }) => {

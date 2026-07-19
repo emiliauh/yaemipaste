@@ -1203,6 +1203,7 @@ onBeforeUnmount(() => {
         <div class="overlay" aria-hidden="true" @click="closeSettings" />
         <SettingsPanel
           @close="closeSettings"
+          @login="router.push('/login')"
           @logout="router.push('/login')"
         />
       </div>

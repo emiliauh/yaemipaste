@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   authChangePassword,
   authLogout,
@@ -13,6 +13,7 @@ import {
   getPasteApiBase,
   getShareXConfig,
   hasAccountAuth,
+  isLoggedIn,
   isShareXEnabled,
   setPasteApiBase,
   type PasskeySummary,
@@ -23,16 +24,18 @@ import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
 import { useTheme, type ThemeMode } from '../lib/theme'
 
-const emit = defineEmits<{ close: [], logout: [] }>()
+const emit = defineEmits<{ close: [], login: [], logout: [] }>()
 const notificationStore = useNotificationStore()
 
 const username = getAuthUsername()
 const authEnabled = isAuthEnabled()
+const loggedIn = isLoggedIn()
 const hasAccount = hasAccountAuth()
 const sharexEnabled = isShareXEnabled()
-const apiBase = ref(getPasteApiBase())
 const defaultApiBase = getDefaultPasteApiBase()
-const { appName, refreshPublicSettings } = usePublicSettings()
+const { appName, publicSettings, refreshPublicSettings } = usePublicSettings()
+const apiBase = ref(getPasteApiBase())
+const apiBaseEdited = ref(false)
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
 const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
   { mode: 'system', label: 'Auto' },
@@ -54,6 +57,10 @@ const currentPassword = ref('')
 const nextPassword = ref('')
 const confirmPassword = ref('')
 const logoutAllAfterPasswordChange = ref(false)
+
+watch(() => publicSettings.value.base_api_url, () => {
+  if (!apiBaseEdited.value) apiBase.value = getPasteApiBase()
+})
 
 async function save() {
   try {
@@ -251,7 +258,7 @@ async function submitPasswordChange() {
 
     <div class="field">
       <label for="api-base-url">Upload API base URL</label>
-      <input id="api-base-url" v-model="apiBase" type="text" autocomplete="off" :placeholder="defaultApiBase" aria-label="Upload API base URL" />
+      <input id="api-base-url" v-model="apiBase" type="text" autocomplete="off" :placeholder="defaultApiBase" aria-label="Upload API base URL" @input="apiBaseEdited = true" />
       <p class="field-hint">Used for uploads and history requests. Leave blank for this deployment's default.</p>
     </div>
 
@@ -277,7 +284,7 @@ async function submitPasswordChange() {
 
     <div class="settings-divider"></div>
 
-    <div v-if="authEnabled" class="account-action-row">
+    <div v-if="authEnabled && loggedIn" class="account-action-row">
       <button class="btn-red logout-btn" type="button" @click="logout">Logout</button>
       <button
         v-if="hasAccount"
@@ -289,6 +296,7 @@ async function submitPasswordChange() {
         Change Password
       </button>
     </div>
+    <button v-else-if="authEnabled" class="btn-primary login-btn" type="button" @click="emit('login')">Log in</button>
 
     <div style="margin-top:var(--space-2); color:var(--text2); font-size:var(--fs-xs); text-align:center">
       {{ appName }} + rustypaste
@@ -400,6 +408,7 @@ async function submitPasswordChange() {
 .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: var(--space-3) 0; }
 .account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.login-btn { width: 100%; font-size: var(--fs-xs); }
 .logout-btn { width: 100%; font-size: var(--fs-xs); }
 .change-password-btn { width: 100%; font-size: var(--fs-xs); }
 .passkey-open-btn {

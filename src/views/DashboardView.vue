@@ -93,6 +93,7 @@ watch(() => route.query.tab, syncTabFromQuery)
         <div class="overlay" @click="showSettings = false" />
         <SettingsPanel
           @close="showSettings = false"
+          @login="router.push('/login')"
           @logout="router.push('/login')"
         />
       </div>
