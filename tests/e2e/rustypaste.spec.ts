@@ -2544,7 +2544,7 @@ test('history preview shows inline text content for text files', async ({ page }
       }),
     })
   })
-  await page.route('**/history-note/file.txt', async (route) => {
+  await page.route('**/api/history-note.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',

@@ -2,7 +2,7 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { zipSync } from 'fflate'
-import { getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicApiFileUrl, publicFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
+import { getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicApiFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
 import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import ActionConfirmDialog from './ActionConfirmDialog.vue'
@@ -928,7 +928,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0, signal?: AbortSignal): P
   const stored = getStoredEncryptedFile(f.file_name)
   const kind = previewKind(f)
   if (!stored || stored.key.startsWith('pw:')) {
-    const response = await fetch(publicFileUrl(f.file_name), {
+    const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`, {
       cache: 'no-store',
       headers: { Authorization: getAuthToken() },
       signal,

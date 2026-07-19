@@ -6,7 +6,7 @@
 server {
   listen 443 ssl http2;
   server_name paste.example.com;
-  client_max_body_size 100m;
+  client_max_body_size 50g;
   location / { proxy_pass http://127.0.0.1:8080; }
 }
 ```

@@ -297,28 +297,6 @@ pub(crate) fn registration_enabled(connection: &Connection) -> bool {
         .unwrap_or(true)
 }
 
-pub(crate) fn base_api_url_setting() -> Option<String> {
-    let auth_env = AuthEnv::from_env();
-    if !auth_env.db_path.exists() {
-        return None;
-    }
-    let connection = open_db(&auth_env.db_path).ok()?;
-    ensure_setting_defaults(&connection).ok()?;
-    let value: String = connection
-        .query_row(
-            "SELECT value FROM admin_settings WHERE key='base_api_url'",
-            [],
-            |row| row.get(0),
-        )
-        .ok()?;
-    let value = value.trim().trim_end_matches('/').to_string();
-    if value.is_empty() || !validate_url(&value) {
-        None
-    } else {
-        Some(value)
-    }
-}
-
 pub(crate) fn audit(
     connection: &Connection,
     actor: Option<&str>,

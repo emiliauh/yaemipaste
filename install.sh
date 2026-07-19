@@ -248,6 +248,12 @@ valid_origin() {
   [[ "$1" =~ ^https?://[^/?#]+/?$ ]]
 }
 
+is_ip_origin() {
+  local authority="${1#*://}"
+  authority="${authority%/}"
+  [[ "$authority" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(:[0-9]+)?$ || "$authority" =~ ^\[[0-9A-Fa-f:]+\](:[0-9]+)?$ ]]
+}
+
 prompt() {
   local message="$1"
   local default="${2:-}"
@@ -569,7 +575,7 @@ configure_env() {
     fi
   fi
 
-  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin
+  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin configure_features turnstile_enabled direct_ip_access
   deployment_mode="$(prompt "Deployment mode (same or split)" "${DEPLOYMENT_MODE_OVERRIDE:-$(env_get DEPLOYMENT_MODE "same")}")"
   [[ "$deployment_mode" =~ ^(same|split)$ ]] || die "Deployment mode must be same or split."
   split_role="$(env_get SPLIT_ROLE "")"
@@ -579,13 +585,21 @@ configure_env() {
   else
     split_role=""
   fi
-  ui_port="$(prompt "UI port" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
+  ui_port="$(env_get UI_PORT "$DEFAULT_UI_PORT")"
   [[ "$ui_port" =~ ^[1-9][0-9]{0,4}$ ]] && (( ui_port <= 65535 )) || die "UI port must be between 1 and 65535."
-  ui_bind="$(prompt "UI bind address (use 0.0.0.0 for direct IP access)" "${UI_BIND_OVERRIDE:-$(env_get UI_BIND_ADDRESS "127.0.0.1")}")"
   public_url="$(prompt "Public site URL (HTTPS preferred; HTTP/IP supported)" "${PUBLIC_URL_OVERRIDE:-$(env_get_nonempty PASTE_URL "$(default_public_url "$ui_port")")}")"
   valid_origin "$public_url" || die "Public site URL must be an origin such as https://paste.example.com or http://192.0.2.10:8080."
   if [[ "$public_url" == http://* ]]; then
     warn "Using HTTP for the public URL. HTTPS with a DNS name is recommended for internet-facing deployments."
+  fi
+  ui_bind="${UI_BIND_OVERRIDE:-$(env_get UI_BIND_ADDRESS "127.0.0.1")}"
+  if [[ -z "$UI_BIND_OVERRIDE" && "$ui_bind" == "127.0.0.1" ]] && is_ip_origin "$public_url"; then
+    direct_ip_access="$(prompt "Expose UI directly on this IP (1=yes, 0=no)" "1")"
+    if [[ "$direct_ip_access" == "1" ]]; then
+      ui_bind="0.0.0.0"
+    elif [[ "$direct_ip_access" != "0" ]]; then
+      warn "Invalid direct IP choice '${direct_ip_access}', keeping the UI loopback-bound."
+    fi
   fi
   api_origin="$(env_get_nonempty PASTE_PUBLIC_API "")"
   if [[ "$deployment_mode" == "split" ]]; then
@@ -609,23 +623,58 @@ configure_env() {
   if [[ "$deployment_mode" == "split" ]]; then
     auth_admin_origin="$api_origin"
   fi
-  sharex_enabled="$(prompt "Enable ShareX UI (1=yes, 0=no)" "$(env_get VITE_ENABLE_SHAREX "1")")"
-  auth_enabled="$(prompt "Enable account UI (1=yes, 0=no)" "$(env_get VITE_ENABLE_AUTH "1")")"
-  turnstile_key="$(prompt "Turnstile site key" "$(env_get VITE_TURNSTILE_SITE_KEY "")")"
-  turnstile_secret="$(prompt "Turnstile secret key" "$(env_get TURNSTILE_SECRET_KEY "")")"
-  jwt_secret="$(prompt "JWT secret (leave empty to auto-generate)" "$(env_get JWT_SECRET "")")"
-  passkeys_enabled="$(prompt "Enable passkeys (1=yes, 0=no)" "$(env_get PASSKEYS_ENABLED "0")")"
-  passkey_rp_name="$(prompt "Passkey RP name" "$(env_get PASSKEY_RP_NAME "yaemipaste")")"
-  passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
-  passkey_origins="$(prompt "Passkey origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
-  resolver_enabled="$(prompt "Enable compatibility resolver (1=yes, 0=no)" "$(env_get RESOLVER_ENABLED "0")")"
-  admin_base="$(prompt "Auth admin base URL" "$(env_get_nonempty AUTH_ADMIN_BASE_URL "${auth_admin_origin%/}/auth/admin")")"
-  bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
-  token_create_path="$(prompt "Auth token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
-  token_revoke_path="$(prompt "Auth token revoke path" "$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")")"
-  claim_init_path="$(prompt "Admin claim init path" "$(env_get AUTH_ADMIN_CLAIM_INIT_PATH "/claim/init")")"
-  register_url="$(prompt "Register endpoint URL" "$(env_get_nonempty AUTH_REGISTER_URL "${auth_admin_origin%/}/auth/register")")"
-  admin_bearer="$(prompt "Admin bearer token" "$(env_get_nonempty AUTH_ADMIN_BEARER "")")"
+  sharex_enabled="$(env_get VITE_ENABLE_SHAREX "1")"
+  auth_enabled="$(env_get VITE_ENABLE_AUTH "1")"
+  turnstile_key="$(env_get VITE_TURNSTILE_SITE_KEY "")"
+  turnstile_secret="$(env_get TURNSTILE_SECRET_KEY "")"
+  passkeys_enabled="$(env_get PASSKEYS_ENABLED "0")"
+  passkey_rp_name="$(env_get PASSKEY_RP_NAME "yaemipaste")"
+  passkey_rp_id="$(env_get PASSKEY_RP_ID "")"
+  passkey_origins="$(env_get PASSKEY_ORIGINS "")"
+  resolver_enabled="$(env_get RESOLVER_ENABLED "0")"
+  configure_features="$(prompt "Configure optional features (1=yes, 0=no)" "0")"
+
+  if [[ ! "$configure_features" =~ ^[01]$ ]]; then
+    warn "Invalid optional feature choice '${configure_features}', keeping defaults."
+    configure_features="0"
+  fi
+  if [[ "$configure_features" == "1" ]]; then
+    sharex_enabled="$(prompt "Enable ShareX UI (1=yes, 0=no)" "$sharex_enabled")"
+    auth_enabled="$(prompt "Enable account UI (1=yes, 0=no)" "$auth_enabled")"
+    turnstile_enabled="0"
+    [[ -n "$turnstile_key" || -n "$turnstile_secret" ]] && turnstile_enabled="1"
+    turnstile_enabled="$(prompt "Enable Turnstile (1=yes, 0=no)" "$turnstile_enabled")"
+    if [[ ! "$turnstile_enabled" =~ ^[01]$ ]]; then
+      warn "Invalid Turnstile toggle '${turnstile_enabled}', disabling Turnstile."
+      turnstile_enabled="0"
+    fi
+    if [[ "$turnstile_enabled" == "1" ]]; then
+      turnstile_key="$(prompt "Turnstile site key" "$turnstile_key")"
+      turnstile_secret="$(prompt "Turnstile secret key" "$turnstile_secret")"
+    else
+      turnstile_key=""
+      turnstile_secret=""
+    fi
+    passkeys_enabled="$(prompt "Enable passkeys (1=yes, 0=no)" "$passkeys_enabled")"
+    if [[ "$passkeys_enabled" == "1" ]]; then
+      passkey_rp_name="$(prompt "Passkey RP name" "$passkey_rp_name")"
+      passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$passkey_rp_id")"
+      passkey_origins="$(prompt "Passkey origins CSV (optional)" "$passkey_origins")"
+    else
+      passkey_rp_id=""
+      passkey_origins=""
+    fi
+    resolver_enabled="$(prompt "Enable compatibility resolver (1=yes, 0=no)" "$resolver_enabled")"
+  fi
+
+  jwt_secret="$(env_get JWT_SECRET "")"
+  admin_base="$(env_get_nonempty AUTH_ADMIN_BASE_URL "${auth_admin_origin%/}/auth/admin")"
+  bootstrap_path="$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")"
+  token_create_path="$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")"
+  token_revoke_path="$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")"
+  claim_init_path="$(env_get AUTH_ADMIN_CLAIM_INIT_PATH "/claim/init")"
+  register_url="$(env_get_nonempty AUTH_REGISTER_URL "${auth_admin_origin%/}/auth/register")"
+  admin_bearer="$(env_get_nonempty AUTH_ADMIN_BEARER "")"
 
   if [[ ! "$sharex_enabled" =~ ^[01]$ ]]; then
     warn "Invalid ShareX toggle '${sharex_enabled}', defaulting to 0"
