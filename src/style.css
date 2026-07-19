@@ -1,0 +1,486 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0b0e13;
+  --bg1:       #11161d;
+  --bg2:       #19212b;
+  --bg3:       #252f3b;
+  --surface:   #121820;
+  --surface2:  #1a232e;
+  --surface3:  #25313e;
+  --border:    #293542;
+  --border2:   #3b4b5c;
+  --text:      #f0f3f7;
+  --text2:     #a4b0be;
+  --text3:     #718092;
+  --accent:    #82a9d6;
+  --accent-h:  #b1cced;
+  --accent-d:  #5e86b4;
+  --orange:    var(--accent);
+  --orange-h:  var(--accent-h);
+  --red:       #d27676;
+  --red-h:     #f09a9a;
+  --green:     #8fc6a5;
+  --on-accent: #ffffff;
+  --shadow:    #00000066;
+  --modal-bg:  #000000b5;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg2));
+  --checked-bg:#14283b;
+  --danger-bg: #2b1111;
+  --success-border: #20442f;
+  --error-border: #4a1e1e;
+  --subtle-grad-end: #101112;
+
+  /* Radius scale - documented, do not invent ad-hoc values.
+     sm = controls (buttons/inputs/pills-non-full), md = cards/panels,
+     lg = hero-scale panels (upload panel, auth cards), full = pill toggles */
+  --radius:     7px;
+  --radius-sm:  7px;
+  --radius-md:  11px;
+  --radius-lg:  15px;
+  --radius-full: 999px;
+
+  /* Type scale */
+  --font:       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  --fs-display: clamp(28px, 3.4vw, 38px);
+  --fs-h1:      clamp(20px, 2.2vw, 24px);
+  --fs-h2:      15px;
+  --fs-body:    13px;
+  --fs-sm:      12px;
+  --fs-xs:      11px;
+  --lh-tight:   1.15;
+  --lh-body:    1.55;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --mobile-bar-space: calc(82px + env(safe-area-inset-bottom, 0px));
+  --sidebar-w: 228px;
+  --sidebar-w-tablet: 208px;
+  --sidebar-w-collapsed: 72px;
+  --sidebar-w-collapsed-tablet: 70px;
+  /* Motion tokens */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 0.15s;
+  --duration-base: 0.22s;
+  --duration-slow: 0.4s;
+
+  --focus-ring: 0 0 0 2px var(--bg1), 0 0 0 4px color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+:root[data-theme="light"] {
+  --bg:        #f5f7fa;
+  --bg1:       #ffffff;
+  --bg2:       #edf1f6;
+  --bg3:       #dfe6ef;
+  --surface:   #ffffff;
+  --surface2:  #f1f4f8;
+  --surface3:  #e5ebf2;
+  --border:    #d4dce6;
+  --border2:   #bac7d6;
+  --text:      #18202a;
+  --text2:     #5c6978;
+  --text3:     #7d8b9b;
+  --accent:    #4e78aa;
+  --accent-h:  #385f8d;
+  --accent-d:  #2e527b;
+  --red:       #b42318;
+  --red-h:     #d92d20;
+  --green:     #16834a;
+  --on-accent: #ffffff;
+  --shadow:    #1f29371f;
+  --modal-bg:  #15191f66;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--bg2));
+  --checked-bg:#e3eefb;
+  --danger-bg: #fde7e3;
+  --success-border: #8fd3aa;
+  --error-border: #efafa7;
+  --subtle-grad-end: #f1f4f8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+html, body {
+  height: 100%;
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  background-image: linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: 100vw 100dvh, 100vw 100dvh, 100vw 100dvh;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] body {
+  background-image: linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+/* ── Dashboard shell ───────────────────────────────────────────────────── */
+.layout,
+.workspace {
+  background: transparent;
+}
+
+
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+
+/* ── Inputs ────────────────────────────────────────────────────────────── */
+input, textarea {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+input:focus, textarea:focus { border-color: var(--accent); box-shadow: var(--focus-ring); }
+input::placeholder, textarea::placeholder { color: var(--text3); }
+
+/* Shared site-native checkbox. Keep the browser's accessible input semantics,
+   but replace platform paint so selection and settings controls belong to the
+   same design system everywhere. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--on-accent);
+  cursor: pointer;
+  position: relative;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 5px;
+  left: 4px;
+  top: 4px;
+  border-left: 2.25px solid currentColor;
+  border-bottom: 2.25px solid currentColor;
+  opacity: 0;
+  transform: rotate(-45deg) scale(.8);
+  transition: opacity .12s ease, transform .12s ease;
+}
+
+input[type="checkbox"]:checked,
+input[type="checkbox"]:indeterminate {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(-45deg) scale(1);
+}
+
+input[type="checkbox"]:indeterminate::after {
+  width: 8px;
+  height: 2px;
+  left: 3px;
+  top: 7px;
+  border: 0;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 1;
+  transform: none;
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+}
+
+input[type="checkbox"]:checked:hover:not(:disabled),
+input[type="checkbox"]:indeterminate:hover:not(:disabled) {
+  background: var(--accent-h);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg1), 0 0 0 4px color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+input[type="checkbox"]:disabled {
+  border-color: color-mix(in srgb, var(--text3) 72%, var(--border));
+  background: color-mix(in srgb, var(--surface3) 78%, var(--bg1));
+  color: var(--text3);
+  opacity: .9;
+  cursor: not-allowed;
+}
+
+/* Empty tables still show their selection affordance, but make it clear that
+   there is nothing to select rather than leaving it visually actionable. */
+.select-all:has(input[type="checkbox"]:disabled) {
+  color: var(--text3);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+button {
+  font-family: var(--font);
+  font-size: 12px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  padding: 5px 12px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+}
+.btn-primary:hover:not(:disabled) { background: var(--bg3); border-color: var(--text3); }
+
+.btn-orange {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.btn-orange:hover:not(:disabled) { background: var(--accent-h); }
+
+.btn-red {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.btn-red:hover:not(:disabled) { border-color: var(--red); color: var(--red-h); }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+.btn-ghost:hover:not(:disabled) { border-color: var(--border2); color: var(--text); }
+
+/* ── Card ──────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+/* Quiet utility overrides shared by legacy view markup. */
+.card,
+.upload-panel,
+.expiry-panel,
+.admin-header,
+.settings-panel,
+.table-wrap,
+.file-table {
+  box-shadow: none;
+}
+
+.upload-panel,
+.expiry-panel {
+  background: var(--surface);
+}
+
+.file-table td,
+.file-table th {
+  font-family: var(--font);
+}
+
+.filename,
+.share-file,
+.share-link-block a,
+code,
+kbd,
+.file-table td.name {
+  font-family: var(--font-mono);
+}
+
+button:active:not(:disabled),
+.nav-stack button:active,
+.brand-block:active,
+.preferences-btn:active,
+.name-toggle:active {
+  transform: none !important;
+}
+
+/* ── Info box ──────────────────────────────────────────────────────────── */
+.info-box {
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  color: var(--text2);
+  font-size: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.info-box .icon { flex-shrink: 0; margin-top: 1px; }
+
+/* ── Tabs ──────────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  overflow: hidden;
+  width: fit-content;
+}
+.tabs button {
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  padding: 6px 32px;
+  font-size: 13px;
+}
+.tabs button.active {
+  background: var(--bg2);
+  color: var(--text);
+}
+.tabs button:hover:not(.active) { background: var(--bg1); color: var(--text); }
+
+/* ── Table ─────────────────────────────────────────────────────────────── */
+.file-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.file-table th {
+  text-align: left;
+  color: var(--text2);
+  font-weight: normal;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  user-select: none;
+}
+.file-table th.sortable { cursor: pointer; }
+.file-table th.sortable:hover { color: var(--text); }
+.file-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2);
+}
+.file-table tr:last-child td { border-bottom: none; }
+.file-table tr:hover td { background: var(--bg1); }
+.file-table td.name { color: var(--text); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Misc ──────────────────────────────────────────────────────────────── */
+.text-muted { color: var(--text2); }
+.text-sm { font-size: 12px; }
+.gap-2 { gap: 8px; }
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+/* ── Notifications ─────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-size: 12px;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease;
+}
+.toast.success { border-left: 3px solid var(--green); }
+.toast.error   { border-left: 3px solid var(--red); }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Upload zone ───────────────────────────────────────────────────────── */
+.upload-zone {
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  color: var(--text2);
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--text3);
+  background: var(--bg1);
+}
+.upload-zone svg { margin-bottom: 10px; color: var(--text3); }
+
+/* ── Settings panel ─────────────────────────────────────────────────────── */
+.settings-panel {
+  position: fixed;
+  top: var(--settings-panel-top, auto);
+  right: var(--settings-panel-right, auto);
+  bottom: var(--settings-panel-bottom, auto);
+  left: var(--settings-panel-left, auto);
+  width: var(--settings-panel-width, auto);
+  max-height: var(--settings-panel-max-height, none);
+  background: color-mix(in srgb, var(--surface, var(--bg1)) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border2) 86%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 22px 54px color-mix(in srgb, var(--shadow) 36%, transparent), 0 1px 0 color-mix(in srgb, var(--text) 5%, transparent) inset;
+  padding: 16px;
+  z-index: 100;
+  font-size: 12px;
+}
+
+
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .file-table td.size,
+  .file-table th.col-size,
+  .file-table td.expiry,
+  .file-table th.col-expiry { display: none; }
+}

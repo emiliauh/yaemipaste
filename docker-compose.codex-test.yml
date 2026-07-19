@@ -1,0 +1,6 @@
+name: yaemipaste-codex-test
+
+# Keeps the local Turnstile-free test stack isolated from production Docker DNS.
+networks:
+  yaemipaste:
+    name: yaemipaste-codex-test

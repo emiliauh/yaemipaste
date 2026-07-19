@@ -1,0 +1,42 @@
+{
+  "name": "yaemipaste",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Frontend for a compatible Rustypaste backend with auth, history, previews, encryption, and ShareX support.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emiliauh/yaemipaste.git"
+  },
+  "bugs": {
+    "url": "https://github.com/emiliauh/yaemipaste/issues"
+  },
+  "homepage": "https://github.com/emiliauh/yaemipaste#readme",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:preview": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 PLAYWRIGHT_SERVER_COMMAND='npm run preview -- --host 127.0.0.1 --port 4173' playwright test",
+    "audit:deps": "npm audit --audit-level=moderate",
+    "validate:release": "npm run build && npm run test:e2e:preview",
+    "promote:production": "bash ./scripts/promote-production.sh"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.32",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^24.12.2",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.4",
+    "vite-plugin-css-injected-by-js": "^5.0.0",
+    "vue-tsc": "^3.2.6"
+  }
+}

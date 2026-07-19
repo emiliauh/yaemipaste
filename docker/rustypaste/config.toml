@@ -1,0 +1,44 @@
+[config]
+refresh_rate = "1s"
+
+[server]
+address = "0.0.0.0:8000"
+
+url = "http://localhost:8080"
+max_content_length = "51200MB"
+upload_path = "/var/lib/rustypaste/upload"
+timeout = "30s"
+expose_version = true
+expose_list = true
+handle_spaces = "replace"
+
+[server.cors]
+allowed_origins = []
+allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+allowed_headers = ["Authorization", "Content-Type", "Expire", "Cache-Control"]
+
+[landing_page]
+text = """
+backend API for yaemipaste
+"""
+content_type = "text/plain; charset=utf-8"
+
+[paste]
+random_url = { type = "alphanumeric", length = 8 }
+default_extension = "txt"
+mime_override = [
+  { mime = "image/jpeg", regex = "^.*\\.jpg$" },
+  { mime = "image/png", regex = "^.*\\.png$" },
+  { mime = "image/svg+xml", regex = "^.*\\.svg$" },
+  { mime = "video/webm", regex = "^.*\\.webm$" },
+  { mime = "video/x-matroska", regex = "^.*\\.mkv$" },
+  { mime = "application/octet-stream", regex = "^.*\\.bin$" },
+  { mime = "text/plain", regex = "^.*\\.(log|txt|diff|sh|rs|toml)$" },
+]
+mime_blacklist = [
+  "application/x-dosexec",
+  "application/java-archive",
+  "application/java-vm",
+]
+duplicate_files = true
+delete_expired_files = { enabled = true, interval = "1h" }

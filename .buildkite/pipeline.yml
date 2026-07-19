@@ -1,0 +1,23 @@
+env:
+  CI: "true"
+
+steps:
+  - label: ":node: Frontend build + E2E"
+    key: "frontend"
+    command:
+      - "npm ci"
+      - "npm run build"
+      - "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium"
+      - "PLAYWRIGHT_BROWSERS_PATH=0 npm run test:e2e:preview"
+    artifact_paths:
+      - "dist/**/*"
+      - "test-results/**/*"
+      - "playwright-report/**/*"
+
+  - label: ":lock: Dependency audit"
+    key: "audit"
+    command:
+      - "npm ci"
+      - "npm run audit:deps"
+    soft_fail:
+      - exit_status: 1
