@@ -103,9 +103,16 @@ async fn index(config: web::Data<RwLock<Config>>) -> Result<HttpResponse, Error>
 struct ServeOptions {
     /// If set to `true`, change the MIME type to `application/octet-stream` and force downloading
     /// the file.
-    download: bool,
+    download: Option<String>,
     /// If set to `true`, always return the raw file bytes.
-    raw: bool,
+    raw: Option<String>,
+}
+
+fn query_flag(value: Option<&String>) -> bool {
+    matches!(
+        value.map(|item| item.trim().to_ascii_lowercase()).as_deref(),
+        Some("1" | "true" | "yes")
+    )
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -408,6 +415,24 @@ fn public_path_from_file_name(file_name: &str) -> String {
     }
 }
 
+fn preview_location(config: &Config, file_name: &str) -> String {
+    let path = public_path_from_file_name(file_name);
+    let configured_origin = config
+        .server
+        .url
+        .clone()
+        .or_else(|| env::var("PASTE_URL").ok());
+    let origin = configured_origin
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.trim_end_matches('/'));
+    match origin {
+        Some(origin) => format!("{origin}/#/preview?p={path}"),
+        None => format!("/#/preview?p={path}"),
+    }
+}
+
 fn should_redirect_to_preview(
     request: &HttpRequest,
     file_name: &str,
@@ -434,15 +459,23 @@ async fn serve_impl(
     let config = config
         .read()
         .map_err(|_| error::ErrorInternalServerError("cannot acquire config"))?;
-    let force_download = options.as_ref().map(|v| v.download).unwrap_or(false);
-    let force_raw = options.as_ref().map(|v| v.raw).unwrap_or(false);
+    let force_download = options
+        .as_ref()
+        .map(|value| query_flag(value.download.as_ref()))
+        .unwrap_or(false);
+    let force_raw = options
+        .as_ref()
+        .map(|value| query_flag(value.raw.as_ref()))
+        .unwrap_or(false);
     let (path, paste_type, resolved_root) = resolve_file_location(&request, &file_name, &config)?;
     match paste_type {
         PasteType::File | PasteType::RemoteFile | PasteType::Oneshot => {
             if should_redirect_to_preview(&request, &file_name, force_download, force_raw) {
-                let location = format!("/#/preview?p=/{}", public_path_from_file_name(&file_name));
+                let location = preview_location(&config, &file_name);
                 return Ok(HttpResponse::Found()
                     .append_header(("Location", location))
+                    .append_header(("Cache-Control", "no-store"))
+                    .append_header(("Vary", "Accept"))
                     .finish());
             }
             let mime_type = if force_download {
@@ -1785,6 +1818,59 @@ mod tests {
         let response = test::call_service(&app, serve_request).await;
         assert_eq!(StatusCode::NOT_FOUND, response.status());
 
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_browser_file_request_redirects_to_public_ui_and_raw_query_serves_bytes() -> Result<(), Error> {
+        let mut config = Config::default();
+        config.server.url = Some("https://paste.example.com".to_string());
+        let upload_path = env::temp_dir().join(format!("rustypaste-browser-preview-{}", std::process::id()));
+        fs::create_dir_all(&upload_path)?;
+        config.server.upload_path = upload_path.clone();
+        let file_name = "browser-file-request.txt";
+        let contents = "browser raw bytes";
+        fs::write(upload_path.join(file_name), contents)?;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(config)))
+                .app_data(Data::new(Client::default()))
+                .configure(configure_routes),
+        )
+        .await;
+
+        let preview_http_request = TestRequest::get()
+            .uri(&format!("/{file_name}"))
+            .insert_header(("Accept", "text/html"))
+            .to_http_request();
+        assert!(should_redirect_to_preview(&preview_http_request, file_name, false, false));
+        let preview_request = TestRequest::get()
+            .uri(&format!("/{file_name}"))
+            .insert_header(("Accept", "text/html"))
+            .to_request();
+        let preview_response = test::call_service(&app, preview_request).await;
+        assert_eq!(StatusCode::FOUND, preview_response.status());
+        assert_eq!(
+            preview_response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("https://paste.example.com/#/preview?p=/browser-file-request/file.txt")
+        );
+
+        let raw_response = test::call_service(
+            &app,
+            TestRequest::get()
+                .uri(&format!("/{file_name}?raw=1"))
+                .insert_header(("Accept", "text/html"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(StatusCode::OK, raw_response.status());
+        assert_body(raw_response.into_body(), contents).await?;
+
+        fs::remove_dir_all(upload_path)?;
         Ok(())
     }
 

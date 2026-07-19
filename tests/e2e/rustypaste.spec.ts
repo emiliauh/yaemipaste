@@ -438,7 +438,7 @@ test('raw actions use the server API base instead of a stale browser override', 
       }),
     })
   })
-  await page.route('https://papi.example.test/meta/server-api.txt', async (route) => {
+  await page.route('https://paste.example.test/api/meta/server-api.txt', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -452,7 +452,7 @@ test('raw actions use the server API base instead of a stale browser override', 
       }),
     })
   })
-  await page.route('https://papi.example.test/server-api.txt?raw=1', async (route) => {
+  await page.route('https://paste.example.test/api/server-api.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -465,7 +465,39 @@ test('raw actions use the server API base instead of a stale browser override', 
   await page.goto(`/file/${token}/preview`)
 
   await expect(page.getByText('server API raw text')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://papi.example.test/server-api.txt?raw=1')
+  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://paste.example.test/api/server-api.txt?raw=1')
+})
+
+test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page }) => {
+  await page.route('**/api/meta/raw-browser.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'raw-browser.txt',
+        display_name: 'raw-browser.txt',
+        uploader: 'test-user',
+        file_size: 16,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+  await page.context().route('**/api/raw-browser.txt?raw=1', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: 'raw browser bytes' })
+  })
+
+  const token = Buffer.from('raw-browser.txt').toString('base64url')
+  await page.goto(`/file/${token}/preview`)
+  await expect(page.getByText('raw browser bytes')).toBeVisible()
+
+  const popupPromise = page.waitForEvent('popup')
+  await page.getByRole('link', { name: 'View raw' }).click()
+  const popup = await popupPromise
+  await popup.waitForLoadState()
+
+  await expect(popup).toHaveURL(/\/api\/raw-browser\.txt\?raw=1$/)
+  await expect(popup.locator('body')).toContainText('raw browser bytes')
+  await popup.close()
 })
 
 test('History copies an absolute raw URL from the server API base', async ({ page }) => {
@@ -487,7 +519,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
       }),
     })
   })
-  await page.route('https://papi.example.test/list**', async (route) => {
+  await page.route('https://paste.example.test/api/list**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -500,7 +532,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
       }]),
     })
   })
-  await page.route('https://papi.example.test/meta/history-server-api.txt', async (route) => {
+  await page.route('https://paste.example.test/api/meta/history-server-api.txt', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -514,7 +546,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
       }),
     })
   })
-  await page.route('https://papi.example.test/history-server-api.txt?raw=1', async (route) => {
+  await page.route('https://paste.example.test/api/history-server-api.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -524,12 +556,12 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
   })
 
   await page.goto('/files?tab=history')
-  await page.getByText('history-server-api.txt').click()
+  await page.locator('tr.file-row .filename').first().click()
   const modal = page.locator('.modal')
   await modal.getByRole('button', { name: 'Copy' }).click()
   await modal.getByRole('menuitem', { name: /Copy raw URL/ }).click()
 
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://papi.example.test/history-server-api.txt?raw=1')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://paste.example.test/api/history-server-api.txt?raw=1')
 })
 
 async function expandExpiryIfCollapsed(page: Page) {
@@ -1550,7 +1582,11 @@ test('single-segment file URL boots into preview route for images', async ({ pag
       }),
     })
   })
-  await page.route('**/png-check/file.png', async (route) => {
+  const rawRequests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/api/png-check.png?raw=1')) rawRequests.push(request.url())
+  })
+  await page.route('**/api/png-check.png?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -1565,6 +1601,36 @@ test('single-segment file URL boots into preview route for images', async ({ pag
   await expect(page).toHaveURL(/\/file\/[A-Za-z0-9_-]+\/preview/)
   await expect(page.getByText('png-check.png')).toBeVisible()
   await expect(page.locator('.preview-frame img')).toBeVisible()
+  await expect.poll(() => page.locator('.preview-frame img').evaluate((image) => image.naturalWidth)).toBeGreaterThan(0)
+  expect(rawRequests).toHaveLength(1)
+})
+
+test('public PDF preview requests bytes through the API proxy', async ({ page }) => {
+  await page.route('**/api/meta/api-preview-check.pdf', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'api-preview-check.pdf',
+        display_name: 'api-preview-check.pdf',
+        uploader: 'test-user',
+        file_size: 26,
+        mime_type: 'application/pdf',
+      }),
+    })
+  })
+  await page.route('**/api/api-preview-check.pdf?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/pdf',
+      body: '%PDF-1.4\n%%EOF\n',
+    })
+  })
+
+  await page.goto('/#/preview?p=/api-preview-check/file.pdf')
+  const pdf = page.locator('iframe[title="PDF preview"]')
+  await expect(pdf).toBeVisible()
+  await expect(pdf).toHaveAttribute('src', '/api/api-preview-check.pdf?raw=1')
 })
 
 test('notifications are row-stacked, capped at five, and clearable', async ({ page }) => {

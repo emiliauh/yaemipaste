@@ -2,7 +2,7 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { zipSync } from 'fflate'
-import { getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicApiFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
+import { fileUrl, getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
 import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import ActionConfirmDialog from './ActionConfirmDialog.vue'
@@ -529,7 +529,7 @@ function setPasswordChangeProgress(status: string, percent: number) {
 }
 
 async function fetchEncryptedPayload(fileName: string, onProgress?: (percent: number) => void): Promise<Blob> {
-  const response = await fetch(`${publicApiFileUrl(fileName)}?raw=1`, {
+  const response = await fetch(fileUrl(fileName), {
     cache: 'no-store',
     headers: { Authorization: getAuthToken() },
   })
@@ -779,7 +779,7 @@ async function downloadSelectedAsZip() {
   try {
     for (const file of selected) {
       try {
-        const response = await fetch(`${publicApiFileUrl(file.file_name)}?raw=1`, {
+        const response = await fetch(fileUrl(file.file_name), {
           headers: { Authorization: auth },
         })
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -889,7 +889,7 @@ async function downloadFile(f: PasteFile) {
     return
   }
   try {
-    const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`, {
+    const response = await fetch(fileUrl(f.file_name), {
       headers: { Authorization: getAuthToken() },
     })
     if (!response.ok) throw new Error('Download failed')
@@ -911,7 +911,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0, signal?: AbortSignal): P
   const stored = getStoredEncryptedFile(f.file_name)
   const kind = previewKind(f)
   if (!stored || stored.key.startsWith('pw:')) {
-    const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`, {
+    const response = await fetch(fileUrl(f.file_name), {
       cache: 'no-store',
       headers: { Authorization: getAuthToken() },
       signal,
@@ -930,7 +930,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0, signal?: AbortSignal): P
     return previewStateFromCache(f, cachedPreviewResult, x, y)
   }
 
-  const response = await fetch(`${publicApiFileUrl(f.file_name)}?raw=1`, {
+  const response = await fetch(fileUrl(f.file_name), {
     cache: 'no-store',
     headers: { Authorization: getAuthToken() },
     signal,

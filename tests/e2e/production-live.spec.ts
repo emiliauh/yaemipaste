@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 
 const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
 const liveBaseUrl = process.env.PLAYWRIGHT_LIVE_BASE_URL?.replace(/\/$/, '') ?? ''
@@ -24,10 +25,14 @@ test('production: password encryption upload + preview + history thumbnail', asy
 
   const uploadRequestUrls: string[] = []
   const uploadResponseBodies: string[] = []
+  const browserRawRequestUrls: string[] = []
 
   page.on('request', (req) => {
     if (req.method() === 'POST' && (req.url().startsWith(liveApiBaseUrl) || req.url().startsWith(liveBrowserApiBaseUrl))) {
       uploadRequestUrls.push(req.url())
+    }
+    if (req.method() === 'GET' && req.url().startsWith(liveBrowserApiBaseUrl) && req.url().includes('?raw=1')) {
+      browserRawRequestUrls.push(req.url())
     }
   })
 
@@ -101,11 +106,29 @@ test('production: password encryption upload + preview + history thumbnail', asy
 
   await page.goto(rewritePreviewOrigin(imageHref ?? `${liveBrowserBaseUrl}/`))
   await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
-  const previewFrame = page.locator('iframe[title="File preview"]')
-  if (await previewFrame.count()) await expect(previewFrame).toBeVisible()
-  else await expect(page.locator('img')).toBeVisible()
+  const image = page.locator('.preview-frame img')
+  await expect(image).toBeVisible()
+  await expect.poll(() => image.evaluate((element) => element.naturalWidth)).toBeGreaterThan(0)
   const rawHref = await page.getByRole('link', { name: 'View raw' }).getAttribute('href')
-  expect(rawHref ?? '').toMatch(/^(https?:\/\/[^/]+)?\/api\/[^?]+\?raw=1$/)
+  const rawUrl = new URL(rawHref ?? '', liveBrowserBaseUrl).toString()
+  expect(rawUrl).toMatch(new RegExp(`^${liveBrowserApiBaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^?]+\\?raw=1$`))
+  const rawResponse = await request.get(rawUrl)
+  expect(rawResponse.ok()).toBeTruthy()
+  expect(rawResponse.headers()['content-type']).toContain('image/png')
+  expect(await rawResponse.body()).toEqual(Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+    'base64',
+  ))
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Download file' }).click()
+  const download = await downloadPromise
+  const downloadPath = await download.path()
+  expect(downloadPath).toBeTruthy()
+  if (downloadPath) expect(await readFile(downloadPath)).toEqual(Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+    'base64',
+  ))
 
   await page.goto(`${liveBrowserBaseUrl}/#/files`)
   await page.waitForURL('**/files')
@@ -113,12 +136,14 @@ test('production: password encryption upload + preview + history thumbnail', asy
   const firstHistoryRow = page.locator('tr.file-row').first()
   await expect(firstHistoryRow).toBeVisible()
   await expect(firstHistoryRow.getByRole('img').first()).toBeVisible()
+  await expect.poll(() => firstHistoryRow.getByRole('img').first().evaluate((element) => element.naturalWidth)).toBeGreaterThan(0)
 
   expect(uploadRequestUrls.length).toBeGreaterThanOrEqual(2)
   for (const url of uploadRequestUrls) {
     expect([`${liveApiBaseUrl}/`, `${liveBrowserApiBaseUrl}/`]).toContain(url)
   }
   expect(uploadResponseBodies.some((body) => body.toLowerCase().includes('rustypaste api root'))).toBeFalsy()
+  expect(browserRawRequestUrls.some((url) => url.includes(encodeURIComponent(imageFileName)))).toBeTruthy()
 
   await request.delete(`${liveApiBaseUrl}/${encodeURIComponent(imageFileName)}`, {
     headers: { Authorization: liveToken },

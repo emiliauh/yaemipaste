@@ -149,8 +149,18 @@ export function getDefaultPasteApiBase(): string {
   return runtimeBaseApi() ?? DEFAULT_PASTE_API
 }
 
+function browserApiProxyBase(): string {
+  const origin = publicSiteOrigin()
+  const path = '/api'
+  if (typeof window !== 'undefined' && origin === window.location.origin) return path
+  return `${origin}${path}`
+}
+
 export function getPasteApiBase(): string {
   const runtimeBase = runtimeBaseApi()
+  // Browser API traffic uses the public UI proxy so split-host API DNS or firewall
+  // issues cannot turn ordinary metadata and history requests into SPA failures.
+  if (typeof window !== 'undefined' && runtimeBase) return browserApiProxyBase()
   // The server-wide setting must override stale per-browser API preferences.
   if (runtimeBase) return runtimeBase
   const defaultBase = DEFAULT_PASTE_API
@@ -1050,8 +1060,19 @@ export function publicApiFileUrl(fileName: string): string {
   return `${getPasteApiBase()}/${encodeURIComponent(fileName)}`
 }
 
+export function browserFileUrl(fileName: string, query = ''): string {
+  const origin = publicSiteOrigin()
+  const path = `/api/${encodeURIComponent(fileName)}${query ? `?${query}` : ''}`
+  if (typeof window !== 'undefined' && origin === window.location.origin) return path
+  return `${origin}${path}`
+}
+
 export function fileUrl(filename: string): string {
-  return `${publicApiFileUrl(filename)}?raw=1`
+  return browserFileUrl(filename, 'raw=1')
+}
+
+export function downloadFileUrl(filename: string): string {
+  return browserFileUrl(filename, 'download=true')
 }
 
 export function shareUrl(filename: string): string {
