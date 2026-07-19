@@ -671,7 +671,9 @@ function requestUserDelete(username: string) {
 }
 
 function refreshAdminWhenVisible() {
-  if (document.visibilityState === 'visible') void refreshAll()
+  // Do not replace unsaved settings, or the Turnstile widget and secret lose
+  // their backing form state when the administrator returns to this tab.
+  if (document.visibilityState === 'visible' && tab.value !== 'Settings') void refreshAll()
 }
 
 function closeUploadMenusOnOutsidePointer(event: PointerEvent) {
@@ -722,6 +724,7 @@ function repositionUserRowMenu() {
 
 watch(tab, async (nextTab) => {
   closeUserRowMenu()
+  if (nextTab !== 'Settings') turnstileTest.destroy()
   await nextTick()
   if (nextTab === 'Users') usersTableScroll.value?.scrollTo({ left: 0 })
   if (nextTab === 'Uploads') uploadsTableScroll.value?.scrollTo({ left: 0 })
@@ -734,7 +737,6 @@ watch(pagedUsers, (nextUsers) => {
 onMounted(() => {
   void refreshPublicSettings()
   void refreshAll()
-  window.addEventListener('focus', refreshAdminWhenVisible)
   document.addEventListener('visibilitychange', refreshAdminWhenVisible)
   document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.addEventListener('blur', hideUploadHover)
@@ -744,8 +746,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('focus', refreshAdminWhenVisible)
   document.removeEventListener('visibilitychange', refreshAdminWhenVisible)
+  turnstileTest.destroy()
   document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.removeEventListener('blur', hideUploadHover)
   window.removeEventListener('scroll', hideUploadHover, true)
@@ -1125,11 +1127,11 @@ onBeforeUnmount(() => {
           <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
           <label class="inline-check span-2"><input v-model="settingsForm.turnstile_enabled" type="checkbox" /> <span><strong>Enable Turnstile</strong><small>Require Cloudflare Turnstile verification before account login.</small></span></label>
           <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
-            <label><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" /></label>
-            <label><span>Turnstile secret key</span><small>Private server verification key. It is never displayed after saving.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" placeholder="Enter a new key to replace the existing one" /></label>
-            <div class="span-2">
+            <label class="turnstile-key-field"><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" /></label>
+            <label class="turnstile-key-field"><span>Turnstile secret key</span><small>Private server verification key. It is never displayed after saving.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" placeholder="Enter a new key to replace the existing one" /></label>
+            <div class="turnstile-test-actions span-2">
               <div ref="turnstileTestContainer" class="turnstile-test-widget"></div>
-              <button class="btn-orange turnstile-test" style="width:100%;background:#d69e00" type="button" :disabled="turnstileTestBusy" @click="testTurnstile">{{ turnstileTestBusy ? 'Verifying credentials…' : turnstileTest.token ? 'Verify Turnstile credentials' : 'Start Turnstile verification' }}</button>
+              <button class="btn-orange turnstile-test" type="button" :disabled="turnstileTestBusy" @click="testTurnstile">{{ turnstileTestBusy ? 'Verifying credentials…' : turnstileTest.token ? 'Verify Turnstile credentials' : 'Start Turnstile verification' }}</button>
             </div>
           </div>
         </div>
@@ -2699,6 +2701,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   margin-top: var(--space-2);
   background: color-mix(in srgb, var(--bg2) 78%, var(--surface));
 }
+.turnstile-key-field { display: grid; grid-template-rows: auto minmax(calc(1.45em * 2), auto) auto; align-content: start; }
+.turnstile-test-actions { display: grid; gap: var(--space-2); }
+.turnstile-test { width: 100%; background: #d69e00; }
 .settings-group-branding .settings-fields label:last-child {
   grid-column: 1 / -1;
 }

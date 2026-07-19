@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getAuthJwt, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
-import { decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
+import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -103,7 +103,10 @@ async function decryptPreview() {
       payload = await response.blob()
     }
     if (!(await isRustypasteEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
-    const decrypted = await decryptEncryptedBlob(payload, key)
+    const stored = storedEncrypted.value
+    const decrypted = stored?.key.startsWith('pw:')
+      ? await decryptBlobWithPassword(payload, key, stored.key.slice(3))
+      : await decryptEncryptedBlob(payload, key)
     clearDecryptedUrl()
     decryptedUrl.value = URL.createObjectURL(decrypted.blob)
     decryptedName.value = decrypted.metadata.name
@@ -340,8 +343,8 @@ onBeforeUnmount(() => {
   <div v-if="encryptedPreviewLocked" class="modal-backdrop" @click.self="emit('close')">
     <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="encrypted-preview-title">
       <div class="password-modal-header"><strong id="encrypted-preview-title">Preview encrypted file</strong><button class="modal-close btn-ghost" :disabled="decryptionBusy" aria-label="Close key prompt" @click="emit('close')">✕</button></div>
-      <div class="password-modal-copy">Enter the decryption key to preview this file in-app.</div>
-      <div class="password-form"><label>Decryption key<input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste decryption key" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" /></label></div>
+      <div class="password-modal-copy">Enter the decryption {{ storedEncrypted?.key.startsWith('pw:') ? 'password' : 'key' }} to preview this file in-app.</div>
+      <div class="password-form"><label>Decryption {{ storedEncrypted?.key.startsWith('pw:') ? 'password' : 'key' }}<input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" :placeholder="storedEncrypted?.key.startsWith('pw:') ? 'Enter decryption password' : 'Paste decryption key'" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" /></label></div>
       <div v-if="decryptionError" class="password-modal-error">{{ decryptionError }}</div>
       <div class="password-modal-actions"><button class="btn-ghost" :disabled="decryptionBusy" @click="emit('close')">Cancel</button><button class="btn-primary" :disabled="decryptionBusy || !decryptionKey.trim()" @click="decryptPreview">{{ decryptionBusy ? 'Decrypting…' : 'Preview file' }}</button></div>
     </div>
