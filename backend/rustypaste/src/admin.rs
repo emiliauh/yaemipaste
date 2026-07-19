@@ -7,7 +7,7 @@
 
 use crate::account_auth::{
     configured_tokens, create_jwt, current_user, json_error, normalize_username, now_seconds,
-    open_db, require_admin, AuthEnv,
+    open_db, require_admin, verify_turnstile, AuthEnv,
 };
 use crate::config::Config;
 use crate::ratelimit::{client_key, RateLimiter};
@@ -93,6 +93,9 @@ struct SettingsRequest {
     turnstile_site_key: Option<String>,
     turnstile_secret_key: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+struct TurnstileTestRequest { secret_key: String, token: String }
 
 #[derive(Debug, Deserialize)]
 struct WebhookRequest {
@@ -2293,6 +2296,21 @@ async fn put_settings(request: HttpRequest, body: web::Json<SettingsRequest>) ->
     }
 }
 
+#[post("/settings/turnstile/test")]
+async fn test_turnstile(request: HttpRequest, body: web::Json<TurnstileTestRequest>, client: web::Data<Client>) -> HttpResponse {
+    let auth_env = AuthEnv::from_env();
+    let connection = match open_db(&auth_env.db_path) { Ok(value) => value, Err(response) => return response };
+    if let Err(response) = require_jwt_admin(&request, &connection, &auth_env) { return response; }
+    if body.secret_key.trim().is_empty() || body.token.trim().is_empty() {
+        return json_error(StatusCode::BAD_REQUEST, "Turnstile secret key and verification token are required");
+    }
+    if verify_turnstile(&client, &body.secret_key, &body.token).await {
+        HttpResponse::Ok().json(json!({ "success": true }))
+    } else {
+        json_error(StatusCode::BAD_REQUEST, "Turnstile verification failed. Check the keys and domain.")
+    }
+}
+
 #[get("/webhooks")]
 async fn list_webhooks(request: HttpRequest) -> HttpResponse {
     let auth_env = AuthEnv::from_env();
@@ -2609,6 +2627,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(purge_expired)
         .service(get_settings)
         .service(put_settings)
+        .service(test_turnstile)
         .service(list_webhooks)
         .service(create_webhook)
         .service(update_webhook)

@@ -16,6 +16,7 @@ import {
   adminRotateUserToken,
   adminSettings,
   adminTestWebhook,
+  adminTestTurnstile,
   adminUpdateSettings,
   adminUpdateUser,
   adminUpdateWebhook,
@@ -40,6 +41,7 @@ import {
   type PasteFile,
   type WebhookDelivery,
 } from '../lib/api'
+import { useTurnstile } from '../lib/turnstile'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 import ActionConfirmDialog from '../components/ActionConfirmDialog.vue'
@@ -106,6 +108,10 @@ watch(() => route.params.section, () => {
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
 const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public', turnstile_enabled: false, turnstile_site_key: '', turnstile_secret_key: '' })
+const turnstileTestContainer = ref<HTMLElement | null>(null)
+const turnstileTestStatus = ref('')
+const turnstileTestBusy = ref(false)
+const turnstileTest = useTurnstile()
 const webhookEventOptions = [
   { value: 'file.uploaded', label: 'File uploaded', description: 'When a new file or paste is stored.' },
   { value: 'file.deleted', label: 'File deleted', description: 'When a file is removed manually or by cleanup.' },
@@ -484,6 +490,27 @@ async function saveSettings() {
     await adminUpdateSettings(settingsForm.value)
     await refreshPublicSettings(true)
   }, 'Settings updated')
+}
+
+async function testTurnstile() {
+  if (!settingsForm.value.turnstile_site_key.trim() || !settingsForm.value.turnstile_secret_key.trim()) {
+    turnstileTestStatus.value = 'Enter both Turnstile keys before testing.'
+    return
+  }
+  turnstileTestStatus.value = ''
+  await nextTick()
+  try {
+    await turnstileTest.mount(turnstileTestContainer.value!, settingsForm.value.turnstile_site_key.trim())
+    turnstileTestBusy.value = true
+    const token = await turnstileTest.ensureToken(settingsForm.value.turnstile_site_key.trim())
+    await adminTestTurnstile(settingsForm.value.turnstile_secret_key.trim(), token)
+    turnstileTestStatus.value = 'Turnstile credentials verified successfully.'
+  } catch (error: any) {
+    turnstileTestStatus.value = error.message ?? 'Turnstile verification failed.'
+  } finally {
+    turnstileTestBusy.value = false
+    turnstileTest.reset()
+  }
 }
 
 async function deleteUploadWithConfirmation(path: string) {
@@ -1093,6 +1120,11 @@ onBeforeUnmount(() => {
           <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
             <label><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" /></label>
             <label><span>Turnstile secret key</span><small>Private server verification key.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" /></label>
+            <div class="span-2">
+              <div ref="turnstileTestContainer" class="turnstile-test-widget"></div>
+              <button class="btn-orange turnstile-test" style="width:100%;background:#d69e00" type="button" :disabled="turnstileTestBusy" @click="testTurnstile">{{ turnstileTestBusy ? 'Testing Turnstile…' : 'Test Turnstile credentials' }}</button>
+              <small v-if="turnstileTestStatus">{{ turnstileTestStatus }}</small>
+            </div>
           </div>
         </div>
       </section>

@@ -1348,11 +1348,15 @@ export function adminSettings() {
   return adminRequest<AdminSettings>('/settings', {}, 'Could not load settings')
 }
 
-export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; file_size_limit_bytes?: number; file_size_limit_unlimited?: boolean; upload_access_mode?: 'private' | 'public' }) {
+export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; file_size_limit_bytes?: number; file_size_limit_unlimited?: boolean; upload_access_mode?: 'private' | 'public'; turnstile_enabled?: boolean; turnstile_site_key?: string; turnstile_secret_key?: string }) {
   return adminRequest<AdminSettings>('/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),
   }, 'Could not update settings')
+}
+
+export function adminTestTurnstile(secretKey: string, token: string) {
+  return adminRequest<{ success: boolean }>('/settings/turnstile/test', { method: 'POST', body: JSON.stringify({ secret_key: secretKey, token }) }, 'Turnstile verification failed')
 }
 
 export function adminWebhooks() {

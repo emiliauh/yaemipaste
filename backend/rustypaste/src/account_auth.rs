@@ -762,7 +762,7 @@ fn extract_transports(credential: &Value) -> Option<String> {
     }
 }
 
-async fn verify_turnstile(client: &Client, secret: &str, token: &str) -> bool {
+pub(crate) async fn verify_turnstile(client: &Client, secret: &str, token: &str) -> bool {
     if secret.trim().is_empty() {
         return true;
     }
