@@ -507,10 +507,13 @@ async function testTurnstile() {
     const siteKey = settingsForm.value.turnstile_site_key.trim()
     if (turnstileTestSiteKey.value && turnstileTestSiteKey.value !== siteKey) turnstileTest.destroy()
     turnstileTestSiteKey.value = siteKey
+    if (!turnstileTest.token.value) {
+      await adminTestTurnstile(settingsForm.value.turnstile_secret_key.trim())
+      notifications.push('Cloudflare accepted the secret key. Complete the visible challenge to verify the site key and domain.', 'success')
+    }
     await turnstileTest.mount(turnstileTestContainer.value!, siteKey, 'always')
     if (turnstileTest.fatalError.value) throw new Error(turnstileTest.fatalError.value)
     if (!turnstileTest.token.value) {
-      notifications.push('Complete the Turnstile challenge, then verify the credentials.', 'error')
       return
     }
     turnstileTestBusy.value = true

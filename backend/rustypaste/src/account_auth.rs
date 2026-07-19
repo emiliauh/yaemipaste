@@ -83,7 +83,7 @@ struct RegisterRequest {
 struct LoginRequest {
     username: String,
     password: String,
-    #[serde(default)]
+    #[serde(default, rename = "error-codes")]
     turnstile_token: String,
 }
 
@@ -132,6 +132,8 @@ struct TurnstileRequest<'a> {
 #[derive(Debug, Deserialize)]
 struct TurnstileResponse {
     success: bool,
+    #[serde(default)]
+    error_codes: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -790,6 +792,16 @@ pub(crate) async fn verify_turnstile(client: &Client, secret: &str, token: &str)
             false
         }
     }
+}
+
+/// A deliberately invalid response lets us test server-to-Cloudflare
+/// connectivity and whether Cloudflare accepts the secret without logging a
+/// visitor token. A valid secret returns `invalid-input-response` here.
+pub(crate) async fn probe_turnstile_secret(client: &Client, secret: &str) -> Result<(), &'static str> {
+    if secret.trim().is_empty() { return Err("Turnstile secret key is required"); }
+    let mut response = client.post(TURNSTILE_VERIFY_URL).send_form(&TurnstileRequest { secret, response: "yaemipaste-credential-probe" }).await.map_err(|_| "Could not reach Cloudflare Turnstile from this server")?;
+    let body = response.json::<TurnstileResponse>().await.map_err(|_| "Cloudflare returned an invalid Turnstile response")?;
+    if body.success || !body.error_codes.iter().any(|code| code == "invalid-input-secret") { Ok(()) } else { Err("Cloudflare rejected this Turnstile secret key") }
 }
 
 #[post("/register")]

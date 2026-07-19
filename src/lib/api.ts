@@ -1358,8 +1358,8 @@ export function adminUpdateSettings(payload: { app_name?: string; public_title?:
   }, 'Could not update settings')
 }
 
-export function adminTestTurnstile(secretKey: string, token: string) {
-  return adminRequest<{ success: boolean }>('/settings/turnstile/test', { method: 'POST', body: JSON.stringify({ secret_key: secretKey, token }) }, 'Turnstile verification failed')
+export function adminTestTurnstile(secretKey: string, token = '') {
+  return adminRequest<{ success: boolean; stage: 'secret' | 'challenge' }>('/settings/turnstile/test', { method: 'POST', body: JSON.stringify({ secret_key: secretKey, token }) }, 'Turnstile verification failed')
 }
 
 export function adminWebhooks() {
