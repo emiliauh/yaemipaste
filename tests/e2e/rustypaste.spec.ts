@@ -1277,6 +1277,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
   await expect(page.getByText('2026-04-17T01:00:00Z')).toBeVisible()
   await expect(page.locator('.preview-owner')).toContainText('test-user')
   await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+  await expect(page.getByLabel('Uploaded with ShareX')).toHaveCSS('text-transform', 'none')
   await expect(page.getByText('(ShareX)', { exact: true })).toHaveCount(0)
   await expect(page.getByText('preview content')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Download file' })).toHaveAttribute(

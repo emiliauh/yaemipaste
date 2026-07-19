@@ -268,7 +268,7 @@ h1 {
   gap: var(--space-2);
 }
 
-.upload-sharex-badge {
+.meta-grid .upload-sharex-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
