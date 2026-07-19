@@ -4130,18 +4130,23 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
   const copyBox = await copyButton.boundingBox()
   const selectBox = await row.locator('.select-col').boundingBox()
   const moreBox = await moreButton.boundingBox()
+  const fileIconBox = await row.locator('.upload-file-icon').boundingBox()
+  const fileNameBox = await previewButton.boundingBox()
   expect(actionBox).not.toBeNull()
   expect(downloadBox).not.toBeNull()
   expect(copyBox).not.toBeNull()
   expect(selectBox).not.toBeNull()
   expect(moreBox).not.toBeNull()
-  if (actionBox && downloadBox && copyBox && selectBox && moreBox) {
+  expect(fileIconBox).not.toBeNull()
+  expect(fileNameBox).not.toBeNull()
+  if (actionBox && downloadBox && copyBox && selectBox && moreBox && fileIconBox && fileNameBox) {
     expect(downloadBox.y).toBeGreaterThanOrEqual(actionBox.y)
     expect(Math.abs(downloadBox.y - copyBox.y)).toBeLessThanOrEqual(1)
     expect(Math.abs(actionBox.x - selectBox.x)).toBeLessThanOrEqual(1)
     expect(Math.abs(downloadBox.width - copyBox.width)).toBeLessThanOrEqual(1)
     expect(Math.abs(copyBox.width - moreBox.width)).toBeLessThanOrEqual(1)
     expect(actionBox.width).toBeGreaterThan(downloadBox.width * 2)
+    expect(fileNameBox.y).toBeGreaterThanOrEqual(fileIconBox.y + 6)
   }
 
   await copyButton.focus()
