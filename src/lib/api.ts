@@ -945,12 +945,27 @@ export function effectivePublicMimeType(meta: PublicFileMeta | null | undefined,
 }
 
 export async function getPublicFileMeta(fileName: string): Promise<PublicFileMeta> {
-  const r = await fetch(`${getPasteApiBase()}/meta/${encodeURIComponent(fileName)}`, {
-    headers: tokenHeader(),
-  })
-  if (!r.ok) throw new Error(r.status === 404 ? 'File not found or expired' : await responseDetail(r, 'Could not load file metadata'))
-  rememberResolvedFileName(fileName)
-  return readJson(r, 'Could not load file metadata')
+  const encodedName = encodeURIComponent(fileName)
+  const urls = [
+    `${getPasteApiBase()}/meta/${encodedName}`,
+    `${publicSiteOrigin()}/api/meta/${encodedName}`,
+  ].filter((url, index, all) => all.indexOf(url) === index)
+  let notFound = false
+  let lastError = 'Could not load file metadata'
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { headers: tokenHeader() })
+      if (response.ok) {
+        rememberResolvedFileName(fileName)
+        return readJson(response, 'Could not load file metadata')
+      }
+      if (response.status === 404) notFound = true
+      else lastError = await responseDetail(response, lastError)
+    } catch {
+      // A public preview remains usable when a separately configured API host is unavailable.
+    }
+  }
+  throw new Error(notFound ? 'File not found or expired' : lastError)
 }
 
 export function publicSiteOrigin(origin = window.location.origin): string {
@@ -983,20 +998,16 @@ export function publicPreviewUrl(fileName: string, origin = publicSiteOrigin()):
   return `${origin}/file/${encodeFileToken(fileName)}/preview`
 }
 
-export function publicPreviewUrlForFileName(fileName: string, origin = publicSiteOrigin()): string {
-  return `${origin}/file/${encodeURIComponent(fileName)}/preview`
-}
-
 export function publicDownloadUrl(fileName: string, origin = publicSiteOrigin()): string {
   return `${origin}/file/${encodeFileToken(fileName)}/download`
 }
 
-export function publicDownloadUrlForFileName(fileName: string, origin = publicSiteOrigin()): string {
-  return `${origin}/file/${encodeURIComponent(fileName)}/download`
-}
-
 export function publicApiFileUrl(fileName: string): string {
   return `${getPasteApiBase()}/${encodeURIComponent(fileName)}`
+}
+
+export function publicRawFileUrl(fileName: string): string {
+  return `${publicSiteOrigin()}/api/${encodeURIComponent(fileName)}?raw=1`
 }
 
 export function browserFileUrl(fileName: string, query = ''): string {

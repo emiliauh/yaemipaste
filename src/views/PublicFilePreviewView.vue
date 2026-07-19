@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, displayUploaderName, downloadFileUrl, effectivePublicMimeType, fileUrl, formatBytes, getPublicFileMeta, preferredPublicFileName, resolveFileLookup, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, displayUploaderName, downloadFileUrl, effectivePublicMimeType, formatBytes, getPublicFileMeta, preferredPublicFileName, publicRawFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { usePublicSettings } from '../lib/publicSettings'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
@@ -30,7 +30,7 @@ const requestedFileName = computed(() => {
 const rawUrl = computed(() => {
   // Re-evaluate raw links when the public runtime API setting arrives.
   void publicSettings.value.base_api_url
-  return resolvedFileName.value ? fileUrl(resolvedFileName.value) : ''
+  return resolvedFileName.value ? publicRawFileUrl(resolvedFileName.value) : ''
 })
 const downloadUrl = computed(() => {
   const token = routeFileKey.value.split('+')[0]

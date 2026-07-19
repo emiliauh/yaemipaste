@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   adminAuditLog,
   adminBulkDeleteUploads,
@@ -29,8 +29,8 @@ import {
   formatGigabytes,
   getAuthUsername,
   fileUrl,
-  publicDownloadUrlForFileName,
-  publicPreviewUrlForFileName,
+  publicDownloadUrl,
+  publicPreviewUrl,
   type AdminAuditEntry,
   type AdminDashboard,
   type AdminSettings,
@@ -50,6 +50,7 @@ import { usePublicSettings } from '../lib/publicSettings'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
 
 const router = useRouter()
+const route = useRoute()
 const notifications = useNotificationStore()
 const tabs = ['Overview', 'Users', 'Uploads', 'Settings', 'Webhooks', 'Audit'] as const
 type AdminTab = typeof tabs[number]
@@ -87,6 +88,20 @@ const webhooks = ref<AdminWebhook[]>([])
 const deliveries = ref<WebhookDelivery[]>([])
 const audit = ref<AdminAuditEntry[]>([])
 let refreshSequence = 0
+
+function tabFromRoute(): AdminTab {
+  const section = String(route.params.section ?? '').toLowerCase()
+  return tabs.find((item) => item.toLowerCase() === section) ?? 'Overview'
+}
+
+function selectTab(nextTab: AdminTab) {
+  const path = nextTab === 'Overview' ? '/admin' : `/admin/${nextTab.toLowerCase()}`
+  if (route.path !== path) void router.push(path)
+}
+
+watch(() => route.params.section, () => {
+  tab.value = tabFromRoute()
+}, { immediate: true })
 
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
@@ -267,14 +282,14 @@ function uploadOwner(upload: AdminUpload): string {
 }
 
 function uploadDownloadUrl(upload: AdminUpload): string {
-  return publicDownloadUrlForFileName(uploadFileName(upload))
+  return publicDownloadUrl(uploadFileName(upload))
 }
 
 async function copyUploadLink(upload: AdminUpload) {
   try {
     const fileName = uploadFileName(upload)
     if (!fileName) throw new Error('Missing upload file name')
-    await navigator.clipboard.writeText(publicPreviewUrlForFileName(fileName))
+    await navigator.clipboard.writeText(publicPreviewUrl(fileName))
     notifications.push('Preview link copied', 'success')
   } catch {
     notifications.push('Could not copy preview link', 'error')
@@ -731,7 +746,7 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="tabs admin-tabs">
-          <button v-for="item in tabs" :key="item" :class="{ active: tab === item }" type="button" @click="tab = item">
+          <button v-for="item in tabs" :key="item" :class="{ active: tab === item }" type="button" @click="selectTab(item)">
             {{ item }}
           </button>
         </div>
@@ -763,7 +778,7 @@ onBeforeUnmount(() => {
       <div class="card wide">
         <div class="card-heading">
           <h2>Recent uploads</h2>
-          <button v-if="dashboard.recent_uploads.length > 6" class="btn-ghost btn-sm" type="button" @click="tab = 'Uploads'">View all uploads</button>
+          <button v-if="dashboard.recent_uploads.length > 6" class="btn-ghost btn-sm" type="button" @click="selectTab('Uploads')">View all uploads</button>
         </div>
         <div class="table-scroll">
           <table class="file-table admin-table">
@@ -788,7 +803,7 @@ onBeforeUnmount(() => {
       <div class="card wide">
         <div class="card-heading">
           <h2>Recent admin actions</h2>
-          <button v-if="dashboard.recent_audit.length > 6" class="btn-ghost btn-sm" type="button" @click="tab = 'Audit'">View all activity</button>
+          <button v-if="dashboard.recent_audit.length > 6" class="btn-ghost btn-sm" type="button" @click="selectTab('Audit')">View all activity</button>
         </div>
         <div class="table-scroll">
           <table class="file-table admin-table">

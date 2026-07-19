@@ -4204,61 +4204,81 @@ test('admin upload filenames truncate their base while keeping extensions visibl
   }
 })
 
-test('admin copy link opens an anonymous upload when its history record has no file name', async ({ page }) => {
+test('admin copy link opens an anonymous upload with an expiry storage suffix', async ({ page }) => {
   await signInAsAdmin(page)
   await mockAdminApi(page)
   await mockClipboard(page)
   const anonymousUpload = {
-    path: 'anonymous-preview.png',
+    path: 'rmIRgRJG.txt.1785698019153',
     owner: null,
-    file_name: null,
-    display_name: null,
+    file_name: 'rmIRgRJG.txt.1785698019153',
+    display_name: 'paste.txt',
     uploader: null,
     source: 'WebUI',
     size_bytes: 12,
     created_at: 1_775_100_000,
     expires_at: null,
     expired: false,
-    content_type: 'image/png',
+    content_type: 'text/plain',
   }
   await page.route('**/auth/admin/uploads**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([anonymousUpload]) })
   })
-  await page.route('**/api/meta/anonymous-preview.png', async (route) => {
+  await page.route('**/api/resolve/rmIRgRJG**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ file_name: 'rmIRgRJG.txt.1785698019153', uploader: null }) })
+  })
+  await page.route('**/api/meta/rmIRgRJG.txt.1785698019153', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        file_name: 'anonymous-preview.png',
-        display_name: 'anonymous-preview.png',
+        file_name: 'rmIRgRJG.txt.1785698019153',
+        display_name: 'paste.txt',
         uploader: 'Anonymous',
         upload_date_utc: '2026-07-19T18:24:56Z',
-        download_name: 'anonymous-preview.png',
+        download_name: 'paste.txt',
         file_size: 12,
-        mime_type: 'image/png',
+        mime_type: 'text/plain',
       }),
     })
   })
-  await page.route('**/api/anonymous-preview.png?raw=1', async (route) => {
+  await page.route('**/api/rmIRgRJG.txt.1785698019153?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
-      contentType: 'image/png',
-      body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+UPnY9AAAAABJRU5ErkJggg==', 'base64'),
+      contentType: 'text/plain',
+      body: 'anonymous paste',
     })
   })
 
   await page.goto('/admin')
   await page.getByRole('button', { name: 'Uploads', exact: true }).click()
-  const row = page.locator('.admin-table tbody tr').filter({ hasText: 'anonymous-preview.png' })
+  const row = page.locator('.admin-table tbody tr').filter({ hasText: 'paste.txt' })
   await row.getByRole('button', { name: 'Copy preview link' }).click()
   const copiedUrl = await page.evaluate(() => (navigator.clipboard as any).__written())
-  expect(copiedUrl).toMatch(/\/file\/anonymous-preview\.png\/preview$/)
+  expect(copiedUrl).toMatch(/\/file\/rmIRgRJG\/preview$/)
 
   await page.goto(copiedUrl)
   await expect(page.getByText('File not found or expired')).toHaveCount(0)
-  await expect(page.getByText('anonymous-preview.png', { exact: true })).toBeVisible()
+  await expect(page.getByText('paste.txt', { exact: true })).toBeVisible()
   await expect(page.getByText('Anonymous', { exact: true })).toBeVisible()
+  await expect(page.getByText('anonymous paste')).toBeVisible()
+})
+
+test('admin sections update the URL and support browser history', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+
+  await page.goto('/admin/users')
+  await expect(page.getByRole('button', { name: 'Users', exact: true })).toHaveClass(/active/)
+
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/uploads$/)
+  await expect(page.getByRole('button', { name: 'Uploads', exact: true })).toHaveClass(/active/)
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/admin\/users$/)
+  await expect(page.getByRole('button', { name: 'Users', exact: true })).toHaveClass(/active/)
 })
 
 test('admin upload filters stay inside the mobile viewport', async ({ page }) => {

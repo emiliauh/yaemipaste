@@ -47,6 +47,11 @@ const router = createRouter({
       component: () => import('../views/AdminView.vue'),
       meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true },
     },
+    {
+      path: '/admin/:section(overview|users|uploads|settings|webhooks|audit)',
+      component: () => import('../views/AdminView.vue'),
+      meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true },
+    },
     { path: '/file/:filekey/preview', component: () => import('../views/FileView.vue') },
     { path: '/file/:filekey/raw', component: () => import('../views/RawRedirectView.vue') },
     { path: '/file/:filekey/download', component: () => import('../views/DownloadRedirectView.vue') },
