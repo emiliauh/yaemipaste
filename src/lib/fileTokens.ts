@@ -27,7 +27,9 @@ export function decodeLegacyOrModernFileToken(token: string): string {
   try {
     const b64 = normalized.replace(/-/g, '+').replace(/_/g, '/')
     const decoded = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))
-    if (/^[\x20-\x7E]+$/.test(decoded)) return decoded
+    // Legacy links encode full filenames. Decoding a modern ID changes the
+    // resolver lookup and can make an existing file appear missing.
+    if (/^[\x20-\x7E]+$/.test(decoded) && decoded.includes('.')) return decoded
   } catch {
     // modern id-only tokens land here
   }

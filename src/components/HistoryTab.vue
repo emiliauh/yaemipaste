@@ -3,7 +3,7 @@ import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { zipSync } from 'fflate'
 import { fileUrl, getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
-import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
+import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob, rememberEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import ActionConfirmDialog from './ActionConfirmDialog.vue'
 import { useNotificationStore } from '../stores/notifications'
@@ -76,6 +76,12 @@ const passwordPreviewValue = ref('')
 const passwordPreviewBusy = ref(false)
 const passwordPreviewError = ref('')
 const passwordPromptAction = ref<'preview' | 'download'>('preview')
+const keyPreviewOpen = ref(false)
+const keyPreviewFile = ref<PasteFile | null>(null)
+const keyPreviewValue = ref('')
+const keyPreviewBusy = ref(false)
+const keyPreviewError = ref('')
+const keyPromptAction = ref<'preview' | 'download'>('preview')
 const deleteConfirmOpen = ref(false)
 const deleteConfirmMode = ref<DeleteConfirmMode>('selected')
 const deleteAcknowledged = ref(false)
@@ -523,6 +529,27 @@ function openPasswordPreviewModal(file: PasteFile, action: 'preview' | 'download
   passwordPromptAction.value = action
 }
 
+function doCloseKeyPreviewModal(force: boolean) {
+  if (keyPreviewBusy.value && !force) return
+  keyPreviewOpen.value = false
+  keyPreviewFile.value = null
+  keyPreviewValue.value = ''
+  keyPreviewError.value = ''
+  keyPromptAction.value = 'preview'
+}
+
+function closeKeyPreviewModal() {
+  doCloseKeyPreviewModal(false)
+}
+
+function openKeyPreviewModal(file: PasteFile, action: 'preview' | 'download' = 'preview') {
+  keyPreviewOpen.value = true
+  keyPreviewFile.value = file
+  keyPreviewValue.value = ''
+  keyPreviewError.value = ''
+  keyPromptAction.value = action
+}
+
 function setPasswordChangeProgress(status: string, percent: number) {
   passwordChangeStatus.value = status
   passwordChangePercent.value = Math.max(0, Math.min(100, Math.round(percent)))
@@ -694,6 +721,35 @@ async function submitPasswordPreview() {
     passwordPreviewError.value = e.message ?? 'Could not decrypt preview'
   } finally {
     passwordPreviewBusy.value = false
+  }
+}
+
+async function submitKeyPreview() {
+  const file = keyPreviewFile.value
+  const key = keyPreviewValue.value.trim()
+  if (!file) return
+  if (!key) {
+    keyPreviewError.value = 'Decryption key is required.'
+    return
+  }
+  keyPreviewError.value = ''
+  keyPreviewBusy.value = true
+  try {
+    const payload = await fetchEncryptedPayload(file.file_name)
+    const decrypted = await decryptEncryptedBlob(payload, key)
+    // Only retain keys that successfully decrypt the authenticated payload.
+    rememberEncryptedFile(file.file_name, key, decrypted.metadata, window.location.origin)
+    if (keyPromptAction.value === 'download') {
+      triggerDownload(decrypted.blob, decrypted.metadata.name)
+      doCloseKeyPreviewModal(true)
+      return
+    }
+    doCloseKeyPreviewModal(true)
+    await openPreview(file)
+  } catch (e: any) {
+    keyPreviewError.value = e.message ?? 'Could not decrypt preview'
+  } finally {
+    keyPreviewBusy.value = false
   }
 }
 
@@ -885,7 +941,7 @@ async function downloadFile(f: PasteFile) {
     return
   }
   if (f.file_name.endsWith('.rpenc') && !stored) {
-    showToast('Decryption key is required to download this encrypted file', 'error')
+    openKeyPreviewModal(f, 'download')
     return
   }
   try {
@@ -997,6 +1053,10 @@ async function openPreview(f: PasteFile) {
   const stored = getStoredEncryptedFile(f.file_name)
   if (stored?.key.startsWith('pw:')) {
     openPasswordPreviewModal(f, 'preview')
+    return
+  }
+  if (f.file_name.endsWith('.rpenc') && !stored) {
+    openKeyPreviewModal(f, 'preview')
     return
   }
   const token = ++previewToken
@@ -1668,6 +1728,45 @@ onBeforeUnmount(() => {
               <span>Decrypting…</span>
             </span>
             <span v-else>{{ passwordPromptAction === 'download' ? 'Download file' : 'Preview file' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="keyPreviewOpen" class="modal-backdrop" @click.self="closeKeyPreviewModal">
+      <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="key-preview-title">
+        <div class="password-modal-header">
+          <strong id="key-preview-title">{{ keyPromptAction === 'download' ? 'Download encrypted file' : 'Preview encrypted file' }}</strong>
+          <button class="modal-close btn-ghost" :disabled="keyPreviewBusy" aria-label="Close key prompt" @click="closeKeyPreviewModal">✕</button>
+        </div>
+        <div class="password-modal-copy">
+          {{ keyPromptAction === 'download'
+            ? 'Enter the decryption key to download this file.'
+            : 'Enter the decryption key to preview this file in-app.' }}
+        </div>
+        <div class="password-form">
+          <label>
+            Decryption key
+            <input
+              v-model="keyPreviewValue"
+              type="text"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              :disabled="keyPreviewBusy"
+              @keydown.enter.prevent="submitKeyPreview"
+            />
+          </label>
+        </div>
+        <div v-if="keyPreviewError" class="password-modal-error">{{ keyPreviewError }}</div>
+        <div class="password-modal-actions">
+          <button class="btn-ghost" :disabled="keyPreviewBusy" @click="closeKeyPreviewModal">Cancel</button>
+          <button class="btn-primary" :disabled="keyPreviewBusy || !keyPreviewValue.trim()" @click="submitKeyPreview">
+            <span v-if="keyPreviewBusy" class="busy-inline">
+              <span class="loading-spinner" aria-hidden="true"></span>
+              <span>Decrypting…</span>
+            </span>
+            <span v-else>{{ keyPromptAction === 'download' ? 'Download file' : 'Preview file' }}</span>
           </button>
         </div>
       </div>

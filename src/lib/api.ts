@@ -1171,6 +1171,9 @@ export interface AdminSettings {
   file_size_limit_unlimited?: string
   upload_access_mode?: string
   base_api_url?: string
+  turnstile_enabled?: string
+  turnstile_site_key?: string
+  turnstile_secret_key?: string
 }
 
 export interface PublicAdminSettings {

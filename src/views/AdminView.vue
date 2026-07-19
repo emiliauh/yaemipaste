@@ -105,7 +105,7 @@ watch(() => route.params.section, () => {
 
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
-const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public' })
+const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public', turnstile_enabled: false, turnstile_site_key: '', turnstile_secret_key: '' })
 const webhookEventOptions = [
   { value: 'file.uploaded', label: 'File uploaded', description: 'When a new file or paste is stored.' },
   { value: 'file.deleted', label: 'File deleted', description: 'When a file is removed manually or by cleanup.' },
@@ -468,6 +468,9 @@ async function refreshAll() {
       file_size_limit_bytes: Number(nextSettings.file_size_limit_bytes ?? 0) || 0,
       file_size_limit_unlimited: nextSettings.file_size_limit_unlimited === 'true',
       upload_access_mode: nextSettings.upload_access_mode === 'public' ? 'public' : 'private',
+      turnstile_enabled: nextSettings.turnstile_enabled === 'true',
+      turnstile_site_key: nextSettings.turnstile_site_key ?? '',
+      turnstile_secret_key: nextSettings.turnstile_secret_key ?? '',
     }
   } catch (e: any) {
     if (sequence === refreshSequence) error.value = e.message ?? 'Could not load admin data'
@@ -1086,6 +1089,11 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
+          <label class="inline-check span-2"><input v-model="settingsForm.turnstile_enabled" type="checkbox" /> <span><strong>Enable Turnstile</strong><small>Require Cloudflare Turnstile verification before account login.</small></span></label>
+          <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
+            <label><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" /></label>
+            <label><span>Turnstile secret key</span><small>Private server verification key.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" /></label>
+          </div>
         </div>
       </section>
       </div>

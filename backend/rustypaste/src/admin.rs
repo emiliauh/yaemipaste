@@ -89,6 +89,9 @@ struct SettingsRequest {
     file_size_limit_bytes: Option<u64>,
     file_size_limit_unlimited: Option<bool>,
     upload_access_mode: Option<String>,
+    turnstile_enabled: Option<bool>,
+    turnstile_site_key: Option<String>,
+    turnstile_secret_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2257,6 +2260,15 @@ async fn put_settings(request: HttpRequest, body: web::Json<SettingsRequest>) ->
             );
         }
         updates.push(("upload_access_mode", value.to_string()));
+    }
+    if let Some(value) = body.turnstile_enabled {
+        updates.push(("turnstile_enabled", value.to_string()));
+    }
+    if let Some(value) = body.turnstile_site_key.as_ref() {
+        updates.push(("turnstile_site_key", value.trim().to_string()));
+    }
+    if let Some(value) = body.turnstile_secret_key.as_ref() {
+        updates.push(("turnstile_secret_key", value.trim().to_string()));
     }
     for (key, value) in updates {
         if let Err(error) = connection.execute(

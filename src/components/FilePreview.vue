@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getAuthJwt, getPasteApiBase, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
-import { encryptedShareUrl, getStoredEncryptedFile } from '../lib/e2ee'
+import { getAuthJwt, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
+import { decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -17,7 +17,14 @@ const emit = defineEmits<{ close: []; download: [file: PasteFile] }>()
 const notificationStore = useNotificationStore()
 const { publicSettings, refreshPublicSettings } = usePublicSettings()
 
-const url = computed(() => props.sourceUrl ?? fileUrl(props.file.file_name))
+const decryptedUrl = ref('')
+const decryptedName = ref('')
+const detectedEncrypted = ref(false)
+const encryptedPayload = ref<Blob | null>(null)
+const decryptionKey = ref('')
+const decryptionBusy = ref(false)
+const decryptionError = ref('')
+const url = computed(() => decryptedUrl.value || props.sourceUrl || fileUrl(props.file.file_name))
 const isAdminContentUrl = computed(() => url.value.includes('/auth/admin/uploads/content'))
 const storedEncrypted = computed(() => getStoredEncryptedFile(props.file.file_name))
 function isRpencFileName(value: string): boolean {
@@ -28,7 +35,7 @@ const hasEncryptedSuffix = computed(() =>
   || isRpencFileName(props.displayName ?? '')
   || isRpencFileName(url.value),
 )
-const isEncrypted = computed(() => !!storedEncrypted.value || hasEncryptedSuffix.value)
+const isEncrypted = computed(() => !!storedEncrypted.value || hasEncryptedSuffix.value || detectedEncrypted.value)
 const isDecryptedBlobSource = computed(() => url.value.startsWith('blob:'))
 const encryptedPreviewLocked = computed(() => isEncrypted.value && !isDecryptedBlobSource.value)
 const previewPageUrl = computed(() => shareUrl(props.file.file_name))
@@ -43,7 +50,7 @@ const copyUrl = computed(() => {
   }
   return isAdminContentUrl.value || url.value.startsWith('blob:') ? shareUrl(props.file.file_name) : url.value
 })
-const name = computed(() => props.displayName ?? props.file.file_name)
+const name = computed(() => decryptedName.value || props.displayName || props.file.file_name)
 const EXPIRY_SUFFIX = '(?:\\.\\d{6,})?'
 const isImage = computed(() => props.mimeType?.startsWith('image/') ?? new RegExp(`\\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
 const isVideo = computed(() => props.mimeType?.startsWith('video/') ?? new RegExp(`\\.(mp4|webm|mov|avi|mkv|ogv|m4v|3gp)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
@@ -63,6 +70,48 @@ const TEXT_PREVIEW_CHARS = 32_000
 
 function getAuthToken(): string {
   return localStorage.getItem('rp_token') ?? sessionStorage.getItem('rp_token') ?? ''
+}
+
+function contentHeaders(): Record<string, string> {
+  if (isAdminContentUrl.value) {
+    const jwt = getAuthJwt().trim()
+    return jwt ? { Authorization: `Bearer ${jwt}` } : {}
+  }
+  const token = getAuthToken().trim()
+  return token ? { Authorization: token } : {}
+}
+
+function clearDecryptedUrl() {
+  if (decryptedUrl.value.startsWith('blob:')) URL.revokeObjectURL(decryptedUrl.value)
+  decryptedUrl.value = ''
+  decryptedName.value = ''
+}
+
+async function decryptPreview() {
+  const key = decryptionKey.value.trim()
+  if (!key) {
+    decryptionError.value = 'Decryption key is required.'
+    return
+  }
+  decryptionBusy.value = true
+  decryptionError.value = ''
+  try {
+    let payload = encryptedPayload.value
+    if (!payload) {
+      const response = await fetch(props.sourceUrl ?? fileUrl(props.file.file_name), { cache: 'no-store', headers: contentHeaders() })
+      if (!response.ok) throw new Error('Could not download encrypted payload')
+      payload = await response.blob()
+    }
+    if (!(await isRustypasteEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
+    const decrypted = await decryptEncryptedBlob(payload, key)
+    clearDecryptedUrl()
+    decryptedUrl.value = URL.createObjectURL(decrypted.blob)
+    decryptedName.value = decrypted.metadata.name
+  } catch (error) {
+    decryptionError.value = error instanceof Error ? error.message : 'Could not decrypt file'
+  } finally {
+    decryptionBusy.value = false
+  }
 }
 
 function yieldToBrowser(): Promise<void> {
@@ -123,20 +172,17 @@ async function loadTextPreview() {
       textPreviewTruncated.value = preview.truncated
       return
     }
-    const headers: Record<string, string> = {}
-    const apiBase = getPasteApiBase()
-    if (url.value.includes('/auth/admin/uploads/content')) {
-      const jwt = getAuthJwt().trim()
-      if (jwt) headers.Authorization = `Bearer ${jwt}`
-    } else if (url.value.includes('/api/') || (apiBase.startsWith('http') && url.value.startsWith(`${apiBase}/`))) {
-      const token = getAuthToken().trim()
-      if (token) headers.Authorization = token
-    }
     const response = await fetch(url.value, {
       cache: 'no-store',
-      headers,
+      headers: contentHeaders(),
     })
     if (!response.ok) throw new Error('Could not load text preview')
+    const payload = await response.clone().blob()
+    if (await isRustypasteEncryptedBlob(payload)) {
+      encryptedPayload.value = payload
+      detectedEncrypted.value = true
+      return
+    }
     const preview = await readTextPreviewFromResponse(response)
     textPreview.value = preview.text
     textPreviewTruncated.value = preview.truncated
@@ -162,13 +208,18 @@ async function loadMediaPreview() {
     return
   }
   try {
-    const jwt = getAuthJwt().trim()
     const response = await fetch(url.value, {
       cache: 'no-store',
-      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {},
+      headers: contentHeaders(),
     })
     if (!response.ok) throw new Error('Could not load media preview')
-    const objectUrl = URL.createObjectURL(await response.blob())
+    const payload = await response.blob()
+    if (await isRustypasteEncryptedBlob(payload)) {
+      encryptedPayload.value = payload
+      detectedEncrypted.value = true
+      return
+    }
+    const objectUrl = URL.createObjectURL(payload)
     if (request !== mediaRequest) {
       URL.revokeObjectURL(objectUrl)
       return
@@ -277,6 +328,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   mediaRequest += 1
   clearMediaUrl()
+  clearDecryptedUrl()
   window.removeEventListener('keydown', onWindowKeydown)
   window.removeEventListener('click', onWindowClick)
 })
@@ -312,10 +364,15 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div v-else-if="encryptedPreviewLocked" class="fallback-preview">
-          <div class="fallback-title">No inline preview available</div>
-          <div class="fallback-note">This is an encrypted file. Add the decryption key/password to preview it.</div>
+          <div class="fallback-title">Encrypted file</div>
+          <div class="fallback-note">Enter the decryption key to view this file.</div>
           <div class="fallback-meta">File size: {{ sizeLabel }}</div>
-          <button class="btn-primary fallback-download" @click="emit('download', props.file)">Download file</button>
+          <label class="fallback-key">
+            Decryption key
+            <input v-model="decryptionKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" />
+          </label>
+          <div v-if="decryptionError" class="fallback-note">{{ decryptionError }}</div>
+          <button class="btn-primary fallback-download" :disabled="decryptionBusy || !decryptionKey.trim()" @click="decryptPreview">{{ decryptionBusy ? 'Decrypting…' : 'Decrypt and preview' }}</button>
         </div>
         <img v-else-if="isImage && mediaUrl" ref="previewImage" :src="mediaUrl" class="preview-img" />
         <video v-else-if="isVideo && mediaUrl" :src="mediaUrl" controls class="preview-video" />

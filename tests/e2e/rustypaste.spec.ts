@@ -1,12 +1,18 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { encryptFileWithPassword } from '../../src/lib/e2ee'
+import { decodeLegacyOrModernFileToken } from '../../src/lib/fileTokens'
 
 const APP_ORIGIN = (process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173').replace(/\/$/, '')
 const PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\/preview$/
 const ENCRYPTED_PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\/preview#[A-Za-z0-9_-]+$/
 const PUBLIC_ORIGIN = 'https://paste.example.test'
 const API_ORIGIN = 'https://api.example.test'
+
+test('modern file IDs that resemble Base64 stay unchanged for resolver lookup', () => {
+  expect(decodeLegacyOrModernFileToken('dGVzdA')).toBe('dGVzdA')
+  expect(decodeLegacyOrModernFileToken('cGFzdGUudHh0')).toBe('paste.txt')
+})
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/auth/admin/public-settings', async (route) => {
@@ -2105,7 +2111,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`/preview#${decryptKey}`)
 })
 
-test('history marks rpenc files as encrypted and explains locked preview', async ({ page }) => {
+test('history prompts for a decryption key for locked rpenc previews', async ({ page }) => {
   await signInWithToken(page)
   await page.route('**/api/list**', async (route) => {
     await route.fulfill({
@@ -2125,10 +2131,9 @@ test('history marks rpenc files as encrypted and explains locked preview', async
   const row = page.locator('tr.file-row').first()
   await expect(row.locator('.lock-icon')).toBeVisible()
   await row.locator('.filename').click()
-  const modal = page.locator('.modal')
+  const modal = page.getByRole('dialog', { name: 'Preview encrypted file' })
   await expect(modal).toBeVisible()
-  await expect(modal.getByText('No inline preview available')).toBeVisible()
-  await expect(modal.getByText('This is an encrypted file. Add the decryption key/password to preview it.')).toBeVisible()
+  await expect(modal.getByLabel('Decryption key')).toBeVisible()
 })
 
 test('history decrypts rpenc previews when legacy key entries omit origin', async ({ page }) => {

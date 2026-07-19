@@ -34,19 +34,14 @@ use uts2ts;
 
 /// Returns the upload path for a given token.
 ///
-/// If tokens are configured and a valid token is provided, returns a token-specific
-/// directory. Otherwise, returns the base upload path.
-#[allow(deprecated)]
+/// If a valid token is provided, returns a token-specific directory. Otherwise,
+/// returns the base upload path used for anonymous uploads.
 fn get_upload_path_for_token(request: &HttpRequest, config: &Config) -> PathBuf {
-    // Only use per-token directories if tokens are configured (unified or legacy)
-    if config.server.tokens.is_some()
-        || config.server.auth_tokens.is_some()
-        || config.server.delete_tokens.is_some()
-    {
-        if let Some(token) = get_auth_token(request, config) {
-            let token_dir = token_to_dir_name(&token);
-            return config.server.upload_path.join(token_dir);
-        }
+    // Integrated account tokens are validated from the auth database rather
+    // than server.tokens. They must be isolated just like configured tokens.
+    if let Some(token) = get_auth_token(request, config) {
+        let token_dir = token_to_dir_name(&token);
+        return config.server.upload_path.join(token_dir);
     }
     config.server.upload_path.clone()
 }
@@ -1471,6 +1466,43 @@ mod tests {
         fs::remove_dir_all(test_upload_dir)?;
 
         Ok(())
+    }
+
+    #[test]
+    fn test_account_token_uses_a_separate_upload_directory() {
+        let db_path = env::temp_dir().join(format!(
+            "rustypaste-account-upload-path-{}.sqlite",
+            std::process::id()
+        ));
+        let upload_path = env::temp_dir().join(format!(
+            "rustypaste-account-upload-path-{}",
+            std::process::id()
+        ));
+        let token = "account-history-token";
+        let connection = Connection::open(&db_path).expect("cannot create account test database");
+        crate::account_auth::init_db(&connection).expect("cannot initialize account test database");
+        connection
+            .execute(
+                "INSERT INTO users (username, password, token, created_at) VALUES (?1, ?2, ?3, ?4)",
+                ("history-user", "unused", token, 0),
+            )
+            .expect("cannot create account test user");
+        drop(connection);
+
+        unsafe { env::set_var("DB_PATH", &db_path) };
+        let mut config = Config::default();
+        config.server.upload_path = upload_path.clone();
+        let request = TestRequest::default()
+            .insert_header((AUTHORIZATION, token))
+            .to_http_request();
+
+        assert_eq!(
+            get_upload_path_for_token(&request, &config),
+            upload_path.join(token_to_dir_name(token))
+        );
+
+        unsafe { env::remove_var("DB_PATH") };
+        fs::remove_file(db_path).expect("cannot remove account test database");
     }
 
     #[actix_web::test]
