@@ -2,6 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { encodeFileToken, isLoggedIn, refreshAuthAdmin, rememberResolvedFileName } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { isAuthEnabled } from '../lib/features'
+import { usePublicSettings } from '../lib/publicSettings'
+
+const { refreshPublicSettings } = usePublicSettings()
 
 const router = createRouter({
   history: createWebHistory(),
@@ -33,8 +36,7 @@ const router = createRouter({
             return `/file/${encodeFileToken(filename)}/preview`
           }
         }
-        if (!isAuthEnabled()) return '/files'
-        return isLoggedIn() ? '/files' : '/login'
+        return '/files'
       },
     },
     { path: '/login', component: () => import('../views/LoginView.vue') },
@@ -84,8 +86,7 @@ const router = createRouter({
           rememberResolvedFileName(seg)
           return `/file/${encodeFileToken(seg)}/preview`
         }
-        if (!isAuthEnabled()) return '/files'
-        return isLoggedIn() ? '/files' : '/login'
+        return '/files'
       },
     },
   ],
@@ -93,6 +94,10 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register' || to.path.startsWith('/admin'))) return '/files'
+  if (to.path === '/files' && to.meta.requiresAuth && !isLoggedIn()) {
+    const settings = await refreshPublicSettings()
+    if (settings.upload_access_mode === 'public') return
+  }
   if (to.meta.requiresAuth && !isLoggedIn()) return '/login'
   if (to.meta.requiresAdmin && !(await refreshAuthAdmin())) return '/files'
 })

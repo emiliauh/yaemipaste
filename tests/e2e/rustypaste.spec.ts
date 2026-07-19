@@ -327,6 +327,28 @@ async function mockAdminApi(page: Page, userCount = 12) {
   })
 }
 
+test('public upload mode opens Files without a login', async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: false,
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  await expect(page).toHaveURL(/\/files$/)
+  await expect(page.getByTestId('desktop-nav-files')).toBeVisible()
+})
+
 async function expandExpiryIfCollapsed(page: Page) {
   await page.getByTestId('expiry-menu').waitFor({ state: 'attached' })
   const toggle = page.getByTestId('expiry-mobile-toggle')
