@@ -314,6 +314,40 @@ fn resolve_file_location(
         }
     }
 
+    // Account tokens are persisted in the auth database, so they are not
+    // necessarily present in the static Rustypaste token configuration above.
+    // Public preview/raw links must still resolve files stored in those token
+    // directories after the resolver has identified their stored filename.
+    if !path.is_file() || !path.exists() {
+        for entry in fs::read_dir(&config.server.upload_path)? {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => continue,
+            };
+            let entry_path = entry.path();
+            let is_storage_dir = entry
+                .file_type()
+                .map(|kind| kind.is_dir())
+                .unwrap_or(false)
+                && !matches!(
+                    entry.file_name().to_string_lossy().as_ref(),
+                    "oneshot" | "oneshot_url" | "url" | ".rpmeta"
+                );
+            if !is_storage_dir {
+                continue;
+            }
+            if let Ok(candidate) = safe_path_join(&entry_path, file) {
+                let candidate = util::glob_match_file(candidate)?;
+                if candidate.is_file() && candidate.exists() {
+                    path = candidate;
+                    paste_type = PasteType::File;
+                    resolved_root = entry_path;
+                    break;
+                }
+            }
+        }
+    }
+
     if !path.is_file() || !path.exists() {
         return Err(error::ErrorNotFound("file is not found or expired :(\n"));
     }
@@ -1965,6 +1999,41 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("image/jpeg")
         );
+
+        fs::remove_dir_all(upload_path)?;
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_public_raw_request_finds_account_token_directory_upload() -> Result<(), Error> {
+        let mut config = Config::default();
+        let upload_path = env::temp_dir().join(format!(
+            "rustypaste-account-public-{}",
+            std::process::id()
+        ));
+        let account_dir = upload_path.join(token_to_dir_name("account-upload-token"));
+        fs::create_dir_all(&account_dir)?;
+        fs::write(account_dir.join("account-upload.txt"), "account directory upload")?;
+        config.server.upload_path = upload_path.clone();
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(config)))
+                .app_data(Data::new(Client::default()))
+                .configure(configure_routes),
+        )
+        .await;
+        let response = test::call_service(
+            &app,
+            TestRequest::get()
+                .uri("/account-upload.txt?raw=1")
+                .insert_header(("Accept", "text/html"))
+                .to_request(),
+        )
+        .await;
+
+        assert_eq!(StatusCode::OK, response.status());
+        assert_body(response.into_body(), "account directory upload").await?;
 
         fs::remove_dir_all(upload_path)?;
         Ok(())

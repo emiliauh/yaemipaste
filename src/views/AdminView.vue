@@ -2453,14 +2453,10 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     grid-column: 2;
   }
   .uploads-table .upload-name-cell {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
     min-width: 0;
     white-space: normal;
   }
-  .uploads-table .upload-file-icon { margin-right: 0; }
+  .uploads-table .upload-name-link { transform: translateY(2px); }
   .uploads-table .upload-filename-base {
     max-width: calc(100vw - 150px);
   }
