@@ -5,7 +5,7 @@ history, expiry controls, accounts, and an admin panel.
 
 ## Install
 
-Requirements: Linux, Docker Compose, `git`, `curl`, and `rsync`. A DNS name
+Requirements: Linux, Docker Compose, `git`, and `curl`. A DNS name
 with HTTPS handled by Caddy or Nginx is recommended for public deployments.
 
 Run the installer directly:

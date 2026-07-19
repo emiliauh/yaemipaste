@@ -411,15 +411,10 @@ ensure_runtime_prereqs() {
     log "Installing missing prerequisite: gawk"
     apt_install_packages gawk
   fi
-  if ! command_exists rsync && command_exists apt-get && [[ "$DRY_RUN" -eq 0 ]]; then
-    log "Installing missing prerequisite: rsync"
-    apt_install_packages rsync
-  fi
   require_command git
   require_command curl
   require_command sed
   require_command awk
-  require_command rsync
   detect_compose_cmd
 }
 
@@ -785,7 +780,16 @@ clone_or_update_repo() {
       die "Install directory is not empty: ${INSTALL_DIR}"
     fi
     run mkdir -p "$INSTALL_DIR"
-    run rsync -a --delete --exclude '.git' --include '.env.example' --exclude '.env' --exclude '.env.*' "${REPO_URL}/" "${INSTALL_DIR}/"
+    # Keep local configuration and Git metadata while matching the source tree.
+    run find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name '.env' ! -name '.env.*' -exec rm -rf {} +
+    local source_entry source_name
+    shopt -s dotglob nullglob
+    for source_entry in "$REPO_URL"/*; do
+      source_name="${source_entry##*/}"
+      [[ "$source_name" == '.git' || "$source_name" == '.env' || ( "$source_name" == .env.* && "$source_name" != '.env.example' ) ]] && continue
+      run cp -a "$source_entry" "$INSTALL_DIR/"
+    done
+    shopt -u dotglob nullglob
     return 0
   fi
 

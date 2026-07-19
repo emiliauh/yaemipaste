@@ -18,7 +18,7 @@ For a remote static-host deployment, the pattern is:
 ```bash
 npm ci
 npm run build
-rsync -avz --delete dist/ user@host:/path/to/static-root/
+# Copy dist/ to your static host using its deployment mechanism.
 ssh user@host 'sudo systemctl reload <your-web-server>'
 ```
 
