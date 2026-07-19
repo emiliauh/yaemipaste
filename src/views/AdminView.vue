@@ -476,7 +476,8 @@ async function refreshAll() {
       upload_access_mode: nextSettings.upload_access_mode === 'public' ? 'public' : 'private',
       turnstile_enabled: nextSettings.turnstile_enabled === 'true',
       turnstile_site_key: nextSettings.turnstile_site_key ?? '',
-      turnstile_secret_key: nextSettings.turnstile_secret_key ?? '',
+      // Secrets are intentionally write-only: never repopulate one from the API.
+      turnstile_secret_key: '',
     }
   } catch (e: any) {
     if (sequence === refreshSequence) error.value = e.message ?? 'Could not load admin data'
@@ -487,7 +488,11 @@ async function refreshAll() {
 
 async function saveSettings() {
   await runAction(async () => {
-    await adminUpdateSettings(settingsForm.value)
+    await adminUpdateSettings({
+      ...settingsForm.value,
+      // An empty password field means retain the server-side secret.
+      turnstile_secret_key: settingsForm.value.turnstile_secret_key.trim() || undefined,
+    })
     await refreshPublicSettings(true)
   }, 'Settings updated')
 }
@@ -500,16 +505,20 @@ async function testTurnstile() {
   turnstileTestStatus.value = ''
   await nextTick()
   try {
-    await turnstileTest.mount(turnstileTestContainer.value!, settingsForm.value.turnstile_site_key.trim())
+    await turnstileTest.mount(turnstileTestContainer.value!, settingsForm.value.turnstile_site_key.trim(), 'always')
+    if (!turnstileTest.token.value) {
+      turnstileTestStatus.value = 'Complete the Turnstile challenge, then verify the credentials.'
+      return
+    }
     turnstileTestBusy.value = true
-    const token = await turnstileTest.ensureToken(settingsForm.value.turnstile_site_key.trim())
+    const token = turnstileTest.token.value
     await adminTestTurnstile(settingsForm.value.turnstile_secret_key.trim(), token)
     turnstileTestStatus.value = 'Turnstile credentials verified successfully.'
   } catch (error: any) {
     turnstileTestStatus.value = error.message ?? 'Turnstile verification failed.'
   } finally {
     turnstileTestBusy.value = false
-    turnstileTest.reset()
+    // Keep the solved widget visible. Resetting it destroys the completed state.
   }
 }
 
@@ -1119,10 +1128,10 @@ onBeforeUnmount(() => {
           <label class="inline-check span-2"><input v-model="settingsForm.turnstile_enabled" type="checkbox" /> <span><strong>Enable Turnstile</strong><small>Require Cloudflare Turnstile verification before account login.</small></span></label>
           <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
             <label><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" /></label>
-            <label><span>Turnstile secret key</span><small>Private server verification key.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" /></label>
+            <label><span>Turnstile secret key</span><small>Private server verification key. It is never displayed after saving.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" placeholder="Enter a new key to replace the existing one" /></label>
             <div class="span-2">
               <div ref="turnstileTestContainer" class="turnstile-test-widget"></div>
-              <button class="btn-orange turnstile-test" style="width:100%;background:#d69e00" type="button" :disabled="turnstileTestBusy" @click="testTurnstile">{{ turnstileTestBusy ? 'Testing Turnstile…' : 'Test Turnstile credentials' }}</button>
+              <button class="btn-orange turnstile-test" style="width:100%;background:#d69e00" type="button" :disabled="turnstileTestBusy" @click="testTurnstile">{{ turnstileTestBusy ? 'Verifying credentials…' : turnstileTest.token ? 'Verify Turnstile credentials' : 'Start Turnstile verification' }}</button>
               <small v-if="turnstileTestStatus">{{ turnstileTestStatus }}</small>
             </div>
           </div>

@@ -2196,7 +2196,10 @@ async fn get_settings(request: HttpRequest) -> HttpResponse {
         return response;
     }
     match setting_map(&connection) {
-        Ok(settings) => HttpResponse::Ok().json(settings),
+        Ok(mut settings) => {
+            settings.remove("turnstile_secret_key");
+            HttpResponse::Ok().json(settings)
+        }
         Err(error) => {
             error!("cannot read admin settings: {}", error);
             json_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not read settings")
@@ -2291,7 +2294,10 @@ async fn put_settings(request: HttpRequest, body: web::Json<SettingsRequest>) ->
         );
     }
     match setting_map(&connection) {
-        Ok(settings) => HttpResponse::Ok().json(settings),
+        Ok(mut settings) => {
+            settings.remove("turnstile_secret_key");
+            HttpResponse::Ok().json(settings)
+        }
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not read settings"),
     }
 }

@@ -98,13 +98,13 @@ export function useTurnstile() {
   const widgetId = ref<TurnstileWidgetId | null>(null)
   const fatalError = ref('')
 
-  async function mount(container: HTMLElement, siteKey: string): Promise<void> {
+  async function mount(container: HTMLElement, siteKey: string, appearance: 'always' | 'interaction-only' = 'interaction-only'): Promise<void> {
     if (!siteKey || !container || widgetId.value != null) return
     await loadTurnstileScript()
     if (!window.turnstile) return
     widgetId.value = window.turnstile.render(container, {
       sitekey: siteKey,
-      appearance: 'interaction-only',
+      appearance,
       callback: (value: string) => {
         token.value = value
         fatalError.value = ''

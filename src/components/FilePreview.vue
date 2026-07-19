@@ -111,6 +111,8 @@ async function decryptPreview() {
     decryptionError.value = error instanceof Error ? error.message : 'Could not decrypt file'
   } finally {
     decryptionBusy.value = false
+    // Keys belong only in memory for the single decryption operation.
+    decryptionKey.value = ''
   }
 }
 
@@ -363,16 +365,17 @@ onBeforeUnmount(() => {
             <span></span>
           </div>
         </div>
-        <div v-else-if="encryptedPreviewLocked" class="fallback-preview">
-          <div class="fallback-title">Encrypted file</div>
-          <div class="fallback-note">Enter the decryption key to view this file.</div>
-          <div class="fallback-meta">File size: {{ sizeLabel }}</div>
-          <label class="fallback-key">
-            Decryption key
-            <input v-model="decryptionKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" />
-          </label>
-          <div v-if="decryptionError" class="fallback-note">{{ decryptionError }}</div>
-          <button class="btn-primary fallback-download" :disabled="decryptionBusy || !decryptionKey.trim()" @click="decryptPreview">{{ decryptionBusy ? 'Decrypting…' : 'Decrypt and preview' }}</button>
+        <div v-else-if="encryptedPreviewLocked" class="password-modal">
+          <div class="password-modal-header"><strong>Preview encrypted file</strong></div>
+          <div class="password-modal-copy">Enter the decryption key to preview this file in-app.</div>
+          <div class="password-form"><label>Decryption key
+            <input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste decryption key" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" />
+          </label></div>
+          <div v-if="decryptionError" class="password-modal-error">{{ decryptionError }}</div>
+          <div class="password-modal-actions">
+            <button class="btn-ghost" :disabled="decryptionBusy" @click="emit('close')">Cancel</button>
+            <button class="btn-primary" :disabled="decryptionBusy || !decryptionKey.trim()" @click="decryptPreview">{{ decryptionBusy ? 'Decrypting…' : 'Preview file' }}</button>
+          </div>
         </div>
         <img v-else-if="isImage && mediaUrl" ref="previewImage" :src="mediaUrl" class="preview-img" />
         <video v-else-if="isVideo && mediaUrl" :src="mediaUrl" controls class="preview-video" />
@@ -595,16 +598,21 @@ onBeforeUnmount(() => {
 .preview-skeleton span:nth-child(2) { width: 74%; }
 .preview-skeleton span:last-child { width: 46%; }
 .fallback-preview {
-  min-width: min(360px, 100%);
+  width: min(440px, 100%);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   align-items: flex-start;
-  background: var(--bg2);
+  background: linear-gradient(145deg, var(--bg2), var(--bg1));
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: var(--space-4);
+  padding: calc(var(--space-4) + var(--space-1));
 }
+.encrypted-preview-heading { display: flex; align-items: flex-start; gap: var(--space-2); }
+.encrypted-preview-icon { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--border2); border-radius: 50%; color: var(--accent-h); font-size: 20px; }
+.fallback-key { display: grid; width: 100%; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.fallback-key input { width: 100%; box-sizing: border-box; }
 .fallback-title {
   font-size: var(--fs-body);
   font-weight: 600;
@@ -628,6 +636,15 @@ onBeforeUnmount(() => {
 }
 .fallback-download:hover:not(:disabled) { transform: translateY(-1px); }
 .fallback-download:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+.password-modal { width: min(440px, 100%); box-sizing: border-box; border: 1px solid var(--border2); border-radius: var(--radius-lg); background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--bg3) 34%, transparent), transparent 34%), var(--bg1); padding: var(--space-4); box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 90%, transparent); }
+.password-modal-header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+.password-modal-header strong { color: var(--text); font-size: var(--fs-h2); }
+.password-modal-copy { color: var(--text2); font-size: var(--fs-sm); line-height: var(--lh-body); margin-bottom: var(--space-2); }
+.password-form { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.password-form label { display: flex; flex-direction: column; gap: var(--space-1); color: var(--text2); font-size: var(--fs-xs); }
+.password-form input { background: var(--bg); border-color: var(--border); }
+.password-modal-error { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--error-border); border-radius: var(--radius-sm); background: var(--danger-bg); color: var(--red-h); font-size: var(--fs-sm); }
+.password-modal-actions { margin-top: var(--space-4); display: flex; justify-content: flex-end; gap: var(--space-2); }
 .modal-footer {
   padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--border);
