@@ -3331,7 +3331,7 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await page.getByLabel('App name').fill('Verified Paste')
   await page.getByLabel('Public title').fill('Verified public title')
   await page.getByLabel('Maximum file size in gigabytes').fill('2')
-  await page.getByLabel('Anonymous uploads').selectOption('public')
+  await page.getByRole('button', { name: 'Public uploads' }).click()
   await page.getByRole("checkbox", { name: /Allow new registrations/ }).uncheck()
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')

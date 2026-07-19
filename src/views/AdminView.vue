@@ -1033,7 +1033,13 @@ onBeforeUnmount(() => {
             <input v-model.number="fileSizeLimitGb" type="range" min="0" max="100" step="1" aria-label="Maximum file size in gigabytes" />
             <div class="range-labels"><span>Disabled</span><span>50 GB</span><span>100 GB</span></div>
           </div>
-          <label class="span-2"><span>Anonymous uploads</span><small>Private requires an account or upload token. Public lets anyone upload without signing in.</small><select v-model="settingsForm.upload_access_mode"><option value="private">Private</option><option value="public">Public</option></select></label>
+          <div class="upload-access-control span-2">
+            <div><strong>Anonymous uploads</strong><small>Choose whether visitors need an account or upload token before they can upload.</small></div>
+            <div class="upload-access-toggle" role="group" aria-label="Anonymous upload access">
+              <button :aria-pressed="settingsForm.upload_access_mode === 'private'" :class="{ selected: settingsForm.upload_access_mode === 'private' }" aria-label="Private uploads" type="button" @click="settingsForm.upload_access_mode = 'private'"><strong>Private</strong><small>Account or token required</small></button>
+              <button :aria-pressed="settingsForm.upload_access_mode === 'public'" :class="{ selected: settingsForm.upload_access_mode === 'public' }" aria-label="Public uploads" type="button" @click="settingsForm.upload_access_mode = 'public'"><strong>Public</strong><small>Anyone can upload</small></button>
+            </div>
+          </div>
           <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
         </div>
       </section>
@@ -1483,6 +1489,52 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .setting-slider output { color: var(--accent); font-weight: 600; white-space: nowrap; }
 .setting-slider input[type="range"] { width: 100%; margin-top: var(--space-4); accent-color: var(--accent); }
 .range-labels { display: flex; justify-content: space-between; color: var(--text3); font-size: var(--fs-xs); }
+.upload-access-control {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 58%);
+}
+.upload-access-control > div:first-child > small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text3);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+.upload-access-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border2);
+  border-radius: calc(var(--radius-sm) + 2px);
+  background: color-mix(in srgb, var(--bg) 72%, var(--surface));
+}
+.upload-access-toggle button {
+  min-height: 58px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text3);
+  text-align: left;
+  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease;
+}
+.upload-access-toggle button:hover { color: var(--text); background: color-mix(in srgb, var(--surface2) 72%, transparent); }
+.upload-access-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.upload-access-toggle button strong,
+.upload-access-toggle button small { display: block; }
+.upload-access-toggle button small { margin-top: 3px; color: inherit; font-size: var(--fs-xs); font-weight: 400; opacity: .76; }
+.upload-access-toggle button.selected {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 34%, transparent), 0 6px 16px color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+.upload-access-toggle button.selected strong { color: var(--accent); }
 .webhook-create > .subtle { margin-top: calc(var(--space-2) * -1); }
 .webhook-events { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .event-option { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
