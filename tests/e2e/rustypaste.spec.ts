@@ -150,7 +150,7 @@ async function signInAsAdmin(page: Page) {
   })
 }
 
-async function mockAdminApi(page: Page, userCount = 12) {
+async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = false) {
   const users = Array.from({ length: userCount }, (_, index) => ({
     username: `user-${index + 1}`,
     created_at: 1_775_000_000 + index,
@@ -161,19 +161,25 @@ async function mockAdminApi(page: Page, userCount = 12) {
     upload_count: index + 1,
     disk_usage_bytes: 2048 * (index + 1),
   }))
-  const uploads = Array.from({ length: 12 }, (_, index) => ({
-    path: index === 2 ? 'files/expiring-paste.txt.1785612876517' : `files/upload-${index + 1}.txt`,
-    owner: index === 0 ? 'user-1 (ShareX)' : index % 2 === 0 ? 'user-1' : 'user-2',
-    file_name: index === 2 ? 'expiring-paste.txt.1785612876517' : `upload-${index + 1}.txt`,
-    display_name: index === 0 ? 'ShareX screenshot.png' : index === 2 ? 'expiring-paste.txt.1785612876517' : `upload-${index + 1}.txt`,
-    uploader: index % 2 === 0 ? 'user-1' : 'user-2',
-    source: index === 0 ? 'ShareX' : 'WebUI',
-    size_bytes: 1024 * (index + 1),
-    created_at: 1_775_100_000 + index,
-    expires_at: index % 3 === 0 ? 1_775_200_000 + index : null,
-    expired: index === 3,
-    content_type: index === 2 ? null : index === 0 || index % 2 === 1 ? 'image/png' : 'text/plain',
-  }))
+  const uploads = Array.from({ length: includeLongUpload ? 13 : 12 }, (_, index) => {
+    const longUpload = includeLongUpload && index === 12
+    const fileName = longUpload
+      ? 'Screenshot_20260719_131129_Chrome_with_a_really_long_filename.jpg'
+      : index === 2 ? 'expiring-paste.txt.1785612876517' : `upload-${index + 1}.txt`
+    return {
+      path: longUpload ? 'files/long-upload.jpg' : index === 2 ? 'files/expiring-paste.txt.1785612876517' : `files/upload-${index + 1}.txt`,
+      owner: longUpload ? 'Anonymous' : index === 0 ? 'user-1 (ShareX)' : index % 2 === 0 ? 'user-1' : 'user-2',
+      file_name: fileName,
+      display_name: index === 0 ? 'ShareX screenshot.png' : fileName,
+      uploader: longUpload ? 'Anonymous' : index % 2 === 0 ? 'user-1' : 'user-2',
+      source: index === 0 ? 'ShareX' : 'WebUI',
+      size_bytes: 1024 * (index + 1),
+      created_at: 1_775_100_000 + index,
+      expires_at: index % 3 === 0 ? 1_775_200_000 + index : null,
+      expired: index === 3,
+      content_type: longUpload ? 'image/jpeg' : index === 2 ? null : index === 0 || index % 2 === 1 ? 'image/png' : 'text/plain',
+    }
+  })
   const audit = Array.from({ length: 12 }, (_, index) => ({
     id: index + 1,
     created_at: 1_775_300_000 + index,
@@ -4166,6 +4172,24 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: 'Close preview' }).click()
   await expect(dialog).toBeHidden()
+})
+
+test('admin upload filenames truncate their base while keeping extensions visible on mobile', async ({ page }) => {
+  const filename = 'Screenshot_20260719_131129_Chrome_with_a_really_long_filename.jpg'
+  await signInAsAdmin(page)
+  await mockAdminApi(page, 12, true)
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+
+  const name = page.getByRole('button', { name: filename, exact: true })
+  const base = name.locator('.upload-filename-base')
+  const extension = name.locator('.upload-filename-ext')
+  await expect(name).toBeVisible()
+  await expect(extension).toHaveText('.jpg')
+  await expect.poll(() => base.evaluate((element) => element.scrollWidth > element.clientWidth)).toBeTruthy()
+  await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
 })
 
 test('admin upload filters stay inside the mobile viewport', async ({ page }) => {

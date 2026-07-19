@@ -2458,9 +2458,15 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     min-width: 0;
     white-space: normal;
   }
-  .uploads-table .upload-name-link { transform: translateY(12px); }
+  .uploads-table .upload-name-link {
+    width: calc(100% - 36px);
+    max-width: calc(100% - 36px);
+    min-width: 0;
+    transform: translateY(12px);
+  }
   .uploads-table .upload-filename-base {
-    max-width: calc(100vw - 150px);
+    flex: 1 1 auto;
+    max-width: none;
   }
   .uploads-table td[data-label] {
     display: flex;
