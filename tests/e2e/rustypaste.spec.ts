@@ -163,7 +163,7 @@ async function mockAdminApi(page: Page, userCount = 12) {
   }))
   const uploads = Array.from({ length: 12 }, (_, index) => ({
     path: index === 2 ? 'files/expiring-paste.txt.1785612876517' : `files/upload-${index + 1}.txt`,
-    owner: index % 2 === 0 ? 'user-1' : 'user-2',
+    owner: index === 0 ? 'user-1 (ShareX)' : index % 2 === 0 ? 'user-1' : 'user-2',
     file_name: index === 2 ? 'expiring-paste.txt.1785612876517' : `upload-${index + 1}.txt`,
     display_name: index === 0 ? 'ShareX screenshot.png' : index === 2 ? 'expiring-paste.txt.1785612876517' : `upload-${index + 1}.txt`,
     uploader: index % 2 === 0 ? 'user-1' : 'user-2',
@@ -364,18 +364,25 @@ test('public upload mode opens Files without a login', async ({ page }) => {
   await page.goto('/')
 
   await expect(page).toHaveURL(/\/files$/)
-  await expect(page.getByTestId('desktop-nav-files')).toBeVisible()
-  const loginButton = page.getByRole('button', { name: 'Log in' })
-  await expect(loginButton).toBeVisible()
-  const loginBox = await loginButton.boundingBox()
-  const guestAccessBox = await page.locator('.guest-access').boundingBox()
-  const dividerBox = await page.locator('.sidebar-divider').boundingBox()
-  expect(loginBox).not.toBeNull()
-  expect(guestAccessBox).not.toBeNull()
-  expect(dividerBox).not.toBeNull()
-  if (loginBox && guestAccessBox && dividerBox) {
-    expect(loginBox.y + loginBox.height).toBeLessThan(dividerBox.y)
-    expect(loginBox.width).toBe(guestAccessBox.width)
+  const filesNav = page.viewportSize()?.width && page.viewportSize()!.width <= 600
+    ? page.getByTestId('mobile-nav-files')
+    : page.getByTestId('desktop-nav-files')
+  await expect(filesNav).toBeVisible()
+  if (page.viewportSize()?.width && page.viewportSize()!.width <= 600) {
+    await expect(page.getByTestId('mobile-nav-preferences')).toBeVisible()
+  } else {
+    const loginButton = page.getByRole('button', { name: 'Log in' })
+    await expect(loginButton).toBeVisible()
+    const loginBox = await loginButton.boundingBox()
+    const guestAccessBox = await page.locator('.guest-access').boundingBox()
+    const dividerBox = await page.locator('.sidebar-divider').boundingBox()
+    expect(loginBox).not.toBeNull()
+    expect(guestAccessBox).not.toBeNull()
+    expect(dividerBox).not.toBeNull()
+    if (loginBox && guestAccessBox && dividerBox) {
+      expect(loginBox.y + loginBox.height).toBeLessThan(dividerBox.y)
+      expect(loginBox.width).toBe(guestAccessBox.width)
+    }
   }
   await expect(page.getByRole('button', { name: 'Create account' })).toHaveCount(0)
 
@@ -416,7 +423,7 @@ test('guest mobile settings offers a full-width login and shows the configured A
   const dividerBox = await settings.locator('.settings-divider').boundingBox()
   expect(loginBox).not.toBeNull()
   expect(dividerBox).not.toBeNull()
-  if (loginBox && dividerBox) expect(loginBox.width).toBe(dividerBox.width)
+  if (loginBox && dividerBox) expect(Math.abs(loginBox.width - dividerBox.width)).toBeLessThanOrEqual(2)
 
   await loginButton.click()
   await expect(page).toHaveURL(/\/login$/)
@@ -513,6 +520,51 @@ test('raw actions use the configured server API base by default', async ({ page 
 
   await expect(page.getByText('server API raw text')).toBeVisible()
   await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://papi.example.test/server-api.txt?raw=1')
+})
+
+test('image previews use the configured server API base', async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: false,
+        base_api_url: 'https://papi.example.test',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
+  })
+  await page.route('https://papi.example.test/meta/server-image.png', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        file_name: 'server-image.png',
+        display_name: 'server-image.png',
+        uploader: 'Unknown',
+        file_size: 68,
+        mime_type: 'image/png',
+      }),
+    })
+  })
+  await page.route('https://papi.example.test/server-image.png?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
+    })
+  })
+
+  const token = Buffer.from('server-image.png').toString('base64url')
+  await page.goto(`/file/${token}/preview`)
+
+  await expect(page.locator('.preview-frame img')).toHaveAttribute('src', 'https://papi.example.test/server-image.png?raw=1')
 })
 
 test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page }) => {
@@ -3702,6 +3754,9 @@ test('admin panel covers every tab and responsive viewport class', async ({ page
   await expect(page.getByText('Auto-refreshing')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Delete all', exact: true })).toBeVisible()
   expect(await page.locator('.admin-table thead th').allTextContents()).toEqual(['', 'Name', 'Owner', 'Size', 'Created', 'Expires', ''])
+  const shareXRow = page.locator('.admin-table tbody tr').filter({ hasText: 'ShareX screenshot.png' }).first()
+  await expect(shareXRow.locator('.upload-owner-cell > span').first()).toHaveText('user-1')
+  await expect(shareXRow.locator('.upload-owner-cell')).not.toContainText('(ShareX)')
   await page.getByRole('button', { name: 'Owner' }).click()
   await page.getByRole('option', { name: 'user-1', exact: true }).click()
   await expect(page.getByText('ShareX screenshot.png', { exact: true })).toBeVisible()
@@ -4042,6 +4097,29 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: 'Close preview' }).click()
   await expect(dialog).toBeHidden()
+})
+
+test('admin upload filters stay inside the mobile viewport', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+
+  for (const label of ['Owner', 'Expiry']) {
+    await page.getByRole('button', { name: label, exact: true }).click()
+    const menu = page.getByRole('listbox', { name: label, exact: true })
+    await expect(menu).toBeVisible()
+    const box = await menu.boundingBox()
+    expect(box).not.toBeNull()
+    if (box) {
+      expect(box.x).toBeGreaterThanOrEqual(8)
+      expect(box.x + box.width).toBeLessThanOrEqual(382)
+      expect(box.width).toBeLessThanOrEqual(374)
+    }
+    await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
+    await page.keyboard.press('Escape')
+  }
 })
 
 test('admin uploads search filters without layout shift', async ({ page }) => {

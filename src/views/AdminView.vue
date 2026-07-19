@@ -255,7 +255,7 @@ function isShareXUpload(upload: AdminUpload): boolean {
 
 function uploadOwner(upload: AdminUpload): string {
   const owner = upload.owner ?? upload.uploader ?? 'Unattributed'
-  return owner
+  return owner.replace(/\s+\(sharex\)$/i, '').trim() || 'Unattributed'
 }
 
 function uploadDownloadUrl(upload: AdminUpload): string {

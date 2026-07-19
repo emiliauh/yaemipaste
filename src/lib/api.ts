@@ -982,10 +982,8 @@ export function publicApiFileUrl(fileName: string): string {
 }
 
 export function browserFileUrl(fileName: string, query = ''): string {
-  const origin = publicSiteOrigin()
-  const path = `/api/${encodeURIComponent(fileName)}${query ? `?${query}` : ''}`
-  if (typeof window !== 'undefined' && origin === window.location.origin) return path
-  return `${origin}${path}`
+  const base = getPasteApiBase()
+  return `${base}/${encodeURIComponent(fileName)}${query ? `?${query}` : ''}`
 }
 
 export function fileUrl(filename: string): string {

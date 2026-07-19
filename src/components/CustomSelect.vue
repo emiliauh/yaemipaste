@@ -48,7 +48,7 @@ function positionMenu() {
   if (!trigger) return
   const rect = trigger.getBoundingClientRect()
   const viewportPadding = 8
-  const width = Math.max(rect.width, 220)
+  const width = Math.min(Math.max(rect.width, 220), window.innerWidth - viewportPadding * 2)
   const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - width - viewportPadding)
   const estimatedHeight = Math.min(320, Math.max(56, props.options.length * 44 + 16))
   const openUp = rect.bottom + estimatedHeight > window.innerHeight - viewportPadding && rect.top > estimatedHeight
@@ -56,7 +56,7 @@ function positionMenu() {
     position: 'fixed',
     left: `${left}px`,
     top: `${openUp ? Math.max(viewportPadding, rect.top - estimatedHeight - 6) : rect.bottom + 6}px`,
-    width: `${Math.min(width, window.innerWidth - viewportPadding * 2)}px`,
+    width: `${width}px`,
   }
 }
 
@@ -186,5 +186,5 @@ onUnmounted(() => {
 .custom-select-menu strong { font-size: 13px; font-weight: 600; }
 .custom-select-menu small { margin-top: 2px; color: var(--text2); font-size: 11px; }
 .select-check { color: var(--accent-h); font-size: 14px; }
-@media (max-width: 600px) { .custom-select { width: 100%; } .custom-select-menu { width: min(calc(100vw - 16px), 420px) !important; max-height: min(360px, calc(100dvh - 24px)); } }
+@media (max-width: 600px) { .custom-select { width: 100%; } .custom-select-menu { max-height: min(360px, calc(100dvh - 24px)); } }
 </style>

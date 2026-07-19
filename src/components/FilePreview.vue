@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
+import { getPasteApiBase, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
 import { encryptedShareUrl, getStoredEncryptedFile } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
@@ -122,7 +122,8 @@ async function loadTextPreview() {
       return
     }
     const headers: Record<string, string> = {}
-    if (url.value.includes('/api/')) {
+    const apiBase = getPasteApiBase()
+    if (url.value.includes('/api/') || (apiBase.startsWith('http') && url.value.startsWith(`${apiBase}/`))) {
       const token = getAuthToken().trim()
       if (token) headers.Authorization = token
     }
