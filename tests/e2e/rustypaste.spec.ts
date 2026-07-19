@@ -3573,6 +3573,7 @@ for (const viewport of [
 
 test('login page offers a passkey sign-in action', async ({ page }) => {
   await page.goto('/#/login')
+  await expect(page.getByRole('button', { name: 'Token' })).toHaveCount(0)
   await expect(page.getByTestId('passkey-login-btn')).toBeDisabled()
   await page.locator('input[autocomplete="username"]').fill('test-user')
   await expect(page.getByTestId('passkey-login-btn')).toBeEnabled()
@@ -3641,25 +3642,6 @@ test('login remember me unchecked stores auth in session storage', async ({ page
     sessionToken: 'token-session',
     remember: '0',
   })
-})
-
-test('token login mode blocks tokens already used by accounts', async ({ page }) => {
-  await page.route('**/auth/token/status', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ status: 'used' }),
-    })
-  })
-
-  await page.goto('/#/login')
-  await page.getByRole('button', { name: 'Token' }).click()
-  await page.locator('input[placeholder="enter token"]').fill('used-token')
-  await page.getByRole('button', { name: 'Login' }).click()
-
-  await expect(page.getByText('Token already used.')).toBeVisible()
-  await page.getByRole('button', { name: 'Do you have an account?' }).click()
-  await expect(page.locator('input[autocomplete="username"]')).toBeVisible()
 })
 
 test('admin route is guarded and sidebar entry only appears for admins', async ({ page }) => {
@@ -3772,7 +3754,11 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await page.getByLabel('Maximum file size in gigabytes').fill('2')
   await page.getByRole('button', { name: 'Public uploads' }).click()
   await page.getByRole("checkbox", { name: /Allow new registrations/ }).uncheck()
-  await page.getByRole('button', { name: 'Save settings' }).click()
+  const saveSettings = page.getByRole('button', { name: 'Save settings' })
+  await expect.poll(() => saveSettings.evaluate((button) => getComputedStyle(button).backgroundColor)).toMatch(
+    /rgb\((70, 109, 152|78, 120, 170)\)/,
+  )
+  await saveSettings.click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
 })
 

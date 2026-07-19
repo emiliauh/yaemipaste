@@ -5,9 +5,7 @@ import {
   authLogin,
   authPasskeyLoginBegin,
   authPasskeyLoginFinish,
-  authTokenStatus,
   getRememberPreference,
-  loginWithToken,
   setRememberPreference,
 } from '../lib/api'
 import { credentialToJson, isPasskeySupported, passkeyErrorMessage, toRequestOptions } from '../lib/passkeys'
@@ -33,31 +31,20 @@ const TURNSTILE_SITE_KEY = computed(() => (
 // available - a deployment misconfiguration, not a visitor error.
 const turnstileMisconfigured = computed(() => publicSettings.value.turnstile_required && !TURNSTILE_SITE_KEY.value)
 
-// mode: 'account' = username+password, 'token' = raw token (legacy)
-const mode = ref<'account' | 'token'>('account')
-
 const username = ref('')
 const password = ref('')
-const token = ref('')
 const error = ref('')
 const loading = ref(false)
 const passkeyLoading = ref(false)
 const rememberMe = ref(getRememberPreference())
 const showPassword = ref(false)
-const tokenUsed = ref(false)
 const passkeySupported = computed(() => isPasskeySupported())
 const turnstileContainer = ref<HTMLElement | null>(null)
 const turnstile = useTurnstile()
 
 watch(rememberMe, (value) => setRememberPreference(value))
-watch(mode, () => {
-  error.value = ''
-  tokenUsed.value = false
-})
-
-function setError(message: string, usedToken = false) {
+function setError(message: string) {
   error.value = message
-  tokenUsed.value = usedToken
 }
 
 let turnstileReady: Promise<void> | null = null
@@ -77,10 +64,6 @@ function mountTurnstileWhenReady(): Promise<void> {
   return turnstileReady
 }
 
-function goToAccountLogin() {
-  mode.value = 'account'
-}
-
 onMounted(() => {
   if (!isAuthEnabled()) {
     router.replace('/files')
@@ -91,36 +74,23 @@ onMounted(() => {
 
 async function submit() {
   setError('')
-  if (mode.value === 'account') {
-    // Close the race between this submit and the async settings fetch that
-    // decides whether Turnstile is required (see mountTurnstileWhenReady):
-    // an autofill-and-immediate-submit could otherwise read the FALLBACK
-    // "not required" default and skip a token the backend actually needs.
-    await (turnstileReady ?? mountTurnstileWhenReady())
-    if (turnstileMisconfigured.value) {
-      setError('Security check is misconfigured on the server (Turnstile is required but no site key is set). Contact the site administrator.')
-      return
-    }
+  // Close the race between this submit and the async settings fetch that
+  // decides whether Turnstile is required (see mountTurnstileWhenReady):
+  // an autofill-and-immediate-submit could otherwise read the FALLBACK
+  // "not required" default and skip a token the backend actually needs.
+  await (turnstileReady ?? mountTurnstileWhenReady())
+  if (turnstileMisconfigured.value) {
+    setError('Security check is misconfigured on the server (Turnstile is required but no site key is set). Contact the site administrator.')
+    return
   }
   loading.value = true
   try {
-    if (mode.value === 'account') {
-      const captchaToken = await turnstile.ensureToken(TURNSTILE_SITE_KEY.value)
-      await authLogin(username.value.trim(), password.value, {
-        rememberMe: rememberMe.value,
-        turnstileToken: captchaToken,
-      })
-      turnstile.reset()
-    } else {
-      if (!token.value.trim()) throw new Error('Token is required')
-      const status = await authTokenStatus(token.value.trim())
-      if (status === 'used') {
-        setError('Token already used.', true)
-        return
-      }
-      if (status === 'invalid') throw new Error('Invalid token')
-      loginWithToken(token.value.trim(), rememberMe.value)
-    }
+    const captchaToken = await turnstile.ensureToken(TURNSTILE_SITE_KEY.value)
+    await authLogin(username.value.trim(), password.value, {
+      rememberMe: rememberMe.value,
+      turnstileToken: captchaToken,
+    })
+    turnstile.reset()
     router.push('/files')
   } catch (e: any) {
     setError(e.message ?? 'Login failed')
@@ -131,10 +101,6 @@ async function submit() {
 }
 
 async function loginWithPasskey() {
-  if (mode.value !== 'account') {
-    setError('Passkeys are available in Account mode only')
-    return
-  }
   if (!username.value.trim()) {
     setError('Username is required for passkey login')
     return
@@ -187,7 +153,7 @@ async function loginWithPasskey() {
           </span>
           <div>
             <strong>Authentication required</strong>
-            <p>Use your account, or enter a token directly.</p>
+            <p>Use your account to manage uploads, links, and settings.</p>
             <p v-if="!publicSettings.registration_enabled" class="registration-notice">
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="12" r="9"/>
@@ -198,58 +164,43 @@ async function loginWithPasskey() {
           </div>
         </div>
 
-      <div class="card login-card">
-        <div class="tabs login-tabs">
-          <button :class="{ active: mode === 'account' }" @click="mode = 'account'">Account</button>
-          <button :class="{ active: mode === 'token' }" @click="mode = 'token'">Token</button>
-        </div>
-
+        <div class="card login-card">
         <form @submit.prevent="submit">
-          <template v-if="mode === 'account'">
-            <div class="field">
-              <label for="login-username">Username</label>
-              <input id="login-username" v-model="username" type="text" autocomplete="username" autofocus placeholder="username" required />
+          <div class="field">
+            <label for="login-username">Username</label>
+            <input id="login-username" v-model="username" type="text" autocomplete="username" autofocus placeholder="username" required />
+          </div>
+          <div class="field">
+            <label for="login-password">Password</label>
+            <div class="password-wrap">
+              <input
+                id="login-password"
+                v-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                autocomplete="current-password"
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                :title="showPassword ? 'Hide password' : 'Show password'"
+                @click="showPassword = !showPassword"
+              >
+                <svg v-if="showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M3 3l18 18"/>
+                  <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                  <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
+                  <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
+                </svg>
+                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
             </div>
-            <div class="field">
-              <label for="login-password">Password</label>
-              <div class="password-wrap">
-                <input
-                  id="login-password"
-                  v-model="password"
-                  :type="showPassword ? 'text' : 'password'"
-                  autocomplete="current-password"
-                  placeholder="••••••••"
-                  required
-                />
-                <button
-                  type="button"
-                  class="password-toggle"
-                  :aria-label="showPassword ? 'Hide password' : 'Show password'"
-                  :title="showPassword ? 'Hide password' : 'Show password'"
-                  @click="showPassword = !showPassword"
-                >
-                  <svg v-if="showPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path d="M3 3l18 18"/>
-                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
-                    <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
-                    <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
-                  </svg>
-                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="field">
-              <label for="login-token">Auth Token</label>
-              <p class="field-hint">Your token will be stored on your device until you logout.</p>
-              <input id="login-token" v-model="token" type="text" autocomplete="off" autofocus placeholder="enter token" required />
-            </div>
-          </template>
+          </div>
 
           <div class="login-options">
             <label class="remember-toggle">
@@ -257,7 +208,6 @@ async function loginWithPasskey() {
               <span>remember me</span>
             </label>
             <button
-              v-if="mode === 'account'"
               type="button"
               class="passkey-link"
               data-testid="passkey-login-btn"
@@ -273,14 +223,13 @@ async function loginWithPasskey() {
 
           <div v-if="error" class="error-msg" role="alert">
             <span>{{ error }}</span>
-            <button v-if="tokenUsed" type="button" class="inline-link" @click="goToAccountLogin">Do you have an account?</button>
           </div>
 
-          <div class="form-footer" :class="{ 'single-action': mode === 'account' && !publicSettings.registration_enabled }">
+          <div class="form-footer" :class="{ 'single-action': !publicSettings.registration_enabled }">
             <button type="submit" class="btn-primary" :disabled="loading">
               {{ loading ? 'Logging in…' : 'Login' }}
             </button>
-            <router-link v-if="mode === 'account' && publicSettings.registration_enabled" to="/register" class="link">Register</router-link>
+            <router-link v-if="publicSettings.registration_enabled" to="/register" class="link">Register</router-link>
           </div>
         </form>
       </div>
@@ -394,27 +343,6 @@ async function loginWithPasskey() {
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   box-shadow: 0 18px 42px color-mix(in srgb, var(--shadow) 30%, transparent);
 }
-.login-tabs {
-  width: 100%;
-  margin-bottom: var(--space-4);
-  border-radius: var(--radius-sm);
-}
-.login-tabs button {
-  position: relative;
-  flex: 1;
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-}
-.login-tabs button.active::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(var(--space-1) / 2);
-  border-radius: var(--radius-full);
-  background: var(--accent);
-}
-.login-tabs button:hover:not(.active) { background: var(--surface2); }
 .field { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
 .field label { color: var(--text); font-size: var(--fs-sm); line-height: var(--lh-tight); }
 .field-hint { color: var(--text2); font-size: var(--fs-xs); line-height: var(--lh-body); margin-top: calc(var(--space-1) / -2); }

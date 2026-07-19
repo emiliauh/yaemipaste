@@ -370,7 +370,7 @@ compose() {
     fi
     die "Compose file not found at ${INSTALL_DIR}/${COMPOSE_FILE}"
   fi
-  local resolver_enabled profiles profile
+  local resolver_enabled profiles profile image_mode
   local -a profile_list
   local -a profile_args
   resolver_enabled="$(env_get RESOLVER_ENABLED "0")"
@@ -383,7 +383,12 @@ compose() {
   for profile in "${profile_list[@]}"; do
     [[ -n "$profile" ]] && profile_args+=(--profile "$profile")
   done
-  run "${COMPOSE_CMD[@]}" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
+  image_mode="$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
+  local -a compose_files=(-f "${INSTALL_DIR}/${COMPOSE_FILE}")
+  if [[ "$image_mode" == "build" ]]; then
+    compose_files+=(-f "${INSTALL_DIR}/docker-compose.build.yml")
+  fi
+  run "${COMPOSE_CMD[@]}" "${compose_files[@]}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
 }
 
 ensure_repo_present() {
@@ -664,7 +669,6 @@ configure_env() {
       passkey_rp_id=""
       passkey_origins=""
     fi
-    resolver_enabled="$(prompt "Enable compatibility resolver (1=yes, 0=no)" "$resolver_enabled")"
   fi
 
   jwt_secret="$(env_get JWT_SECRET "")"
@@ -689,8 +693,8 @@ configure_env() {
     passkeys_enabled="0"
   fi
   if [[ ! "$resolver_enabled" =~ ^[01]$ ]]; then
-    warn "Invalid resolver toggle '${resolver_enabled}', defaulting to 1"
-    resolver_enabled="1"
+    warn "Invalid resolver toggle '${resolver_enabled}', defaulting to 0"
+    resolver_enabled="0"
   fi
   resolve_base="${resolve_base:-$(env_get VITE_FILE_RESOLVE_BASE "/api/resolve")}"
   if [[ "$resolver_enabled" == "0" ]]; then
@@ -760,6 +764,11 @@ configure_env() {
   upsert_env PASSKEY_RP_ID "$passkey_rp_id"
   upsert_env PASSKEY_ORIGINS "$passkey_origins"
   upsert_env RESOLVER_ENABLED "$resolver_enabled"
+  if [[ "$deployment_mode" == "split" || "$resolver_enabled" != "0" ]]; then
+    upsert_env DEPLOYMENT_IMAGE_MODE "build"
+  else
+    upsert_env DEPLOYMENT_IMAGE_MODE "$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
+  fi
   upsert_env AUTH_ADMIN_BASE_URL "$admin_base"
   upsert_env AUTH_BOOTSTRAP_PATH "$bootstrap_path"
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"
@@ -805,8 +814,15 @@ stack_install_or_update() {
   clone_or_update_repo
   configure_env
   section "Starting Stack"
-  compose pull || warn "Compose pull failed; continuing with local build"
-  compose up -d --build
+  local image_mode
+  image_mode="$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
+  if [[ "$image_mode" == "build" ]]; then
+    warn "Local image builds are enabled; npm and Cargo compilation may take several minutes."
+    compose up -d --build
+  else
+    compose pull
+    compose up -d
+  fi
   local ui_port api_port probe_host deployment_mode split_role
   ui_port="$(env_get UI_PORT "$DEFAULT_UI_PORT")"
   api_port="$(env_get API_PUBLISH_PORT "8000")"

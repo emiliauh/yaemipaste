@@ -13,8 +13,13 @@ Then edit only what your deployment needs.
 Same-host deployment starts both Compose profiles:
 
 ```bash
-COMPOSE_PROFILES=ui,api docker compose up --build -d
+COMPOSE_PROFILES=ui,api docker compose pull
+COMPOSE_PROFILES=ui,api docker compose up -d
 ```
+
+The standard same-host setup pulls prebuilt UI and API images. Use
+`DEPLOYMENT_IMAGE_MODE=build` only when changing compile-time `VITE_*` UI
+settings or using a split deployment.
 
 Legacy compatibility resolver:
 
@@ -26,7 +31,7 @@ docker compose --profile with-resolver up --build -d
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `VITE_PASTE_API` | File API base used by the frontend | `/api` |
+| `VITE_PASTE_API` | File API base used by the frontend; requires a local UI build when changed | `/api` |
 | `VITE_AUTH_API` | Auth API base used by the frontend | `/auth` |
 | `VITE_PUBLIC_SITE_ORIGIN` | Explicit public site origin for generated links | empty |
 | `VITE_HISTORY_WS` | Optional history websocket override | empty |
@@ -63,6 +68,10 @@ docker compose --profile with-resolver up --build -d
 | `DEPLOYMENT_MODE` | `same` or `split` topology marker | `same` |
 | `SPLIT_ROLE` | `ui` or `api` on split hosts | empty |
 | `COMPOSE_PROFILES` | Services started by Compose | `ui,api` |
+| `DEPLOYMENT_IMAGE_MODE` | `pull` prebuilt images, or `build` from local source | `pull` |
+| `YAEMIPASTE_IMAGE_TAG` | UI/API image tag; pin a SHA tag for production | `main` |
+| `YAEMIPASTE_UI_IMAGE` | UI image repository or mirror | `ghcr.io/emiliauh/yaemipaste-ui` |
+| `YAEMIPASTE_API_IMAGE` | API image repository or mirror | `ghcr.io/emiliauh/yaemipaste-api` |
 | `UI_BIND_ADDRESS` | UI host bind address | `127.0.0.1` |
 | `UI_PORT` | Host port for the static frontend container | `8080` |
 | `API_PUBLISH_BIND` | API host bind address | `127.0.0.1` |

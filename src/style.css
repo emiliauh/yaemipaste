@@ -16,6 +16,8 @@
   --accent:    #82a9d6;
   --accent-h:  #b1cced;
   --accent-d:  #5e86b4;
+  --primary-action: #466d98;
+  --primary-action-h: #4e78aa;
   --orange:    var(--accent);
   --orange-h:  var(--accent-h);
   --red:       #d27676;
@@ -91,6 +93,8 @@
   --accent:    #4e78aa;
   --accent-h:  #385f8d;
   --accent-d:  #2e527b;
+  --primary-action: #4e78aa;
+  --primary-action-h: #385f8d;
   --red:       #b42318;
   --red-h:     #d92d20;
   --green:     #16834a;
@@ -286,10 +290,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-primary:hover:not(:disabled) { background: var(--bg3); border-color: var(--text3); }
 
 .btn-orange {
-  background: var(--accent);
+  background: var(--primary-action);
   color: var(--on-accent);
 }
-.btn-orange:hover:not(:disabled) { background: var(--accent-h); }
+.btn-orange:hover:not(:disabled) { background: var(--primary-action-h); }
 
 .btn-red {
   background: transparent;
