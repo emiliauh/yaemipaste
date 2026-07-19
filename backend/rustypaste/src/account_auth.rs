@@ -868,22 +868,16 @@ async fn login(
         );
     }
     let auth_env = AuthEnv::from_env();
-    if !verify_turnstile(
-        &client,
-        &auth_env.turnstile_secret_key,
-        &body.turnstile_token,
-    )
-    .await
-    {
-        return json_error(
-            actix_web::http::StatusCode::BAD_REQUEST,
-            "Security check failed",
-        );
-    }
     let connection = match open_db(&auth_env.db_path) {
         Ok(connection) => connection,
         Err(response) => return response,
     };
+    let settings = crate::admin::setting_map(&connection).unwrap_or_default();
+    let turnstile_enabled = settings.get("turnstile_enabled").map(String::as_str) == Some("true");
+    let turnstile_secret = settings.get("turnstile_secret_key").map(String::as_str).unwrap_or(&auth_env.turnstile_secret_key);
+    if turnstile_enabled && !verify_turnstile(&client, turnstile_secret, &body.turnstile_token).await {
+        return json_error(actix_web::http::StatusCode::BAD_REQUEST, "Security check failed");
+    }
     let username = normalize_username(&body.username);
     let row = connection
         .query_row(

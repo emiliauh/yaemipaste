@@ -282,7 +282,7 @@ fn ensure_setting_defaults(connection: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn setting_map(connection: &Connection) -> rusqlite::Result<HashMap<String, String>> {
+pub(crate) fn setting_map(connection: &Connection) -> rusqlite::Result<HashMap<String, String>> {
     ensure_setting_defaults(connection)?;
     let mut statement = connection.prepare("SELECT key, value FROM admin_settings")?;
     let rows = statement.query_map([], |row| {
@@ -2585,18 +2585,8 @@ async fn public_settings() -> HttpResponse {
         Err(response) => return response,
     };
     let settings = setting_map(&connection).unwrap_or_default();
-    // Despite the VITE_ prefix (kept for .env naming continuity), the
-    // frontend no longer reads VITE_TURNSTILE_SITE_KEY at build time at
-    // all - it fetches the live value from this endpoint on every page
-    // load, and the login page gates on `turnstile_required` (derived from
-    // TURNSTILE_SECRET_KEY below), never a build-time-baked value. This
-    // means both keys can be set/changed/cleared via `.env` + `docker
-    // compose up -d` alone, no rebuild, and the two can never drift out of
-    // sync and silently lock login out.
-    let turnstile_site_key = env::var("VITE_TURNSTILE_SITE_KEY")
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let turnstile_enabled = settings.get("turnstile_enabled").map(String::as_str) == Some("true");
+    let turnstile_site_key = settings.get("turnstile_site_key").cloned().unwrap_or_default();
     HttpResponse::Ok().json(json!({
         "app_name": settings.get("app_name").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "public_title": settings.get("public_title").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
@@ -2609,7 +2599,7 @@ async fn public_settings() -> HttpResponse {
         "file_size_limit_bytes": settings.get("file_size_limit_bytes").and_then(|value| value.parse::<u64>().ok()).unwrap_or(0),
         "file_size_limit_unlimited": settings.get("file_size_limit_unlimited").map(|value| value == "true").unwrap_or(false),
         "turnstile_site_key": turnstile_site_key,
-        "turnstile_required": !auth_env.turnstile_secret_key.trim().is_empty(),
+        "turnstile_required": turnstile_enabled && !turnstile_site_key.trim().is_empty(),
     }))
 }
 
@@ -2864,27 +2854,27 @@ mod tests {
             env::set_var("TURNSTILE_SECRET_KEY", "runtime-secret");
             env::remove_var("VITE_TURNSTILE_SITE_KEY");
         }
-        // Regression: setting only the runtime backend secret used to require
-        // a matching frontend rebuild, otherwise login showed no site key.
+        // Environment variables are a fallback only; the admin-managed
+        // setting is intentionally disabled until an administrator enables it.
         let settings = read_public_settings!();
         assert_eq!("", settings["turnstile_site_key"]);
-        assert_eq!(true, settings["turnstile_required"]);
+        assert_eq!(false, settings["turnstile_required"]);
 
         unsafe {
             env::set_var("TURNSTILE_SECRET_KEY", "runtime-secret");
             env::set_var("VITE_TURNSTILE_SITE_KEY", "site-key");
         }
         let settings = read_public_settings!();
-        assert_eq!("site-key", settings["turnstile_site_key"]);
-        assert_eq!(true, settings["turnstile_required"]);
+        assert_eq!("", settings["turnstile_site_key"]);
+        assert_eq!(false, settings["turnstile_required"]);
 
         unsafe {
             env::set_var("TURNSTILE_SECRET_KEY", " runtime-secret ");
             env::set_var("VITE_TURNSTILE_SITE_KEY", " abc ");
         }
         let settings = read_public_settings!();
-        assert_eq!("abc", settings["turnstile_site_key"]);
-        assert_eq!(true, settings["turnstile_required"]);
+        assert_eq!("", settings["turnstile_site_key"]);
+        assert_eq!(false, settings["turnstile_required"]);
 
         let _ = fs::remove_file(db_path);
         let _ = fs::remove_dir_all(upload_root);
