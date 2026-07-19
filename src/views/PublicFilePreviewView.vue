@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, effectivePublicMimeType, encodeFileToken, formatBytes, getAuthUsername, getPublicFileMeta, preferredPublicFileName, publicDownloadUrl, publicFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, effectivePublicMimeType, encodeFileToken, fileUrl, formatBytes, getAuthUsername, getPublicFileMeta, preferredPublicFileName, publicApiFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 
 const route = useRoute()
@@ -24,7 +24,7 @@ const requestedFileName = computed(() => {
   return String(route.query.f ?? '').replace(/^\/+/, '')
 })
 
-const rawUrl = computed(() => (resolvedFileName.value ? publicFileUrl(resolvedFileName.value) : ''))
+const rawUrl = computed(() => (resolvedFileName.value ? fileUrl(resolvedFileName.value) : ''))
 const rawRouteUrl = computed(() => {
   const token = routeFileKey.value.split('+')[0]
   if (token) return `/file/${token}/raw`
@@ -33,7 +33,7 @@ const rawRouteUrl = computed(() => {
 const downloadUrl = computed(() => {
   const token = routeFileKey.value.split('+')[0]
   if (token) return `/file/${token}/download`
-  return resolvedFileName.value ? publicDownloadUrl(resolvedFileName.value) : ''
+  return resolvedFileName.value ? `${publicApiFileUrl(resolvedFileName.value)}?download=true` : ''
 })
 const mediaUrl = computed(() => rawUrl.value)
 const displayFileName = computed(() => preferredPublicFileName(meta.value, resolvedFileName.value || requestedFileName.value))

@@ -26,7 +26,7 @@ import {
   formatBytes,
   formatGigabytes,
   getAuthUsername,
-  publicFileUrl,
+  fileUrl,
   publicDownloadUrl,
   publicPreviewUrl,
   type AdminAuditEntry,
@@ -232,13 +232,12 @@ function splitUploadDisplayName(upload: AdminUpload): { base: string; ext: strin
 
 function isShareXUpload(upload: AdminUpload): boolean {
   const source = (upload.source ?? '').trim().toLowerCase()
-  const uploader = (upload.uploader ?? upload.owner ?? '').trim().toLowerCase()
-  return source === 'sharex' || uploader === 'sharex' || uploader.endsWith('(sharex)')
+  return source === 'sharex'
 }
 
 function uploadOwner(upload: AdminUpload): string {
   const owner = upload.owner ?? upload.uploader ?? 'Unattributed'
-  return isShareXUpload(upload) ? owner.replace(/\s*\(sharex\)\s*$/i, '') : owner
+  return owner
 }
 
 function uploadDownloadUrl(upload: AdminUpload): string {
@@ -992,7 +991,7 @@ onBeforeUnmount(() => {
     <FilePreview
       v-if="previewUpload && previewUploadFile"
       :file="previewUploadFile"
-      :source-url="publicFileUrl(previewUpload.file_name)"
+      :source-url="fileUrl(previewUpload.file_name)"
       :display-name="uploadDisplayName(previewUpload)"
       :mime-type="previewUpload.content_type ?? undefined"
       @close="closeUploadPreview"
@@ -1000,7 +999,7 @@ onBeforeUnmount(() => {
     />
 
     <div v-if="hoverUploadPreview" class="upload-hover-preview" :style="{ left: `${hoverUploadPreview.x}px`, top: `${hoverUploadPreview.y}px` }">
-      <img :src="publicFileUrl(hoverUploadPreview.upload.file_name)" :alt="uploadDisplayName(hoverUploadPreview.upload)" />
+      <img :src="fileUrl(hoverUploadPreview.upload.file_name)" :alt="uploadDisplayName(hoverUploadPreview.upload)" />
       <div class="upload-hover-name">{{ splitUploadDisplayName(hoverUploadPreview.upload).base }}</div>
     </div>
 

@@ -917,7 +917,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
       }),
     })
   })
-  await page.route('**/preview-check/file.txt', async (route) => {
+  await page.route('**/api/preview-check.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -953,7 +953,7 @@ test('public preview falls back owner to logged-in username when uploader is unk
       }),
     })
   })
-  await page.route('**/owner-fallback/file.txt', async (route) => {
+  await page.route('**/api/owner-fallback.txt?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -1035,7 +1035,7 @@ test('upload preview download and delete work as one public-file flow', async ({
       }),
     })
   })
-  await page.route('**/flow-e2e/file.txt', async (route) => {
+  await page.route(`**/api/${fileName}?raw=1`, async (route) => {
     await route.fulfill({ status: deleted ? 404 : 200, contentType: 'text/plain', body: deleted ? 'not found' : body })
   })
   await page.route('**/api/list**', async (route) => {
@@ -1277,7 +1277,7 @@ test('public preview infers media type and cleans generated timestamp suffix whe
       }),
     })
   })
-  await page.route('**/vDuzjHyC/file.mp4.1777818730459', async (route) => {
+  await page.route('**/api/vDuzjHyC.mp4.1777818730459?raw=1', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'video/mp4',
@@ -2332,7 +2332,7 @@ test('history does not show ShareX badge when source is explicit webui even with
   await expect(page.getByLabel('Uploaded with ShareX')).toHaveCount(0)
 })
 
-test('history shows ShareX badge for legacy ShareX uploader value without source marker', async ({ page }) => {
+test('history does not show ShareX badge for legacy ShareX uploader value without source marker', async ({ page }) => {
   await signInWithToken(page)
   await page.route('**/api/list**', async (route) => {
     await route.fulfill({
@@ -2364,10 +2364,10 @@ test('history shows ShareX badge for legacy ShareX uploader value without source
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+  await expect(page.getByLabel('Uploaded with ShareX')).toHaveCount(0)
 })
 
-test('history shows ShareX badge for legacy token-uploaded media rows without explicit source marker', async ({ page }) => {
+test('history does not show ShareX badge for legacy token-uploaded media rows without explicit source marker', async ({ page }) => {
   await signInWithToken(page)
   await page.route('**/api/list**', async (route) => {
     await route.fulfill({
@@ -2399,10 +2399,10 @@ test('history shows ShareX badge for legacy token-uploaded media rows without ex
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+  await expect(page.getByLabel('Uploaded with ShareX')).toHaveCount(0)
 })
 
-test('history does not show ShareX badge for legacy token-uploaded text rows without explicit source marker', async ({ page }) => {
+test('history does not show ShareX badge for legacy token-uploaded rows without explicit source marker', async ({ page }) => {
   await signInWithToken(page)
   await page.route('**/api/list**', async (route) => {
     await route.fulfill({
