@@ -29,8 +29,8 @@ import {
   formatGigabytes,
   getAuthUsername,
   fileUrl,
-  publicDownloadUrl,
-  publicPreviewUrl,
+  publicDownloadUrlForFileName,
+  publicPreviewUrlForFileName,
   type AdminAuditEntry,
   type AdminDashboard,
   type AdminSettings,
@@ -124,7 +124,7 @@ const previewUploadFile = computed<PasteFile | null>(() => {
   const upload = previewUpload.value
   if (!upload) return null
   return {
-    file_name: upload.file_name,
+    file_name: uploadFileName(upload),
     file_size: upload.size_bytes,
     created_at: upload.created_at ? new Date(upload.created_at).toISOString() : null,
     expires_at: upload.expires_at ? new Date(upload.expires_at).toISOString() : null,
@@ -149,7 +149,7 @@ const filteredUploads = computed(() => uploads.value.filter((upload) => {
   const text = filterText.value.trim().toLowerCase()
   const textOk = !text
     || upload.path.toLowerCase().includes(text)
-    || upload.file_name.toLowerCase().includes(text)
+    || uploadFileName(upload).toLowerCase().includes(text)
     || (upload.display_name ?? '').toLowerCase().includes(text)
     || (upload.source ?? '').toLowerCase().includes(text)
     || (upload.content_type ?? '').toLowerCase().includes(text)
@@ -239,8 +239,14 @@ function setUploadsPageSize(size: UploadPageSize) {
   uploadsActionsOpen.value = false
 }
 
+function uploadFileName(upload: AdminUpload): string {
+  const fileName = upload.file_name?.trim()
+  if (fileName) return fileName
+  return upload.path.split('/').filter(Boolean).at(-1) ?? ''
+}
+
 function uploadDisplayName(upload: AdminUpload): string {
-  return (upload.display_name?.trim() || upload.file_name).replace(/\.\d{6,}$/, '')
+  return (upload.display_name?.trim() || uploadFileName(upload)).replace(/\.\d{6,}$/, '')
 }
 
 function splitUploadDisplayName(upload: AdminUpload): { base: string; ext: string } {
@@ -261,12 +267,14 @@ function uploadOwner(upload: AdminUpload): string {
 }
 
 function uploadDownloadUrl(upload: AdminUpload): string {
-  return publicDownloadUrl(upload.file_name)
+  return publicDownloadUrlForFileName(uploadFileName(upload))
 }
 
 async function copyUploadLink(upload: AdminUpload) {
   try {
-    await navigator.clipboard.writeText(publicPreviewUrl(upload.file_name))
+    const fileName = uploadFileName(upload)
+    if (!fileName) throw new Error('Missing upload file name')
+    await navigator.clipboard.writeText(publicPreviewUrlForFileName(fileName))
     notifications.push('Preview link copied', 'success')
   } catch {
     notifications.push('Could not copy preview link', 'error')
@@ -281,7 +289,7 @@ function openUploadPreview(upload: AdminUpload) {
 
 function isImageUpload(upload: AdminUpload): boolean {
   return (upload.content_type ?? '').toLowerCase().startsWith('image/')
-    || /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)(?:\.\d{6,})?$/i.test(upload.file_name)
+    || /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)(?:\.\d{6,})?$/i.test(uploadFileName(upload))
 }
 
 function uploadHoverPosition(event: MouseEvent): { x: number; y: number } {
@@ -1022,7 +1030,7 @@ onBeforeUnmount(() => {
     />
 
     <div v-if="hoverUploadPreview" class="upload-hover-preview" :style="{ left: `${hoverUploadPreview.x}px`, top: `${hoverUploadPreview.y}px` }">
-      <img :src="fileUrl(hoverUploadPreview.upload.file_name)" :alt="uploadDisplayName(hoverUploadPreview.upload)" />
+      <img :src="fileUrl(uploadFileName(hoverUploadPreview.upload))" :alt="uploadDisplayName(hoverUploadPreview.upload)" />
       <div class="upload-hover-name">{{ splitUploadDisplayName(hoverUploadPreview.upload).base }}</div>
     </div>
 

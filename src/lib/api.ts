@@ -983,8 +983,16 @@ export function publicPreviewUrl(fileName: string, origin = publicSiteOrigin()):
   return `${origin}/file/${encodeFileToken(fileName)}/preview`
 }
 
+export function publicPreviewUrlForFileName(fileName: string, origin = publicSiteOrigin()): string {
+  return `${origin}/file/${encodeURIComponent(fileName)}/preview`
+}
+
 export function publicDownloadUrl(fileName: string, origin = publicSiteOrigin()): string {
   return `${origin}/file/${encodeFileToken(fileName)}/download`
+}
+
+export function publicDownloadUrlForFileName(fileName: string, origin = publicSiteOrigin()): string {
+  return `${origin}/file/${encodeURIComponent(fileName)}/download`
 }
 
 export function publicApiFileUrl(fileName: string): string {
@@ -1108,7 +1116,7 @@ export async function resolveFileName(tokenOrFileName: string, origin = publicSi
 export interface AdminUpload {
   path: string
   owner: string | null
-  file_name: string
+  file_name: string | null
   display_name: string | null
   uploader: string | null
   source: string | null

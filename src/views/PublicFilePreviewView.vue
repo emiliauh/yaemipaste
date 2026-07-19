@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { decodeFileToken, displayUploaderName, downloadFileUrl, effectivePublicMimeType, fileUrl, formatBytes, getPublicFileMeta, preferredPublicFileName, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { usePublicSettings } from '../lib/publicSettings'
+import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
 
 const route = useRoute()
 const { publicSettings, refreshPublicSettings } = usePublicSettings()
@@ -50,6 +51,8 @@ const resolvedUploader = computed(() => {
   const tokenOwner = displayUploaderName(resolvedOwner.value)
   return tokenOwner === 'Anonymous' ? 'Anonymous' : tokenOwner
 })
+const isShareXUpload = computed(() => (meta.value?.source ?? '').trim().toLowerCase() === 'sharex')
+const displayUploader = computed(() => resolvedUploader.value.replace(/\s+\(sharex\)$/i, '').trim() || 'Anonymous')
 
 const openInAppExtensions = new Set([
   'sxcu',
@@ -152,7 +155,13 @@ watch(requestedFileName, () => void load(), { immediate: true })
           </div>
           <div>
             <span>Owner</span>
-            <strong>{{ resolvedUploader }}</strong>
+            <strong class="preview-owner">
+              {{ displayUploader }}
+              <span v-if="isShareXUpload" class="upload-sharex-badge" aria-label="Uploaded with ShareX" title="Captured and uploaded with ShareX">
+                <img :src="sharexLogoUrl" alt="" aria-hidden="true" />
+                ShareX
+              </span>
+            </strong>
           </div>
           <div>
             <span>Type</span>
@@ -250,6 +259,34 @@ h1 {
   font-weight: 400;
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
+}
+
+.preview-owner {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.upload-sharex-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg1);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  line-height: 1;
+  text-transform: none;
+}
+
+.upload-sharex-badge img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
 }
 
 .preview-frame {

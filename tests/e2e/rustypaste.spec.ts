@@ -1253,7 +1253,8 @@ test('public preview page shows metadata and download action', async ({ page }) 
       body: JSON.stringify({
         file_name: 'preview-check.txt',
         display_name: 'Invoice-April.txt',
-        uploader: 'test-user',
+        uploader: 'test-user (ShareX)',
+        source: 'ShareX',
         upload_date_utc: '2026-04-17T01:00:00Z',
         download_name: 'Invoice-April.txt',
         file_size: 12,
@@ -1272,11 +1273,13 @@ test('public preview page shows metadata and download action', async ({ page }) 
   await page.goto('/#/preview?p=/preview-check/file.txt')
   await expect(page.getByText('Invoice-April.txt')).toBeVisible()
   await expect(page.getByText('2026-04-17T01:00:00Z')).toBeVisible()
-  await expect(page.getByText('test-user')).toBeVisible()
+  await expect(page.locator('.preview-owner')).toContainText('test-user')
+  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
+  await expect(page.getByText('(ShareX)', { exact: true })).toHaveCount(0)
   await expect(page.getByText('preview content')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Download file' })).toHaveAttribute(
     'href',
-    /\/file\/[A-Za-z0-9_-]+\/download$/,
+    /\/file\/[A-Za-z0-9_.-]+\/download$/,
   )
 })
 
@@ -4199,6 +4202,63 @@ test('admin upload filenames truncate their base while keeping extensions visibl
   if (shortBaseBox && shortExtensionBox) {
     expect(shortExtensionBox.x - (shortBaseBox.x + shortBaseBox.width)).toBeLessThanOrEqual(1)
   }
+})
+
+test('admin copy link opens an anonymous upload when its history record has no file name', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await mockClipboard(page)
+  const anonymousUpload = {
+    path: 'anonymous-preview.png',
+    owner: null,
+    file_name: null,
+    display_name: null,
+    uploader: null,
+    source: 'WebUI',
+    size_bytes: 12,
+    created_at: 1_775_100_000,
+    expires_at: null,
+    expired: false,
+    content_type: 'image/png',
+  }
+  await page.route('**/auth/admin/uploads**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([anonymousUpload]) })
+  })
+  await page.route('**/api/meta/anonymous-preview.png', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'anonymous-preview.png',
+        display_name: 'anonymous-preview.png',
+        uploader: 'Anonymous',
+        upload_date_utc: '2026-07-19T18:24:56Z',
+        download_name: 'anonymous-preview.png',
+        file_size: 12,
+        mime_type: 'image/png',
+      }),
+    })
+  })
+  await page.route('**/api/anonymous-preview.png?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+UPnY9AAAAABJRU5ErkJggg==', 'base64'),
+    })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+  const row = page.locator('.admin-table tbody tr').filter({ hasText: 'anonymous-preview.png' })
+  await row.getByRole('button', { name: 'Copy preview link' }).click()
+  const copiedUrl = await page.evaluate(() => (navigator.clipboard as any).__written())
+  expect(copiedUrl).toMatch(/\/file\/anonymous-preview\.png\/preview$/)
+
+  await page.goto(copiedUrl)
+  await expect(page.getByText('File not found or expired')).toHaveCount(0)
+  await expect(page.getByText('anonymous-preview.png', { exact: true })).toBeVisible()
+  await expect(page.getByText('Anonymous', { exact: true })).toBeVisible()
 })
 
 test('admin upload filters stay inside the mobile viewport', async ({ page }) => {
