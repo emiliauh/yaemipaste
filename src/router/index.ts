@@ -16,7 +16,10 @@ const router = createRouter({
           const f = params.get('f')
           const k = params.get('k')
           if (f) rememberResolvedFileName(f)
-          if (f && k) return `/file/${encodeFileToken(f)}+${k}/preview`
+          if (f && k) {
+            if (k.startsWith('pw:')) return `/file/${encodeFileToken(f)}+${k}/preview`
+            return `/file/${encodeFileToken(f)}/preview#${encodeURIComponent(k)}`
+          }
           if (f) return `/file/${encodeFileToken(f)}/preview`
         }
         // backward compat: old hash-based public preview links (#/preview?p=...&f=...)

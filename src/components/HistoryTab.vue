@@ -175,10 +175,7 @@ function resolveHistorySocketUrl(): string | null {
   try {
     const url = new URL(base, window.location.origin)
     if (window.location.protocol === 'https:' && url.protocol !== 'wss:') return null
-    const token = getAuthToken()
-    if (!token) return null
-    url.searchParams.set('token', token)
-    return url.toString()
+    return getAuthToken() ? url.toString() : null
   } catch {
     return null
   }

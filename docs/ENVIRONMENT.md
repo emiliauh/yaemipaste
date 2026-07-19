@@ -47,6 +47,8 @@ docker compose --profile with-resolver up --build -d
 | `TURNSTILE_SECRET_KEY` | Server-side Turnstile secret. If set without a matching `VITE_TURNSTILE_SITE_KEY`, the login page shows an explicit "Security check is misconfigured on the server" message rather than blocking silently. Keep both empty to disable Turnstile, or set both together. | empty |
 | `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key. Despite the `VITE_` prefix (kept for `.env` naming continuity), this is read by the **backend** at runtime, not baked into the frontend build - the UI fetches the live value from `/auth/admin/public-settings` on every page load. Change it via `.env` + `docker compose up -d`; no rebuild needed. | empty |
 | `PASTE_PUBLIC_API` | Public API upload URL written into ShareX configs | empty |
+| `ALLOW_ANONYMOUS_UPLOADS` | Allow uploads without an account or token | `0` for new installs |
+| `REMOTE_UPLOADS_ENABLED` | Allow backend URL-fetch uploads | `0` for new installs |
 | `PASSKEYS_ENABLED` | Enable backend passkey routes | `0` |
 | `PASSKEY_RP_NAME` | Passkey display name | `yaemipaste` |
 | `PASSKEY_RP_ID` | Passkey RP ID override | empty |
@@ -96,6 +98,7 @@ For a new deployment:
 - keep `RESOLVER_ENABLED=0`
 - keep `PASTE_URL` aligned with the frontend origin
 - set a strong `JWT_SECRET`
+- set upload policy flags explicitly before upgrading an existing deployment
 
 ## When To Enable The Legacy Resolver
 

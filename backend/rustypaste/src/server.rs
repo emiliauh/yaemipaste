@@ -874,6 +874,9 @@ async fn upload(
                     )?
                 }
                 PasteType::RemoteFile => {
+                    if env::var("REMOTE_UPLOADS_ENABLED").ok().as_deref() != Some("1") {
+                        return Err(error::ErrorForbidden("remote uploads are disabled"));
+                    }
                     // Create a config with the token-specific upload path for remote file
                     let mut upload_config = config
                         .read()

@@ -25,6 +25,10 @@ sudo ./install.sh
 The installer sets up the stack, creates `.env`, asks for your public URL, and
 prints an admin claim link. See [install.sh](install.sh) for all options.
 
+Uploads require an account or upload token by default. Set
+`ALLOW_ANONYMOUS_UPLOADS=1` in `.env` only if you intentionally want public
+anonymous uploads.
+
 For unattended installation:
 
 ```bash

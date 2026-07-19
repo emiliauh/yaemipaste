@@ -34,6 +34,7 @@ const fileName = computed(() => {
   return rawFileNameFromPublicPath(window.location.pathname) || ''
 })
 const key = computed(() => {
+  if (route.hash) return decodeURIComponent(route.hash.slice(1))
   const pk = String(route.params.filekey ?? '')
   if (pk.includes('+')) return pk.split('+')[1]
   return String(route.query.k ?? '')
