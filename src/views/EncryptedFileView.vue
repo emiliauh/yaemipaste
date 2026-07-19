@@ -8,7 +8,7 @@ import {
   rawFileNameFromPublicPath,
   type EncryptedMetadata,
 } from '../lib/e2ee'
-import { browserFileUrl, decodeFileToken, downloadFileUrl, fileUrl, formatBytes, publicSiteOrigin, resolveFileName } from '../lib/api'
+import { browserFileUrl, decodeFileToken, displayUploaderName, downloadFileUrl, fileUrl, formatBytes, publicSiteOrigin, resolveFileName } from '../lib/api'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -198,7 +198,7 @@ onBeforeUnmount(clearObjectUrl)
           </div>
           <div>
             <span>Uploader</span>
-            <strong>{{ metadata.uploader || 'Unknown (token user)' }}</strong>
+            <strong>{{ displayUploaderName(metadata.uploader) }}</strong>
           </div>
         </div>
 

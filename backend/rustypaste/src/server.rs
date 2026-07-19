@@ -389,19 +389,36 @@ fn load_upload_metadata(upload_path: &Path, file_name: &str) -> Option<StoredUpl
         .and_then(|v| serde_json::from_slice::<StoredUploadMeta>(&v).ok())
 }
 
+fn strip_expiry_suffix(file_name: &str) -> Option<&str> {
+    let dot = file_name.rfind('.')?;
+    let digits = &file_name[dot + 1..];
+    (!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| &file_name[..dot])
+}
+
 fn load_upload_metadata_for_path(
     path: &Path,
     resolved_root: &Path,
     file_name: &str,
 ) -> Option<StoredUploadMeta> {
-    if let Some(meta) = load_upload_metadata(resolved_root, file_name) {
+    let stored_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(file_name);
+    let load_for_name = |upload_path: &Path| {
+        load_upload_metadata(upload_path, stored_name).or_else(|| {
+            strip_expiry_suffix(stored_name)
+                .and_then(|base_name| load_upload_metadata(upload_path, base_name))
+        })
+    };
+    if let Some(meta) = load_for_name(resolved_root) {
         return Some(meta);
     }
     fs::canonicalize(path)
         .ok()
         .and_then(|target| target.parent().map(PathBuf::from))
         .filter(|parent| parent != resolved_root)
-        .and_then(|parent| load_upload_metadata(&parent, file_name))
+        .and_then(|parent| load_for_name(&parent))
 }
 
 fn public_path_from_file_name(file_name: &str) -> String {
@@ -478,13 +495,18 @@ async fn serve_impl(
                     .append_header(("Vary", "Accept"))
                     .finish());
             }
+            let metadata = load_upload_metadata_for_path(&path, &resolved_root, &file_name);
+            let mime_file_name = metadata
+                .as_ref()
+                .and_then(|value| value.display_name.as_deref())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(&file_name);
             let mime_type = if force_download {
                 mime::APPLICATION_OCTET_STREAM
             } else {
-                mime_util::get_mime_type(&config.paste.mime_override, file_name.clone())
+                mime_util::get_mime_type(&config.paste.mime_override, mime_file_name.to_string())
                     .map_err(error::ErrorInternalServerError)?
             };
-            let metadata = load_upload_metadata_for_path(&path, &resolved_root, &file_name);
             let download_name = metadata
                 .and_then(|value| value.display_name)
                 .unwrap_or_else(|| file_name.clone());
@@ -1869,6 +1891,80 @@ mod tests {
         .await;
         assert_eq!(StatusCode::OK, raw_response.status());
         assert_body(raw_response.into_body(), contents).await?;
+
+        fs::remove_dir_all(upload_path)?;
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_raw_expiry_suffixed_file_uses_display_name_mime() -> Result<(), Error> {
+        let mut config = Config::default();
+        let upload_path =
+            env::temp_dir().join(format!("rustypaste-raw-mime-{}", std::process::id()));
+        fs::create_dir_all(upload_path.join(".rpmeta"))?;
+        config.server.upload_path = upload_path.clone();
+        let expiry = util::get_system_time()?.as_millis() + Duration::from_secs(60).as_millis();
+        let file_name = format!("screenshot.jpg.{expiry}");
+        fs::write(upload_path.join(&file_name), b"raw image bytes")?;
+        fs::write(
+            metadata_file_path(&upload_path, &file_name),
+            serde_json::to_vec(&StoredUploadMeta {
+                display_name: Some("screenshot.jpg".to_string()),
+                uploader: Some("Unknown (token user)".to_string()),
+                source: Some("WebUI".to_string()),
+            })?,
+        )?;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(config)))
+                .app_data(Data::new(Client::default()))
+                .configure(configure_routes),
+        )
+        .await;
+        let response = test::call_service(
+            &app,
+            TestRequest::get()
+                .uri("/screenshot.jpg?raw=1")
+                .insert_header(("Accept", "text/html"))
+                .to_request(),
+        )
+        .await;
+
+        assert_eq!(StatusCode::OK, response.status());
+        assert_eq!(
+            response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("image/jpeg")
+        );
+        assert_body(response.into_body(), "raw image bytes").await?;
+
+        fs::remove_file(metadata_file_path(&upload_path, &file_name))?;
+        fs::write(
+            metadata_file_path(&upload_path, "screenshot.jpg"),
+            serde_json::to_vec(&StoredUploadMeta {
+                display_name: Some("screenshot.jpg".to_string()),
+                uploader: None,
+                source: None,
+            })?,
+        )?;
+        let legacy_response = test::call_service(
+            &app,
+            TestRequest::get()
+                .uri("/screenshot.jpg?raw=1")
+                .insert_header(("Accept", "text/html"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(
+            legacy_response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("image/jpeg")
+        );
 
         fs::remove_dir_all(upload_path)?;
         Ok(())

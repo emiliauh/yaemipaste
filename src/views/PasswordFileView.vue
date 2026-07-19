@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { browserFileUrl, decodeFileToken, downloadFileUrl, fileUrl, formatBytes, publicSiteOrigin, resolveFileName } from '../lib/api'
+import { browserFileUrl, decodeFileToken, displayUploaderName, downloadFileUrl, fileUrl, formatBytes, publicSiteOrigin, resolveFileName } from '../lib/api'
 import { decryptBlobWithPassword, isRustypasteEncryptedBlob, rememberEncryptedFile, type EncryptedMetadata } from '../lib/e2ee'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -162,7 +162,7 @@ onBeforeUnmount(clearObjectUrl)
           </div>
           <div>
             <span>Uploader</span>
-            <strong>{{ metadata.uploader || 'Unknown' }}</strong>
+            <strong>{{ displayUploaderName(metadata.uploader) }}</strong>
           </div>
         </div>
 

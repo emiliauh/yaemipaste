@@ -1274,7 +1274,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
   )
 })
 
-test('public preview falls back owner to logged-in username when uploader is unknown token user', async ({ page }) => {
+test('public preview labels an unknown token uploader as Anonymous', async ({ page }) => {
   await signInWithToken(page)
   await page.route('**/api/meta/owner-fallback.txt', async (route) => {
     await route.fulfill({
@@ -1300,7 +1300,8 @@ test('public preview falls back owner to logged-in username when uploader is unk
   })
 
   await page.goto('/#/preview?p=/owner-fallback/file.txt')
-  await expect(page.getByText('test-user')).toBeVisible()
+  await expect(page.getByText('Anonymous', { exact: true })).toBeVisible()
+  await expect(page.getByText('test-user', { exact: true })).toHaveCount(0)
 })
 
 test('token-auth upload hydrates owner name before sending metadata', async ({ page }) => {
@@ -3295,6 +3296,34 @@ test('admin branding fields are visible and use responsive layout', async ({ pag
   }
 })
 
+test('guest uploads persist Anonymous as the uploader', async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ upload_access_mode: 'public' }),
+    })
+  })
+
+  let uploadedMeta: Record<string, unknown> | null = null
+  await page.route('**/api/', async (route) => {
+    expect(route.request().headers().authorization).toBeUndefined()
+    const body = route.request().postDataBuffer()
+    if (!body) throw new Error('Missing upload body')
+    uploadedMeta = JSON.parse(extractMultipartField(body, route.request().headers()['content-type'] ?? '', 'meta').toString('utf8'))
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: `${APP_ORIGIN}/anonymous-owner.txt` })
+  })
+
+  await page.goto('/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'anonymous-owner.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('anonymous upload'),
+  })
+
+  await expect.poll(() => uploadedMeta?.uploader).toBe('Anonymous')
+})
+
 test('settings password modal changes password and supports logout-all option', async ({ page }) => {
   await signInWithAccount(page)
   let changePayload: any = null
@@ -3916,7 +3945,8 @@ test('admin uploads show the original name and ShareX provenance', async ({ page
 test('admin previews expiring text uploads whose stored name has a timestamp suffix', async ({ page }) => {
   await signInAsAdmin(page)
   await mockAdminApi(page)
-  await page.route('**/expiring-paste/file.txt.1785612876517', async (route) => {
+  await page.route('**/auth/admin/uploads/content?path=files%2Fexpiring-paste.txt.1785612876517', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     await route.fulfill({ status: 200, contentType: 'text/plain', body: 'expiring paste preview' })
   })
 
@@ -3930,6 +3960,26 @@ test('admin previews expiring text uploads whose stored name has a timestamp suf
 
   const dialog = page.getByRole('dialog', { name: 'Preview expiring-paste.txt' })
   await expect(dialog.getByText('expiring paste preview')).toBeVisible()
+})
+
+test('admin previews images through the authenticated content endpoint', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.route('**/auth/admin/uploads/content?path=files%2Fupload-1.txt', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+UPnY9AAAAABJRU5ErkJggg==', 'base64'),
+    })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+  await page.getByRole('button', { name: 'ShareX screenshot.png', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Preview ShareX screenshot.png' })
+  await expect(dialog.locator('img.preview-img')).toHaveAttribute('src', /^blob:/)
 })
 
 test('admin upload library keeps ShareX provenance beside the name and exposes row actions', async ({ page }) => {
@@ -4071,13 +4121,20 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
   const actionBox = await row.locator('.upload-row-actions').boundingBox()
   const downloadBox = await downloadLink.boundingBox()
   const copyBox = await copyButton.boundingBox()
+  const selectBox = await row.locator('.select-col').boundingBox()
+  const moreBox = await moreButton.boundingBox()
   expect(actionBox).not.toBeNull()
   expect(downloadBox).not.toBeNull()
   expect(copyBox).not.toBeNull()
-  if (actionBox && downloadBox && copyBox) {
+  expect(selectBox).not.toBeNull()
+  expect(moreBox).not.toBeNull()
+  if (actionBox && downloadBox && copyBox && selectBox && moreBox) {
     expect(downloadBox.y).toBeGreaterThanOrEqual(actionBox.y)
     expect(Math.abs(downloadBox.y - copyBox.y)).toBeLessThanOrEqual(1)
-    expect(downloadBox.width).toBeGreaterThan(70)
+    expect(Math.abs(actionBox.x - selectBox.x)).toBeLessThanOrEqual(1)
+    expect(Math.abs(downloadBox.width - copyBox.width)).toBeLessThanOrEqual(1)
+    expect(Math.abs(copyBox.width - moreBox.width)).toBeLessThanOrEqual(1)
+    expect(actionBox.width).toBeGreaterThan(downloadBox.width * 2)
   }
 
   await copyButton.focus()

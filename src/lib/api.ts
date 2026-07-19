@@ -277,6 +277,10 @@ export function getAuthUsername(): string {
   return readAuthValue('rp_username')
 }
 
+export function getAuthJwt(): string {
+  return getJwt()
+}
+
 export function isAuthAdmin(): boolean {
   return readAuthValue('rp_is_admin') === '1'
 }
@@ -512,7 +516,7 @@ export async function authPasskeyLoginFinish(username: string, credential: unkno
 async function uploaderIdentity(): Promise<string> {
   const username = (await hydrateSessionIdentity()).trim() || getAuthUsername().trim()
   if (username && username !== 'token-user') return username
-  return 'Unknown (token user)'
+  return getToken().trim() ? 'Unknown (token user)' : 'Anonymous'
 }
 
 export function loginWithToken(token: string, rememberMe = true) {
@@ -835,6 +839,12 @@ export interface PublicFileMeta {
   mime_type: string
 }
 
+export function displayUploaderName(value: string | null | undefined): string {
+  const normalized = value?.trim() ?? ''
+  if (!normalized || ['unknown', 'unknown (token user)', 'unattributed'].includes(normalized.toLowerCase())) return 'Anonymous'
+  return normalized
+}
+
 const GENERIC_PUBLIC_MIME_TYPES = new Set([
   '',
   'application/octet-stream',
@@ -988,6 +998,10 @@ export function browserFileUrl(fileName: string, query = ''): string {
 
 export function fileUrl(filename: string): string {
   return browserFileUrl(filename, 'raw=1')
+}
+
+export function adminUploadContentUrl(path: string): string {
+  return `${AUTH_API}/admin/uploads/content?path=${encodeURIComponent(path)}`
 }
 
 export function downloadFileUrl(filename: string): string {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, downloadFileUrl, effectivePublicMimeType, fileUrl, formatBytes, getAuthUsername, getPublicFileMeta, preferredPublicFileName, resolveFileLookup, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, displayUploaderName, downloadFileUrl, effectivePublicMimeType, fileUrl, formatBytes, getPublicFileMeta, preferredPublicFileName, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -45,12 +45,10 @@ const isText = computed(() => effectiveMimeType.value.startsWith('text/'))
 const isPdf = computed(() => effectiveMimeType.value === 'application/pdf')
 const canPreviewInline = computed(() => isImage.value || isVideo.value || isText.value || isPdf.value)
 const resolvedUploader = computed(() => {
-  const apiUploader = meta.value?.uploader?.trim() ?? ''
-  if (apiUploader && apiUploader !== 'Unknown (token user)' && apiUploader !== 'Unknown') return apiUploader
-  const tokenOwner = resolvedOwner.value.trim()
-  if (tokenOwner && tokenOwner !== 'Unknown (token user)' && tokenOwner !== 'Unknown') return tokenOwner
-  const localUser = getAuthUsername().trim()
-  return localUser && localUser !== 'token-user' ? localUser : apiUploader || 'Unknown'
+  const apiUploader = displayUploaderName(meta.value?.uploader)
+  if (apiUploader !== 'Anonymous') return apiUploader
+  const tokenOwner = displayUploaderName(resolvedOwner.value)
+  return tokenOwner === 'Anonymous' ? 'Anonymous' : tokenOwner
 })
 
 const openInAppExtensions = new Set([

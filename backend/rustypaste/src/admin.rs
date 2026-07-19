@@ -12,6 +12,7 @@ use crate::account_auth::{
 use crate::config::Config;
 use crate::ratelimit::{client_key, RateLimiter};
 use crate::util::{self, safe_path_join, token_to_dir_name};
+use actix_files::NamedFile;
 use actix_web::http::StatusCode;
 use actix_web::{delete, get, patch, post, put, web, HttpRequest, HttpResponse};
 use awc::Client;
@@ -1958,6 +1959,41 @@ async fn list_uploads(request: HttpRequest, config: web::Data<RwLock<Config>>) -
     HttpResponse::Ok().json(collect_uploads(&root, &users))
 }
 
+#[get("/uploads/content")]
+async fn upload_content(
+    request: HttpRequest,
+    config: web::Data<RwLock<Config>>,
+    query: web::Query<HashMap<String, String>>,
+) -> HttpResponse {
+    let auth_env = AuthEnv::from_env();
+    let connection = match open_db(&auth_env.db_path) {
+        Ok(connection) => connection,
+        Err(response) => return response,
+    };
+    if let Err(response) = require_jwt_admin(&request, &connection, &auth_env) {
+        return response;
+    }
+    let Some(path) = query.get("path") else {
+        return json_error(StatusCode::BAD_REQUEST, "path is required");
+    };
+    let root = match upload_root(&config) {
+        Ok(root) => root,
+        Err(response) => return response,
+    };
+    let file = match safe_path_join(&root, path) {
+        Ok(file) => file,
+        Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid upload path"),
+    };
+    match fs::metadata(&file) {
+        Ok(metadata) if metadata.is_file() => {}
+        _ => return json_error(StatusCode::NOT_FOUND, "File not found"),
+    }
+    match NamedFile::open(file) {
+        Ok(file) => file.into_response(&request),
+        Err(_) => json_error(StatusCode::NOT_FOUND, "File not found"),
+    }
+}
+
 #[delete("/uploads")]
 async fn delete_upload(
     request: HttpRequest,
@@ -2555,6 +2591,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .service(purge_user_uploads)
         .service(user_uploads)
         .service(list_uploads)
+        .service(upload_content)
         .service(delete_upload)
         .service(bulk_delete_uploads)
         .service(purge_expired)
@@ -2710,6 +2747,41 @@ mod tests {
         let sharded_file = token_dir.join("dir-owned.txt");
         fs::write(&sharded_file, "directory-owned").expect("sharded upload should be written");
         (flat_file, sharded_file)
+    }
+
+    #[actix_web::test]
+    async fn upload_content_allows_an_admin_to_preview_anonymous_uploads() {
+        let db_path = unique_test_path("upload-content", ".sqlite");
+        let upload_root = unique_test_path("upload-content-uploads", "");
+        set_auth_test_env(&db_path);
+        fs::create_dir_all(&upload_root).expect("upload root should be created");
+        fs::write(upload_root.join("anonymous.txt"), "anonymous content")
+            .expect("anonymous upload should be written");
+
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(test_config(upload_root.clone()))))
+                .app_data(Data::new(Client::default()))
+                .app_data(Data::new(RateLimiter::new()))
+                .service(web::scope("/auth/admin").configure(configure_routes)),
+        )
+        .await;
+        let admin_jwt = claim_admin!(&app);
+        let request = test::TestRequest::get()
+            .uri("/auth/admin/uploads/content?path=anonymous.txt")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .to_request();
+        let response = test::call_service(&app, request).await;
+
+        assert_eq!(StatusCode::OK, response.status());
+        assert_eq!(
+            String::from_utf8(test::read_body(response).await.to_vec()).unwrap(),
+            "anonymous content"
+        );
+
+        let _ = fs::remove_dir_all(upload_root);
+        let _ = fs::remove_file(db_path);
+        clear_auth_test_env();
     }
 
 

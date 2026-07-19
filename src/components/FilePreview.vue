@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getPasteApiBase, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
+import { getAuthJwt, getPasteApiBase, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
 import { encryptedShareUrl, getStoredEncryptedFile } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
@@ -18,6 +18,7 @@ const notificationStore = useNotificationStore()
 const { publicSettings, refreshPublicSettings } = usePublicSettings()
 
 const url = computed(() => props.sourceUrl ?? fileUrl(props.file.file_name))
+const isAdminContentUrl = computed(() => url.value.includes('/auth/admin/uploads/content'))
 const storedEncrypted = computed(() => getStoredEncryptedFile(props.file.file_name))
 function isRpencFileName(value: string): boolean {
   return /\.rpenc(?:$|[?#])/i.test(value.trim())
@@ -40,7 +41,7 @@ const copyUrl = computed(() => {
   if (storedEncrypted.value) {
     return encryptedShareUrl(props.file.file_name, storedEncrypted.value.key, storedEncrypted.value.origin)
   }
-  return url.value.startsWith('blob:') ? shareUrl(props.file.file_name) : url.value
+  return isAdminContentUrl.value || url.value.startsWith('blob:') ? shareUrl(props.file.file_name) : url.value
 })
 const name = computed(() => props.displayName ?? props.file.file_name)
 const EXPIRY_SUFFIX = '(?:\\.\\d{6,})?'
@@ -54,6 +55,7 @@ const textError = ref('')
 const textLoading = ref(false)
 const textPreviewTruncated = ref(false)
 const previewImage = ref<HTMLImageElement | null>(null)
+const mediaUrl = ref('')
 const copyMenuOpen = ref(false)
 const openMenuOpen = ref(false)
 const TEXT_PREVIEW_BYTES = 256 * 1024
@@ -123,7 +125,10 @@ async function loadTextPreview() {
     }
     const headers: Record<string, string> = {}
     const apiBase = getPasteApiBase()
-    if (url.value.includes('/api/') || (apiBase.startsWith('http') && url.value.startsWith(`${apiBase}/`))) {
+    if (url.value.includes('/auth/admin/uploads/content')) {
+      const jwt = getAuthJwt().trim()
+      if (jwt) headers.Authorization = `Bearer ${jwt}`
+    } else if (url.value.includes('/api/') || (apiBase.startsWith('http') && url.value.startsWith(`${apiBase}/`))) {
       const token = getAuthToken().trim()
       if (token) headers.Authorization = token
     }
@@ -142,8 +147,43 @@ async function loadTextPreview() {
   }
 }
 
+function clearMediaUrl() {
+  if (mediaUrl.value.startsWith('blob:')) URL.revokeObjectURL(mediaUrl.value)
+  mediaUrl.value = ''
+}
+
+let mediaRequest = 0
+async function loadMediaPreview() {
+  const request = ++mediaRequest
+  clearMediaUrl()
+  if (!isImage.value && !isVideo.value) return
+  if (!isAdminContentUrl.value) {
+    mediaUrl.value = url.value
+    return
+  }
+  try {
+    const jwt = getAuthJwt().trim()
+    const response = await fetch(url.value, {
+      cache: 'no-store',
+      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {},
+    })
+    if (!response.ok) throw new Error('Could not load media preview')
+    const objectUrl = URL.createObjectURL(await response.blob())
+    if (request !== mediaRequest) {
+      URL.revokeObjectURL(objectUrl)
+      return
+    }
+    mediaUrl.value = objectUrl
+  } catch {
+    if (request === mediaRequest) mediaUrl.value = ''
+  }
+}
+
 watch([url, isText, () => props.loading, encryptedPreviewLocked], () => {
   void loadTextPreview()
+}, { immediate: true })
+watch([url, isImage, isVideo], () => {
+  void loadMediaPreview()
 }, { immediate: true })
 
 async function copyPreviewContent() {
@@ -235,6 +275,8 @@ onMounted(() => {
   window.addEventListener('click', onWindowClick)
 })
 onBeforeUnmount(() => {
+  mediaRequest += 1
+  clearMediaUrl()
   window.removeEventListener('keydown', onWindowKeydown)
   window.removeEventListener('click', onWindowClick)
 })
@@ -275,8 +317,11 @@ onBeforeUnmount(() => {
           <div class="fallback-meta">File size: {{ sizeLabel }}</div>
           <button class="btn-primary fallback-download" @click="emit('download', props.file)">Download file</button>
         </div>
-        <img v-else-if="isImage" ref="previewImage" :src="url" class="preview-img" />
-        <video v-else-if="isVideo" :src="url" controls class="preview-video" />
+        <img v-else-if="isImage && mediaUrl" ref="previewImage" :src="mediaUrl" class="preview-img" />
+        <video v-else-if="isVideo && mediaUrl" :src="mediaUrl" controls class="preview-video" />
+        <div v-else-if="isImage || isVideo" class="preview-loading" aria-live="polite">
+          <span class="loading-kicker">Preparing media preview</span>
+        </div>
         <div v-else-if="isText" class="text-preview-shell">
           <div v-if="textLoading" class="text-loading" aria-live="polite">
             <span class="loading-kicker">Preparing text preview</span>

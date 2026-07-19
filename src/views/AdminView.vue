@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   adminAuditLog,
   adminBulkDeleteUploads,
+  adminUploadContentUrl,
   adminCreateUser,
   adminCreateWebhook,
   adminDashboard,
@@ -23,6 +24,7 @@ import {
   adminWebhookDeliveries,
   adminWebhooks,
   authLogout,
+  displayUploaderName,
   formatBytes,
   formatGigabytes,
   getAuthUsername,
@@ -254,7 +256,7 @@ function isShareXUpload(upload: AdminUpload): boolean {
 }
 
 function uploadOwner(upload: AdminUpload): string {
-  const owner = upload.owner ?? upload.uploader ?? 'Unattributed'
+  const owner = displayUploaderName(upload.owner ?? upload.uploader)
   return owner.replace(/\s+\(sharex\)$/i, '').trim() || 'Unattributed'
 }
 
@@ -1012,7 +1014,7 @@ onBeforeUnmount(() => {
     <FilePreview
       v-if="previewUpload && previewUploadFile"
       :file="previewUploadFile"
-      :source-url="fileUrl(previewUpload.file_name)"
+      :source-url="adminUploadContentUrl(previewUpload.path)"
       :display-name="uploadDisplayName(previewUpload)"
       :mime-type="previewUpload.content_type ?? undefined"
       @close="closeUploadPreview"
@@ -2473,7 +2475,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     overflow-wrap: anywhere;
   }
   .uploads-table .upload-row-actions {
-    grid-column: 2;
+    grid-column: 1 / -1;
     grid-row: auto;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2494,6 +2496,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
   .uploads-table .upload-action span {
     display: inline;
+  }
+  .uploads-table .upload-action svg {
+    flex: 0 0 14px;
   }
   .uploads-table .upload-owner-cell {
     flex-wrap: wrap;
