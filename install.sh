@@ -1270,6 +1270,9 @@ main() {
   if [[ "$YES" -eq 1 && "$ACTION" == "menu" ]]; then
     die "--yes cannot run the interactive menu. Pass --action install (or another non-menu action), or use --interactive without --yes."
   fi
+  if [[ "$ACTION" == "menu" && ! -t 0 ]]; then
+    die "Interactive mode requires a terminal. Use https://paste.yaemi.one/install.sh for curl installs, or pass --action with --yes."
+  fi
   if [[ "$YES" -eq 0 ]]; then
     print_banner
   fi
