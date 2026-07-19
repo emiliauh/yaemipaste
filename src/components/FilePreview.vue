@@ -337,7 +337,16 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
+  <div v-if="encryptedPreviewLocked" class="modal-backdrop" @click.self="emit('close')">
+    <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="encrypted-preview-title">
+      <div class="password-modal-header"><strong id="encrypted-preview-title">Preview encrypted file</strong><button class="modal-close btn-ghost" :disabled="decryptionBusy" aria-label="Close key prompt" @click="emit('close')">✕</button></div>
+      <div class="password-modal-copy">Enter the decryption key to preview this file in-app.</div>
+      <div class="password-form"><label>Decryption key<input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste decryption key" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" /></label></div>
+      <div v-if="decryptionError" class="password-modal-error">{{ decryptionError }}</div>
+      <div class="password-modal-actions"><button class="btn-ghost" :disabled="decryptionBusy" @click="emit('close')">Cancel</button><button class="btn-primary" :disabled="decryptionBusy || !decryptionKey.trim()" @click="decryptPreview">{{ decryptionBusy ? 'Decrypting…' : 'Preview file' }}</button></div>
+    </div>
+  </div>
+  <div v-else class="modal-backdrop" @click.self="emit('close')">
     <div
       class="modal"
       role="dialog"
@@ -363,18 +372,6 @@ onBeforeUnmount(() => {
             <span></span>
             <span></span>
             <span></span>
-          </div>
-        </div>
-        <div v-else-if="encryptedPreviewLocked" class="password-modal">
-          <div class="password-modal-header"><strong>Preview encrypted file</strong></div>
-          <div class="password-modal-copy">Enter the decryption key to preview this file in-app.</div>
-          <div class="password-form"><label>Decryption key
-            <input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste decryption key" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" />
-          </label></div>
-          <div v-if="decryptionError" class="password-modal-error">{{ decryptionError }}</div>
-          <div class="password-modal-actions">
-            <button class="btn-ghost" :disabled="decryptionBusy" @click="emit('close')">Cancel</button>
-            <button class="btn-primary" :disabled="decryptionBusy || !decryptionKey.trim()" @click="decryptPreview">{{ decryptionBusy ? 'Decrypting…' : 'Preview file' }}</button>
           </div>
         </div>
         <img v-else-if="isImage && mediaUrl" ref="previewImage" :src="mediaUrl" class="preview-img" />

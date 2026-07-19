@@ -109,7 +109,6 @@ const newUser = ref({ username: '', password: '', upload_token: '', is_admin: fa
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
 const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public', turnstile_enabled: false, turnstile_site_key: '', turnstile_secret_key: '' })
 const turnstileTestContainer = ref<HTMLElement | null>(null)
-const turnstileTestStatus = ref('')
 const turnstileTestBusy = ref(false)
 const turnstileTest = useTurnstile()
 const webhookEventOptions = [
@@ -499,23 +498,22 @@ async function saveSettings() {
 
 async function testTurnstile() {
   if (!settingsForm.value.turnstile_site_key.trim() || !settingsForm.value.turnstile_secret_key.trim()) {
-    turnstileTestStatus.value = 'Enter both Turnstile keys before testing.'
+    notifications.push('Enter both Turnstile keys before testing.', 'error')
     return
   }
-  turnstileTestStatus.value = ''
   await nextTick()
   try {
     await turnstileTest.mount(turnstileTestContainer.value!, settingsForm.value.turnstile_site_key.trim(), 'always')
     if (!turnstileTest.token.value) {
-      turnstileTestStatus.value = 'Complete the Turnstile challenge, then verify the credentials.'
+      notifications.push('Complete the Turnstile challenge, then verify the credentials.', 'error')
       return
     }
     turnstileTestBusy.value = true
     const token = turnstileTest.token.value
     await adminTestTurnstile(settingsForm.value.turnstile_secret_key.trim(), token)
-    turnstileTestStatus.value = 'Turnstile credentials verified successfully.'
+    notifications.push('Turnstile credentials verified successfully.', 'success')
   } catch (error: any) {
-    turnstileTestStatus.value = error.message ?? 'Turnstile verification failed.'
+    notifications.push(error.message ?? 'Turnstile verification failed.', 'error')
   } finally {
     turnstileTestBusy.value = false
     // Keep the solved widget visible. Resetting it destroys the completed state.
@@ -1132,7 +1130,6 @@ onBeforeUnmount(() => {
             <div class="span-2">
               <div ref="turnstileTestContainer" class="turnstile-test-widget"></div>
               <button class="btn-orange turnstile-test" style="width:100%;background:#d69e00" type="button" :disabled="turnstileTestBusy" @click="testTurnstile">{{ turnstileTestBusy ? 'Verifying credentials…' : turnstileTest.token ? 'Verify Turnstile credentials' : 'Start Turnstile verification' }}</button>
-              <small v-if="turnstileTestStatus">{{ turnstileTestStatus }}</small>
             </div>
           </div>
         </div>
