@@ -10,11 +10,13 @@ const props = withDefaults(defineProps<{
   showHistory?: boolean
   showAdmin?: boolean
   showSettings?: boolean
+  showGuestAccess?: boolean
   collapsed: boolean
 }>(), {
   showHistory: false,
   showAdmin: false,
   showSettings: false,
+  showGuestAccess: false,
 })
 
 const emit = defineEmits<{
@@ -23,10 +25,12 @@ const emit = defineEmits<{
   'select-history': []
   'select-admin': []
   'toggle-settings': []
+  login: []
+  register: []
 }>()
 
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
-const { appName } = usePublicSettings()
+const { appName, publicSettings } = usePublicSettings()
 
 const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
   { mode: 'system', label: 'Auto' },
@@ -148,6 +152,10 @@ function toggleCompactTheme() {
 
     <div class="sidebar-footer">
       <div class="expanded-utilities">
+        <div v-if="showGuestAccess" class="guest-access">
+          <button class="guest-login" type="button" @click="emit('login')">Log in</button>
+          <button v-if="publicSettings.registration_enabled" class="guest-register" type="button" @click="emit('register')">Create account</button>
+        </div>
         <div class="utility-label">Theme</div>
         <div class="theme-switch" role="group" :aria-label="themeLabel" data-testid="theme-switch">
           <button
@@ -178,6 +186,9 @@ function toggleCompactTheme() {
         </button>
       </div>
       <div class="collapsed-utilities" aria-label="Compact utilities">
+        <button v-if="showGuestAccess" class="compact-icon-btn" type="button" aria-label="Log in" @click="emit('login')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><path d="m10 17 5-5-5-5" /><path d="M15 12H3" /></svg>
+        </button>
         <button
           type="button"
           class="compact-icon-btn"
@@ -555,6 +566,30 @@ function toggleCompactTheme() {
   display: grid;
   gap: var(--space-2);
 }
+.guest-access {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+.guest-login,
+.guest-register {
+  min-height: 34px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.guest-login {
+  color: var(--bg);
+  background: var(--accent);
+}
+.guest-login:hover { background: var(--accent-h); }
+.guest-register {
+  color: var(--text2);
+  border: 1px solid var(--border);
+  background: transparent;
+}
+.guest-register:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
 
 .collapsed-utilities {
   display: none;

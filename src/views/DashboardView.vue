@@ -6,7 +6,7 @@ import HistoryTab from '../components/HistoryTab.vue'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 import { isAuthEnabled } from '../lib/features'
-import { isAuthAdmin, refreshAuthAdmin } from '../lib/api'
+import { isAuthAdmin, isLoggedIn, refreshAuthAdmin } from '../lib/api'
 import { usePublicSettings } from '../lib/publicSettings'
 
 const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
@@ -17,6 +17,7 @@ const route = useRoute()
 const tab = ref<'files' | 'history'>('files')
 const showSettings = ref(false)
 const authEnabled = isAuthEnabled()
+const showGuestAccess = authEnabled && !isLoggedIn()
 const adminEnabled = ref(isAuthAdmin())
 const sidebarCollapsed = ref(
   typeof window !== 'undefined' && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
@@ -69,12 +70,15 @@ watch(() => route.query.tab, syncTabFromQuery)
       :show-history="authEnabled"
       :show-admin="adminEnabled"
       :show-settings="authEnabled"
+      :show-guest-access="showGuestAccess"
       :collapsed="sidebarCollapsed"
       @update:collapsed="sidebarCollapsed = $event"
       @select-files="setTab('files')"
       @select-history="setTab('history')"
       @select-admin="router.push('/admin')"
       @toggle-settings="toggleSettings"
+      @login="router.push('/login')"
+      @register="router.push('/register')"
     />
 
     <main id="main-content" class="workspace">

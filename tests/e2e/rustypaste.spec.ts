@@ -347,6 +347,63 @@ test('public upload mode opens Files without a login', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/files$/)
   await expect(page.getByTestId('desktop-nav-files')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create account' })).toHaveCount(0)
+
+  await page.goto('/files?tab=history')
+  await expect(page.getByText('History needs an account')).toBeVisible()
+  await page.getByRole('button', { name: 'Log in to view history' }).click()
+  await expect(page.getByRole('dialog', { name: 'Keep your uploads in reach' })).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Create account' })).toHaveCount(0)
+})
+
+test('public registration setting offers account creation to guests', async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: true,
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
+  })
+
+  await page.goto('/files?tab=history')
+
+  await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
+  await page.getByRole('button', { name: 'Log in to view history' }).click()
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Create account' })).toBeVisible()
+})
+
+test('plain preview ignores a stale decryption fragment', async ({ page }) => {
+  await page.route('**/api/plain-fragment.txt?raw=1', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: 'plain preview content' })
+  })
+  await page.route('**/api/meta/plain-fragment.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'plain-fragment.txt',
+        display_name: 'plain-fragment.txt',
+        uploader: 'Unknown',
+        file_size: 21,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+
+  const token = Buffer.from('plain-fragment.txt').toString('base64url')
+  await page.goto(`/file/${token}/preview#stale-decryption-key`)
+
+  await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
+  await expect(page.getByText('plain preview content')).toBeVisible()
+  await expect(page.getByText('This file is not a rustypaste encrypted file')).toHaveCount(0)
 })
 
 async function expandExpiryIfCollapsed(page: Page) {

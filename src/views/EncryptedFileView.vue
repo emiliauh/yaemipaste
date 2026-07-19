@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   decryptEncryptedBlob,
   isRustypasteEncryptedBlob,
@@ -12,6 +12,7 @@ import { decodeFileToken, formatBytes, publicApiFileUrl, publicSiteOrigin, resol
 import { useNotificationStore } from '../stores/notifications'
 
 const route = useRoute()
+const router = useRouter()
 const notificationStore = useNotificationStore()
 const loading = ref(true)
 const error = ref('')
@@ -67,7 +68,7 @@ async function loadTextPreview(blob: Blob) {
   textPreviewTruncated.value ||= previewText.length > TEXT_PREVIEW_CHARS
 }
 
-async function downloadEncryptedPayload(name: string): Promise<Blob> {
+async function downloadEncryptedPayload(name: string): Promise<Blob | null> {
   const apiUrl = publicApiFileUrl(name)
   const attempts = [`${apiUrl}?raw=1`, `${apiUrl}?download=true`, apiUrl]
   let sawHtmlPayload = false
@@ -86,7 +87,7 @@ async function downloadEncryptedPayload(name: string): Promise<Blob> {
       sawHtmlPayload = true
       continue
     }
-    throw new Error('This file is not a rustypaste encrypted file')
+    return null
   }
 
   if (sawNotFound) throw new Error('File not found or expired')
@@ -118,6 +119,10 @@ async function load() {
 
     await setStage('downloading', 'Downloading encrypted payload…')
     const payload = await downloadEncryptedPayload(resolvedName)
+    if (!payload) {
+      await router.replace({ path: `/file/${encodeURIComponent(resolvedName)}/preview`, query: { plain: '1' } })
+      return
+    }
 
     await setStage('decrypting', 'Decrypting in this browser…')
     const decrypted = await decryptEncryptedBlob(payload, key.value)
