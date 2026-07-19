@@ -3,8 +3,10 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { decodeFileToken, effectivePublicMimeType, fileUrl, formatBytes, getAuthUsername, getPublicFileMeta, preferredPublicFileName, publicApiFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const route = useRoute()
+const { publicSettings, refreshPublicSettings } = usePublicSettings()
 const loading = ref(true)
 const error = ref('')
 const textPreview = ref('')
@@ -24,7 +26,11 @@ const requestedFileName = computed(() => {
   return String(route.query.f ?? '').replace(/^\/+/, '')
 })
 
-const rawUrl = computed(() => (resolvedFileName.value ? fileUrl(resolvedFileName.value) : ''))
+const rawUrl = computed(() => {
+  // Re-evaluate raw links when the public runtime API setting arrives.
+  void publicSettings.value.base_api_url
+  return resolvedFileName.value ? fileUrl(resolvedFileName.value) : ''
+})
 const downloadUrl = computed(() => {
   const token = routeFileKey.value.split('+')[0]
   if (token) return `/file/${token}/download`
@@ -108,6 +114,7 @@ async function load() {
   }
 
   try {
+    await refreshPublicSettings()
     const resolved = await resolveFileLookup(requestedFileName.value)
     const fileName = resolved.fileName
     if (fileName.toLowerCase().endsWith('.rpenc')) {

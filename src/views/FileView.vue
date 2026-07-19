@@ -12,7 +12,6 @@ const keyPart = computed(() => filekey.value.includes('+') ? filekey.value.split
 const fragmentKey = computed(() => route.hash ? decodeURIComponent(route.hash.slice(1)) : '')
 const isPasswordEncrypted = computed(() => keyPart.value.startsWith('pw:'))
 const isKeyEncrypted = computed(() => !!fragmentKey.value || (!!keyPart.value && !isPasswordEncrypted.value))
-const forcePublicPreview = computed(() => route.query.plain === '1')
 
 const decodedName = computed(() => {
   try { return decodeFileToken(filekey.value.split('+')[0]) } catch { return '' }
@@ -21,7 +20,7 @@ const isEncryptedNoKey = computed(() => !fragmentKey.value && !keyPart.value && 
 </script>
 
 <template>
-  <main v-if="!forcePublicPreview && isEncryptedNoKey" class="error-page">
+  <main v-if="isEncryptedNoKey" class="error-page">
     <section class="error-card">
       <div class="lock-mark">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -33,8 +32,8 @@ const isEncryptedNoKey = computed(() => !fragmentKey.value && !keyPart.value && 
       <p>This file is encrypted but the link doesn't include a decryption key. Ask whoever shared this file for the full link.</p>
     </section>
   </main>
-  <PasswordFileView v-else-if="!forcePublicPreview && isPasswordEncrypted" />
-  <EncryptedFileView v-else-if="!forcePublicPreview && isKeyEncrypted" />
+  <PasswordFileView v-else-if="isPasswordEncrypted" />
+  <EncryptedFileView v-else-if="isKeyEncrypted" />
   <PublicFilePreviewView v-else />
 </template>
 

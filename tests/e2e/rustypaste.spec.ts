@@ -8,6 +8,24 @@ const ENCRYPTED_PREVIEW_RE = /\/file\/[A-Za-z0-9_-]+\/preview#[A-Za-z0-9_-]+$/
 const PUBLIC_ORIGIN = 'https://paste.example.test'
 const API_ORIGIN = 'https://api.example.test'
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: true,
+        base_api_url: '',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'private',
+      }),
+    })
+  })
+})
+
 async function signInWithToken(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('rp_token', 'test-token')
@@ -401,6 +419,117 @@ test('plain preview ignores a stale decryption fragment', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
   await expect(page.getByText('plain preview content')).toBeVisible()
   await expect(page.getByText('This file is not a rustypaste encrypted file')).toHaveCount(0)
+})
+
+test('raw actions use the server API base instead of a stale browser override', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('rp_api_base', '/api'))
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: false,
+        base_api_url: 'https://papi.example.test',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
+  })
+  await page.route('https://papi.example.test/meta/server-api.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        file_name: 'server-api.txt',
+        display_name: 'server-api.txt',
+        uploader: 'Unknown',
+        file_size: 19,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+  await page.route('https://papi.example.test/server-api.txt?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: 'server API raw text',
+    })
+  })
+
+  const token = Buffer.from('server-api.txt').toString('base64url')
+  await page.goto(`/file/${token}/preview`)
+
+  await expect(page.getByText('server API raw text')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://papi.example.test/server-api.txt?raw=1')
+})
+
+test('History copies an absolute raw URL from the server API base', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  await page.addInitScript(() => localStorage.setItem('rp_api_base', '/api'))
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: false,
+        base_api_url: 'https://papi.example.test',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
+  })
+  await page.route('https://papi.example.test/list**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify([{
+        file_name: 'history-server-api.txt',
+        file_size: 22,
+        creation_date_utc: '2026-04-20T00:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+  await page.route('https://papi.example.test/meta/history-server-api.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        file_name: 'history-server-api.txt',
+        display_name: 'history-server-api.txt',
+        uploader: 'test-user',
+        file_size: 22,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+  await page.route('https://papi.example.test/history-server-api.txt?raw=1', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: 'History raw text',
+    })
+  })
+
+  await page.goto('/files?tab=history')
+  await page.getByText('history-server-api.txt').click()
+  const modal = page.locator('.modal')
+  await modal.getByRole('button', { name: 'Copy' }).click()
+  await modal.getByRole('menuitem', { name: /Copy raw URL/ }).click()
+
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://papi.example.test/history-server-api.txt?raw=1')
 })
 
 async function expandExpiryIfCollapsed(page: Page) {

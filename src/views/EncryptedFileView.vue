@@ -120,7 +120,7 @@ async function load() {
     await setStage('downloading', 'Downloading encrypted payload…')
     const payload = await downloadEncryptedPayload(resolvedName)
     if (!payload) {
-      await router.replace({ path: `/file/${encodeURIComponent(resolvedName)}/preview`, query: { plain: '1' } })
+      await router.replace({ path: `/file/${encodeURIComponent(resolvedName)}/preview` })
       return
     }
 

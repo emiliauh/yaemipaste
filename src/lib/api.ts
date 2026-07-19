@@ -150,7 +150,10 @@ export function getDefaultPasteApiBase(): string {
 }
 
 export function getPasteApiBase(): string {
-  const defaultBase = getDefaultPasteApiBase()
+  const runtimeBase = runtimeBaseApi()
+  // The server-wide setting must override stale per-browser API preferences.
+  if (runtimeBase) return runtimeBase
+  const defaultBase = DEFAULT_PASTE_API
   if (typeof localStorage === 'undefined') return defaultBase
   const configured = localStorage.getItem(API_BASE_KEY)
   if (!configured) return defaultBase

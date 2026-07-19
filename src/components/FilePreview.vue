@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
 import { encryptedShareUrl, getStoredEncryptedFile } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
+import { usePublicSettings } from '../lib/publicSettings'
 
 const props = defineProps<{
   file: PasteFile
@@ -14,6 +15,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: []; download: [file: PasteFile] }>()
 const notificationStore = useNotificationStore()
+const { publicSettings, refreshPublicSettings } = usePublicSettings()
 
 const url = computed(() => props.sourceUrl ?? fileUrl(props.file.file_name))
 const storedEncrypted = computed(() => getStoredEncryptedFile(props.file.file_name))
@@ -29,7 +31,11 @@ const isEncrypted = computed(() => !!storedEncrypted.value || hasEncryptedSuffix
 const isDecryptedBlobSource = computed(() => url.value.startsWith('blob:'))
 const encryptedPreviewLocked = computed(() => isEncrypted.value && !isDecryptedBlobSource.value)
 const previewPageUrl = computed(() => shareUrl(props.file.file_name))
-const rawFileUrl = computed(() => fileUrl(props.file.file_name))
+const rawFileUrl = computed(() => {
+  // Track the live server setting so copied raw links update from /api to its configured API origin.
+  void publicSettings.value.base_api_url
+  return new URL(fileUrl(props.file.file_name), window.location.origin).toString()
+})
 const copyUrl = computed(() => {
   if (storedEncrypted.value) {
     return encryptedShareUrl(props.file.file_name, storedEncrypted.value.key, storedEncrypted.value.origin)
@@ -223,6 +229,7 @@ function onWindowClick() {
 }
 
 onMounted(() => {
+  void refreshPublicSettings()
   window.addEventListener('keydown', onWindowKeydown)
   window.addEventListener('click', onWindowClick)
 })

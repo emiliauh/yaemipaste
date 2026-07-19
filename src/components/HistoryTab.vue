@@ -1195,8 +1195,8 @@ function onCompactNamesMediaChange(event: MediaQueryListEvent) {
   compactFileNames.value = event.matches
 }
 
-onMounted(() => {
-  void refreshPublicSettings()
+onMounted(async () => {
+  await refreshPublicSettings()
   if (accountRequired.value) loading.value = false
   else void load()
   compactFileNamesMediaQuery = window.matchMedia('(max-width: 820px)')
