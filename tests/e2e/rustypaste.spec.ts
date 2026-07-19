@@ -3578,6 +3578,20 @@ test('login page offers a passkey sign-in action', async ({ page }) => {
   await expect(page.getByTestId('passkey-login-btn')).toBeEnabled()
 })
 
+test('login page explains when registration is disabled', async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ registration_enabled: false }),
+    })
+  })
+
+  await page.goto('/#/login')
+  await expect(page.getByText('Registration is disabled.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Register' })).toHaveCount(0)
+})
+
 test('login password field toggles visibility', async ({ page }) => {
   await page.goto('/#/login')
   const passwordField = page.locator('input[autocomplete="current-password"]')

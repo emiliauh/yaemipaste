@@ -188,6 +188,13 @@ async function loginWithPasskey() {
           <div>
             <strong>Authentication required</strong>
             <p>Use your account, or enter a token directly.</p>
+            <p v-if="!publicSettings.registration_enabled" class="registration-notice">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M12 10v5M12 7h.01"/>
+              </svg>
+              Registration is disabled.
+            </p>
           </div>
         </div>
 
@@ -274,7 +281,6 @@ async function loginWithPasskey() {
               {{ loading ? 'Logging in…' : 'Login' }}
             </button>
             <router-link v-if="mode === 'account' && publicSettings.registration_enabled" to="/register" class="link">Register</router-link>
-            <span v-else-if="mode === 'account'" class="registration-disabled">Registration is disabled</span>
           </div>
         </form>
       </div>
@@ -360,6 +366,20 @@ async function loginWithPasskey() {
 .login-info-icon svg { display: block; width: 18px; height: 18px; }
 .login-info strong { display: block; color: var(--text); font-weight: 580; }
 .login-info p { margin-top: 2px; color: var(--text2); }
+.login-info .registration-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+.registration-notice svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--accent-h);
+}
 .login-card {
   position: relative;
   width: 100%;
