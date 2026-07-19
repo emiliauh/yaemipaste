@@ -1044,7 +1044,7 @@ print_menu() {
   frame="$(style "$UI_DIM" "+$(repeat_char "-" "$((UI_RULE_WIDTH + 2))")+")"
   printf '\n%s\n' "$frame"
   printf '%s\n' "$(style "$UI_ACCENT" "$(box_row "Control Center")")"
-  printf '%s\n' "$(style "$UI_DIM" "$(box_row "Install dir: ${INSTALL_DIR}")")"
+  printf '%s\n' "$(style "$UI_DIM" "$(box_row "Install dir: ${INSTALL_DIR} (c to change)")")"
   printf '%s\n' "$(style "$UI_DIM" "$(box_row "Source: ${REPO_URL} (${BRANCH})")")"
   printf '%s\n' "$frame"
   cat <<EOF
@@ -1117,6 +1117,9 @@ run_action() {
         local choice
         choice="$(prompt "Choose an option" "")"
         case "$choice" in
+          c|C)
+            INSTALL_DIR="$(prompt "Install dir (Enter to save)" "$INSTALL_DIR")"
+            ;;
           1) stack_install_or_update ;;
           2) create_initial_user ;;
           3) create_token ;;
