@@ -26,7 +26,12 @@ const decryptionBusy = ref(false)
 const decryptionError = ref('')
 const url = computed(() => decryptedUrl.value || props.sourceUrl || fileUrl(props.file.file_name))
 const isAdminContentUrl = computed(() => url.value.includes('/auth/admin/uploads/content'))
-const storedEncrypted = computed(() => getStoredEncryptedFile(props.file.file_name))
+// Admin upload records may use a server-side storage name while the local
+// encryption record is keyed by the original display name.
+const storedEncrypted = computed(() =>
+  getStoredEncryptedFile(props.file.file_name)
+  ?? (props.displayName ? getStoredEncryptedFile(props.displayName) : null),
+)
 function isRpencFileName(value: string): boolean {
   return /\.rpenc(?:$|[?#])/i.test(value.trim())
 }
