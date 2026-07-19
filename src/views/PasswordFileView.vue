@@ -175,7 +175,6 @@ onBeforeUnmount(clearObjectUrl)
 
         <div class="actions">
           <a class="btn-link btn-primary" :href="objectUrl" :download="metadata.name">Download file</a>
-          <a class="btn-link btn-ghost" :href="objectUrl" target="_blank" rel="noopener">Open</a>
         </div>
       </template>
     </section>

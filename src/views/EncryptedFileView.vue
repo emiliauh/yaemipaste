@@ -203,13 +203,12 @@ onBeforeUnmount(clearObjectUrl)
         </div>
         <div v-else-if="isText" class="text-preview-wrap">
           <pre class="text-preview">{{ textPreview }}</pre>
-          <p v-if="textPreviewTruncated" class="preview-note">Preview truncated for performance. Download or open the file to view everything.</p>
+          <p v-if="textPreviewTruncated" class="preview-note">Preview truncated for performance. Download the file to view everything.</p>
         </div>
         <p v-else class="state">Ready to download.</p>
 
         <div class="actions">
           <a class="btn-link btn-primary" :href="objectUrl" :download="metadata.name">Download decrypted file</a>
-          <a class="btn-link btn-ghost" :href="objectUrl" target="_blank" rel="noopener">Open</a>
         </div>
       </template>
     </section>
