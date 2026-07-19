@@ -1034,7 +1034,7 @@ onBeforeUnmount(() => {
             <div class="range-labels"><span>Disabled</span><span>50 GB</span><span>100 GB</span></div>
           </div>
           <div class="upload-access-control span-2">
-            <div><strong>Anonymous uploads</strong><small>Choose whether visitors need an account or upload token before they can upload.</small></div>
+            <div><strong>Anonymous uploads</strong><small>Private requires an account or token. Public lets anyone upload without signing in.</small></div>
             <div class="upload-access-toggle" role="group" aria-label="Anonymous upload access">
               <button :aria-pressed="settingsForm.upload_access_mode === 'private'" :class="{ selected: settingsForm.upload_access_mode === 'private' }" aria-label="Private uploads" type="button" @click="settingsForm.upload_access_mode = 'private'"><strong>Private</strong><small>Account or token required</small></button>
               <button :aria-pressed="settingsForm.upload_access_mode === 'public'" :class="{ selected: settingsForm.upload_access_mode === 'public' }" aria-label="Public uploads" type="button" @click="settingsForm.upload_access_mode = 'public'"><strong>Public</strong><small>Anyone can upload</small></button>
@@ -1491,11 +1491,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .range-labels { display: flex; justify-content: space-between; color: var(--text3); font-size: var(--fs-xs); }
 .upload-access-control {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 58%);
+  gap: var(--space-2);
 }
 .upload-access-control > div:first-child > small {
   display: block;
@@ -1506,16 +1502,17 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .upload-access-toggle {
   display: grid;
+  width: fit-content;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid var(--border2);
-  border-radius: calc(var(--radius-sm) + 2px);
-  background: color-mix(in srgb, var(--bg) 72%, var(--surface));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface2) 62%, var(--bg));
 }
 .upload-access-toggle button {
-  min-height: 58px;
-  padding: var(--space-2) var(--space-3);
+  min-height: 34px;
+  padding: 6px var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1525,16 +1522,14 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .upload-access-toggle button:hover { color: var(--text); background: color-mix(in srgb, var(--surface2) 72%, transparent); }
 .upload-access-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.upload-access-toggle button strong,
-.upload-access-toggle button small { display: block; }
-.upload-access-toggle button small { margin-top: 3px; color: inherit; font-size: var(--fs-xs); font-weight: 400; opacity: .76; }
+.upload-access-toggle button small { display: none; }
 .upload-access-toggle button.selected {
-  border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 34%, transparent), 0 6px 16px color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--border2);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18);
   color: var(--text);
 }
-.upload-access-toggle button.selected strong { color: var(--accent); }
+.upload-access-toggle button.selected strong { color: var(--text); }
 .webhook-create > .subtle { margin-top: calc(var(--space-2) * -1); }
 .webhook-events { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .event-option { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
