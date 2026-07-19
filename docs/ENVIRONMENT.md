@@ -10,10 +10,10 @@ cp .env.example .env
 
 Then edit only what your deployment needs.
 
-Recommended two-service deployment:
+Same-host deployment starts both Compose profiles:
 
 ```bash
-docker compose up --build -d
+COMPOSE_PROFILES=ui,api docker compose up --build -d
 ```
 
 Legacy compatibility resolver:
@@ -41,22 +41,34 @@ docker compose --profile with-resolver up --build -d
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `PASTE_URL` | Public site URL advertised by the bundled Rust backend | `http://localhost:8080` |
+| `PASTE_URL` | Required public UI origin used for file links | empty |
 | `DB_PATH` | Auth DB path inside the backend container | `/var/lib/rustypaste-auth/users.db` |
-| `JWT_SECRET` | Session signing secret | empty |
+| `JWT_SECRET` | Required random session-signing secret | empty |
 | `TURNSTILE_SECRET_KEY` | Server-side Turnstile secret. If set without a matching `VITE_TURNSTILE_SITE_KEY`, the login page shows an explicit "Security check is misconfigured on the server" message rather than blocking silently. Keep both empty to disable Turnstile, or set both together. | empty |
 | `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key. Despite the `VITE_` prefix (kept for `.env` naming continuity), this is read by the **backend** at runtime, not baked into the frontend build - the UI fetches the live value from `/auth/admin/public-settings` on every page load. Change it via `.env` + `docker compose up -d`; no rebuild needed. | empty |
-| `PASTE_PUBLIC_API` | Absolute API URL written into generated ShareX configs | `http://localhost:8080/api` |
+| `PASTE_PUBLIC_API` | Public API upload URL written into ShareX configs | empty |
 | `PASSKEYS_ENABLED` | Enable backend passkey routes | `0` |
 | `PASSKEY_RP_NAME` | Passkey display name | `yaemipaste` |
 | `PASSKEY_RP_ID` | Passkey RP ID override | empty |
 | `PASSKEY_ORIGINS` | Allowed passkey origins CSV | empty |
+| `PASSKEY_ALLOW_ANY_PORT` | Relaxed local passkey port matching | `0` |
+| `PASSKEY_ALLOW_SUBDOMAINS` | Relaxed passkey subdomain matching | `0` |
 
 ## Host / Compose Variables
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
+| `DEPLOYMENT_MODE` | `same` or `split` topology marker | `same` |
+| `SPLIT_ROLE` | `ui` or `api` on split hosts | empty |
+| `COMPOSE_PROFILES` | Services started by Compose | `ui,api` |
+| `UI_BIND_ADDRESS` | UI host bind address | `127.0.0.1` |
 | `UI_PORT` | Host port for the static frontend container | `8080` |
+| `API_PUBLISH_BIND` | API host bind address | `127.0.0.1` |
+| `API_PUBLISH_PORT` | API host port for a split reverse proxy | `8000` |
+| `CORS_ALLOWED_ORIGINS` | Exact CSV UI origins permitted by a split API | empty |
+| `CSP_CONNECT_SRC` | Extra exact browser connection origins; `self` is automatic | empty |
+| `CSP_TURNSTILE_SRC` | Turnstile CSP origin when enabled | empty |
+| `API_UPSTREAM` | UI container API/raw upstream | `http://paste-api:8000` |
 | `RESOLVER_ENABLED` | Enable legacy Node resolver workflow in installer | `0` |
 | `RESOLVER_PORT` | Legacy resolver loopback port | `3101` |
 | `RESOLVER_PUBLIC_ORIGIN` | Public site origin used by legacy resolver redirects | `http://localhost:8080` |

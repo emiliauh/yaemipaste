@@ -1,172 +1,74 @@
 # yaemipaste
 
-yaemipaste is working, but it may not be 100% finished yet.
-
-It is a self-hosted paste and file sharing app.
-
-It includes:
-- a Vue + Vite frontend
-- the modified Rust backend it depends on
-- an install script that sets up the full stack for you
-
-You can use it for:
-- file uploads
-- text pastes
-- public preview, raw, and download links
-- upload history and deletion
-- optional accounts, passkeys, ShareX, and client-side encryption
-
-## What You Need
-
-For the normal install path:
-- a Linux machine
-- Docker with Compose support
-- `git` and `curl`
-
-If Docker or other basic packages are missing on a Debian/Ubuntu machine, the installer can bootstrap them.
+Self-hosted file sharing and text pastes with preview, download links, upload
+history, expiry controls, accounts, and an admin panel.
 
 ## Install
 
-Clone the repo and run the installer:
+Requirements: Linux, Docker Compose, `git`, `curl`, and `rsync`. A DNS name
+with HTTPS handled by Caddy or Nginx is recommended for public deployments.
 
 ```bash
 git clone https://github.com/emiliauh/yaemipaste.git
 cd yaemipaste
-./install.sh
+sudo ./install.sh
 ```
 
-The installer is interactive. It will walk you through the main settings and then build and start the stack.
+The installer sets up the stack, creates `.env`, asks for your public URL, and
+prints an admin claim link. See [install.sh](install.sh) for all options.
 
-If you want to accept defaults without prompts:
+For unattended installation:
 
 ```bash
-./install.sh --action install --yes
+sudo ./install.sh --action install --yes \
+  --public-url https://paste.example.com \
+  --deployment same
 ```
 
-## Configure
+For split hosts, add `--deployment split --split-role ui|api` and
+`--api-origin https://api.example.com`.
 
-The installer writes your runtime settings to `.env`.
+### IP Access
 
-The most important values are:
-
-| Variable | What it does |
-| --- | --- |
-| `PASTE_URL` | Public URL your users will open |
-| `PASTE_PUBLIC_API` | Public API URL used for backend-generated links and ShareX |
-| `VITE_PASTE_API` | Frontend file API path or URL |
-| `VITE_AUTH_API` | Frontend auth API path or URL |
-| `VITE_FILE_RESOLVE_BASE` | Resolver path for `/file/<token>/...` links |
-| `VITE_ENABLE_AUTH` | Enables login/register/account UI |
-| `VITE_ENABLE_SHAREX` | Enables ShareX download/setup UI |
-| `JWT_SECRET` | Session signing secret |
-| `AUTH_ADMIN_BEARER` | Admin bearer used by the installer for bootstrap/token actions |
-| `PASSKEYS_ENABLED` | Enables passkey routes in the backend |
-
-Full environment reference:
-`docs/ENVIRONMENT.md`
-
-Do not commit your real `.env` file or any live secrets.
-
-## Run
-
-After install, the stack is managed through Docker Compose.
-
-Start:
+DNS and HTTPS are preferred, but a direct IP is supported for LAN or simple
+deployments. Bind the UI to all interfaces and include the port in the URL:
 
 ```bash
-./install.sh --action start
+sudo ./install.sh --action install --yes \
+  --public-url http://192.0.2.10:8080 \
+  --ui-bind 0.0.0.0 \
+  --deployment same
 ```
 
-Stop:
+Replace `192.0.2.10` with your server's reachable IP. HTTP IP deployments do
+not support browser passkeys; use HTTPS and a DNS name when that is needed.
+
+## First Administrator
+
+Create an initial account, then claim the one-time administrator token:
 
 ```bash
-./install.sh --action stop
+sudo ./install.sh --action init-user
+sudo ./install.sh --action admin-claim
 ```
 
-Restart:
+The administrator panel lives at `/admin`. It can manage users, uploads,
+safe public settings, webhooks, and audit events. See
+[user and token management](docs/wiki/User-and-Token-Management.md).
+
+## Operations
 
 ```bash
-./install.sh --action restart
+sudo ./install.sh --action status
+sudo ./install.sh --action restart
+sudo ./install.sh --action stop
 ```
 
-Status:
+## Documentation
 
-```bash
-./install.sh --action status
-```
-
-Create the first user:
-
-```bash
-./install.sh --action init-user
-```
-
-## Admin Panel
-
-yaemipaste includes a self-hosted admin panel at `/admin`, protected
-server-side by account JWT + `is_admin=1` (not just hidden client-side).
-
-Claim the first administrator once, right after install:
-
-```bash
-./install.sh --action admin-claim
-```
-
-This prints a one-time claim URL and token. The token is bcrypt-hashed
-server-side, never written in plaintext, and is invalidated the moment it's
-used. Lost it or need a fresh one? `./install.sh --action reset-admin-claim`.
-
-From the panel you can manage users (create/suspend/delete/rotate tokens),
-browse and purge uploads, edit safe global settings, configure webhooks, and
-review an audit log of admin actions. Full details:
-`docs/wiki/User-and-Token-Management.md`.
-
-The installer's interactive menu (`./install.sh --interactive`, or bare
-`./install.sh`) is the stable guided-install/admin-claim path and works even
-before Rust tooling is present. If `cargo` is already installed, `./install.sh
---tui` launches an optional Ratatui action picker (`tools/install-tui`) that
-dispatches into the same install.sh actions; it falls back to the shell menu
-automatically when cargo or the companion binary is unavailable.
-
-## Manual Docker Run
-
-If you do not want to use the installer, you can still run the app manually:
-
-```bash
-cp .env.example .env
-docker compose up --build -d
-```
-
-If you are running an older compatibility setup that still needs the bundled Node resolver:
-
-```bash
-docker compose --profile with-resolver up --build -d
-```
-
-## Development
-
-Frontend development:
-
-```bash
-npm ci
-npm run dev
-```
-
-Production build:
-
-```bash
-npm run build
-```
-
-Release-style validation:
-
-```bash
-npm run validate:release
-```
-
-## Notes
-
-- New installs should use the built-in Rust resolver path at `/api/resolve`.
-- Client-side encryption requires a secure browser context, which means `https://...` or `http://localhost`.
-- Public file links are path-based. Users should see links like `/file/<token>/preview` or `/<id>/file.txt`, not raw API URLs.
-- Keep instance-specific hostnames, secrets, and deployment commands out of git.
+- [Environment reference](docs/ENVIRONMENT.md)
+- [Production deployment](docs/deployment/production.md)
+- [Caddy deployment](docs/deployment/caddy.md)
+- [Nginx deployment](docs/deployment/nginx.md)
+- [Cloudflare edge guidance](docs/deployment/cloudflare.md)
+- [User and token management](docs/wiki/User-and-Token-Management.md)

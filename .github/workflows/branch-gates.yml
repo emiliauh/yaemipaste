@@ -42,6 +42,6 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium
       - run: npm run build
-      - run: npm run test:e2e
+      - run: PLAYWRIGHT_BROWSERS_PATH=0 npm run test:e2e

@@ -49,13 +49,13 @@ The bundled `docker-compose.yml` is for local or self-hosted deployments that wa
 Use:
 
 ```bash
-docker compose up --build -d
+docker compose --profile ui --profile api up --build -d
 ```
 
 Enable the legacy resolver only if needed:
 
 ```bash
-docker compose --profile with-resolver up --build -d
+docker compose --profile ui --profile api --profile with-resolver up --build -d
 ```
 
 Use that resolver profile only for older deployments whose Rust backend still lacks a native resolve route.

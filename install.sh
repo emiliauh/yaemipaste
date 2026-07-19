@@ -18,6 +18,11 @@ ACTION_SET=0
 INTERACTIVE_REQUESTED=0
 TUI_REQUESTED=0
 DRY_RUN=0
+PUBLIC_URL_OVERRIDE=""
+DEPLOYMENT_MODE_OVERRIDE=""
+API_ORIGIN_OVERRIDE=""
+SPLIT_ROLE_OVERRIDE=""
+UI_BIND_OVERRIDE=""
 
 COMPOSE_CMD=()
 HTTP_STATUS=""
@@ -239,6 +244,10 @@ default_public_url() {
   printf 'http://%s:%s' "$(detect_host_address)" "$port"
 }
 
+valid_origin() {
+  [[ "$1" =~ ^https?://[^/?#]+/?$ ]]
+}
+
 prompt() {
   local message="$1"
   local default="${2:-}"
@@ -355,13 +364,19 @@ compose() {
     fi
     die "Compose file not found at ${INSTALL_DIR}/${COMPOSE_FILE}"
   fi
-  local resolver_enabled
+  local resolver_enabled profiles profile
+  local -a profile_list
   local -a profile_args
   resolver_enabled="$(env_get RESOLVER_ENABLED "0")"
   profile_args=()
   if [[ "$resolver_enabled" != "0" ]]; then
     profile_args=(--profile with-resolver)
   fi
+  profiles="$(env_get COMPOSE_PROFILES "ui,api")"
+  IFS=',' read -r -a profile_list <<< "$profiles"
+  for profile in "${profile_list[@]}"; do
+    [[ -n "$profile" ]] && profile_args+=(--profile "$profile")
+  done
   run "${COMPOSE_CMD[@]}" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
 }
 
@@ -385,10 +400,15 @@ ensure_runtime_prereqs() {
     log "Installing missing prerequisite: gawk"
     apt_install_packages gawk
   fi
+  if ! command_exists rsync && command_exists apt-get && [[ "$DRY_RUN" -eq 0 ]]; then
+    log "Installing missing prerequisite: rsync"
+    apt_install_packages rsync
+  fi
   require_command git
   require_command curl
   require_command sed
   require_command awk
+  require_command rsync
   detect_compose_cmd
 }
 
@@ -434,15 +454,18 @@ upsert_env() {
     return 0
   fi
   if [[ ! -f "$file" ]]; then
-    run cp "${INSTALL_DIR}/.env.example" "$file"
+    run install -m 0600 "${INSTALL_DIR}/.env.example" "$file"
   fi
-  local escaped
-  escaped="$(printf '%s' "$value" | sed -e 's/[\/&]/\\&/g')"
+  [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || die "Environment values cannot contain newlines."
   if grep -q -E "^${key}=" "$file"; then
-    run sed -i "s/^${key}=.*/${key}=${escaped}/" "$file"
+    local temp_file
+    temp_file="$(mktemp)"
+    awk -v key="$key" -v value="$value" 'index($0, key "=") == 1 { print key "=" value; next } { print }' "$file" > "$temp_file"
+    run mv "$temp_file" "$file"
   else
-    run bash -c "printf '\n%s=%s\n' '$key' '$value' >> '$file'"
+    printf '\n%s=%s\n' "$key" "$value" >> "$file"
   fi
+  run chmod 0600 "$file"
 }
 
 http_json() {
@@ -541,16 +564,51 @@ configure_env() {
         die "Missing .env.example in repository."
       fi
     else
-      run cp "${INSTALL_DIR}/.env.example" "$env_path"
+      run install -m 0600 "${INSTALL_DIR}/.env.example" "$env_path"
       success "Created ${env_path} from .env.example"
     fi
   fi
 
-  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base
+  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin
+  deployment_mode="$(prompt "Deployment mode (same or split)" "${DEPLOYMENT_MODE_OVERRIDE:-$(env_get DEPLOYMENT_MODE "same")}")"
+  [[ "$deployment_mode" =~ ^(same|split)$ ]] || die "Deployment mode must be same or split."
+  split_role="$(env_get SPLIT_ROLE "")"
+  if [[ "$deployment_mode" == "split" ]]; then
+    split_role="$(prompt "Split deployment role (ui or api)" "${SPLIT_ROLE_OVERRIDE:-${split_role:-ui}}")"
+    [[ "$split_role" =~ ^(ui|api)$ ]] || die "Split deployment role must be ui or api."
+  else
+    split_role=""
+  fi
   ui_port="$(prompt "UI port" "$(env_get UI_PORT "$DEFAULT_UI_PORT")")"
-  public_url="$(prompt "Public site URL" "$(env_get_nonempty PASTE_URL "$(default_public_url "$ui_port")")")"
-  api_base="$(prompt "Paste API base" "$(env_get VITE_PASTE_API "/api")")"
-  auth_base="$(prompt "Auth API base" "$(env_get VITE_AUTH_API "/auth")")"
+  [[ "$ui_port" =~ ^[1-9][0-9]{0,4}$ ]] && (( ui_port <= 65535 )) || die "UI port must be between 1 and 65535."
+  ui_bind="$(prompt "UI bind address (use 0.0.0.0 for direct IP access)" "${UI_BIND_OVERRIDE:-$(env_get UI_BIND_ADDRESS "127.0.0.1")}")"
+  public_url="$(prompt "Public site URL (HTTPS preferred; HTTP/IP supported)" "${PUBLIC_URL_OVERRIDE:-$(env_get_nonempty PASTE_URL "$(default_public_url "$ui_port")")}")"
+  valid_origin "$public_url" || die "Public site URL must be an origin such as https://paste.example.com or http://192.0.2.10:8080."
+  if [[ "$public_url" == http://* ]]; then
+    warn "Using HTTP for the public URL. HTTPS with a DNS name is recommended for internet-facing deployments."
+  fi
+  api_origin="$(env_get_nonempty PASTE_PUBLIC_API "")"
+  if [[ "$deployment_mode" == "split" ]]; then
+    api_origin="$(prompt "Public API origin (HTTPS preferred; HTTP/IP supported)" "${API_ORIGIN_OVERRIDE:-$api_origin}")"
+    valid_origin "$api_origin" || die "Split API origin must be an origin such as https://api.example.com or http://192.0.2.10:8000."
+    api_origin="${api_origin%/}"
+    api_base="$api_origin"
+    auth_base="$api_origin/auth"
+    resolve_base="$api_origin/resolve"
+    cors_origins="$public_url"
+    csp_connect="$api_origin"
+  else
+    api_origin="${public_url%/}/api"
+    api_base="/api"
+    auth_base="/auth"
+    resolve_base="/api/resolve"
+    cors_origins=""
+    csp_connect=""
+  fi
+  auth_admin_origin="$public_url"
+  if [[ "$deployment_mode" == "split" ]]; then
+    auth_admin_origin="$api_origin"
+  fi
   sharex_enabled="$(prompt "Enable ShareX UI (1=yes, 0=no)" "$(env_get VITE_ENABLE_SHAREX "1")")"
   auth_enabled="$(prompt "Enable account UI (1=yes, 0=no)" "$(env_get VITE_ENABLE_AUTH "1")")"
   turnstile_key="$(prompt "Turnstile site key" "$(env_get VITE_TURNSTILE_SITE_KEY "")")"
@@ -561,12 +619,12 @@ configure_env() {
   passkey_rp_id="$(prompt "Passkey RP ID (optional)" "$(env_get PASSKEY_RP_ID "")")"
   passkey_origins="$(prompt "Passkey origins CSV (optional)" "$(env_get PASSKEY_ORIGINS "")")"
   resolver_enabled="$(prompt "Enable compatibility resolver (1=yes, 0=no)" "$(env_get RESOLVER_ENABLED "0")")"
-  admin_base="$(prompt "Auth admin base URL" "$(env_get_nonempty AUTH_ADMIN_BASE_URL "${public_url%/}/auth/admin")")"
+  admin_base="$(prompt "Auth admin base URL" "$(env_get_nonempty AUTH_ADMIN_BASE_URL "${auth_admin_origin%/}/auth/admin")")"
   bootstrap_path="$(prompt "Auth bootstrap path" "$(env_get AUTH_BOOTSTRAP_PATH "/bootstrap")")"
   token_create_path="$(prompt "Auth token create path" "$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")")"
   token_revoke_path="$(prompt "Auth token revoke path" "$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")")"
   claim_init_path="$(prompt "Admin claim init path" "$(env_get AUTH_ADMIN_CLAIM_INIT_PATH "/claim/init")")"
-  register_url="$(prompt "Register endpoint URL" "$(env_get_nonempty AUTH_REGISTER_URL "${public_url%/}/auth/register")")"
+  register_url="$(prompt "Register endpoint URL" "$(env_get_nonempty AUTH_REGISTER_URL "${auth_admin_origin%/}/auth/register")")"
   admin_bearer="$(prompt "Admin bearer token" "$(env_get_nonempty AUTH_ADMIN_BEARER "")")"
 
   if [[ ! "$sharex_enabled" =~ ^[01]$ ]]; then
@@ -585,7 +643,7 @@ configure_env() {
     warn "Invalid resolver toggle '${resolver_enabled}', defaulting to 1"
     resolver_enabled="1"
   fi
-  resolve_base="$(env_get VITE_FILE_RESOLVE_BASE "/api/resolve")"
+  resolve_base="${resolve_base:-$(env_get VITE_FILE_RESOLVE_BASE "/api/resolve")}"
   if [[ "$resolver_enabled" == "0" ]]; then
     if [[ -z "$resolve_base" ]]; then
       resolve_base="/api/resolve"
@@ -602,7 +660,7 @@ configure_env() {
     turnstile_secret=""
     passkeys_enabled="0"
   fi
-  if [[ "$auth_enabled" == "1" && -z "$admin_bearer" ]]; then
+  if [[ -z "$admin_bearer" ]]; then
     admin_bearer="$(generate_secret)"
     success "Generated admin bearer automatically."
   fi
@@ -616,17 +674,37 @@ configure_env() {
     jwt_secret="$(generate_secret)"
     success "Generated JWT secret automatically."
   fi
+  upsert_env DEPLOYMENT_MODE "$deployment_mode"
+  upsert_env SPLIT_ROLE "$split_role"
+  if [[ "$deployment_mode" == "split" ]]; then
+    upsert_env COMPOSE_PROFILES "$split_role"
+    upsert_env API_UPSTREAM "$api_origin"
+  else
+    upsert_env COMPOSE_PROFILES "ui,api"
+    upsert_env API_UPSTREAM "http://paste-api:8000"
+  fi
+  upsert_env UI_BIND_ADDRESS "$ui_bind"
   upsert_env UI_PORT "$ui_port"
   upsert_env PASTE_URL "$public_url"
-  upsert_env PASTE_PUBLIC_API "$(env_get_nonempty PASTE_PUBLIC_API "${public_url%/}/api")"
+  upsert_env PASTE_PUBLIC_API "$api_origin"
   upsert_env VITE_PASTE_API "$api_base"
   upsert_env VITE_AUTH_API "$auth_base"
   upsert_env VITE_FILE_RESOLVE_BASE "$resolve_base"
   upsert_env VITE_TOKEN_OWNER_PATH "$(env_get VITE_TOKEN_OWNER_PATH "/api/token-owner")"
+  if [[ "$deployment_mode" == "split" ]]; then
+    upsert_env VITE_TOKEN_OWNER_PATH "$api_origin/token-owner"
+  fi
+  upsert_env CORS_ALLOWED_ORIGINS "$cors_origins"
+  upsert_env CSP_CONNECT_SRC "$csp_connect"
   upsert_env VITE_ENABLE_SHAREX "$sharex_enabled"
   upsert_env VITE_ENABLE_AUTH "$auth_enabled"
   upsert_env VITE_TURNSTILE_SITE_KEY "$turnstile_key"
   upsert_env TURNSTILE_SECRET_KEY "$turnstile_secret"
+  local csp_turnstile_src=""
+  if [[ -n "$turnstile_secret" ]]; then
+    csp_turnstile_src="https://challenges.cloudflare.com"
+  fi
+  upsert_env CSP_TURNSTILE_SRC "$csp_turnstile_src"
   upsert_env JWT_SECRET "$jwt_secret"
   upsert_env PASSKEYS_ENABLED "$passkeys_enabled"
   upsert_env PASSKEY_RP_NAME "$passkey_rp_name"
@@ -649,7 +727,7 @@ clone_or_update_repo() {
       die "Install directory is not empty: ${INSTALL_DIR}"
     fi
     run mkdir -p "$INSTALL_DIR"
-    run rsync -a --delete --exclude '.git' "${REPO_URL}/" "${INSTALL_DIR}/"
+    run rsync -a --delete --exclude '.git' --include '.env.example' --exclude '.env' --exclude '.env.*' "${REPO_URL}/" "${INSTALL_DIR}/"
     return 0
   fi
 
@@ -680,13 +758,20 @@ stack_install_or_update() {
   section "Starting Stack"
   compose pull || warn "Compose pull failed; continuing with local build"
   compose up -d --build
-  local ui_port probe_host
+  local ui_port api_port probe_host deployment_mode split_role
   ui_port="$(env_get UI_PORT "$DEFAULT_UI_PORT")"
+  api_port="$(env_get API_PUBLISH_PORT "8000")"
+  deployment_mode="$(env_get DEPLOYMENT_MODE "same")"
+  split_role="$(env_get SPLIT_ROLE "")"
   probe_host="127.0.0.1"
-  wait_for_http "http://${probe_host}:${ui_port}/" "UI endpoint" '^200$' 60 2 || die "UI endpoint failed readiness check."
-  wait_for_http "http://${probe_host}:${ui_port}/auth/sharex" "Auth endpoint" '^(200|400|401)$' 30 2 || die "Auth endpoint failed readiness check."
-  wait_for_http "http://${probe_host}:${ui_port}/api/" "Paste endpoint" '^(200|400|401|405)$' 30 2 || die "Paste endpoint failed readiness check."
-  if [[ "$(env_get VITE_ENABLE_AUTH "1")" == "1" ]]; then
+  if [[ "$deployment_mode" == "split" && "$split_role" == "api" ]]; then
+    wait_for_http "http://${probe_host}:${api_port}/auth/admin/public-settings" "API auth endpoint" '^200$' 60 2 || die "API endpoint failed readiness check."
+  else
+    wait_for_http "http://${probe_host}:${ui_port}/" "UI endpoint" '^200$' 60 2 || die "UI endpoint failed readiness check."
+    wait_for_http "http://${probe_host}:${ui_port}/auth/sharex" "Auth endpoint" '^(200|400|401)$' 30 2 || die "Auth endpoint failed readiness check."
+    wait_for_http "http://${probe_host}:${ui_port}/api/" "Paste endpoint" '^(200|400|401|405)$' 30 2 || die "Paste endpoint failed readiness check."
+  fi
+  if [[ "$(env_get VITE_ENABLE_AUTH "1")" == "1" && ! ( "$deployment_mode" == "split" && "$split_role" == "api" ) ]]; then
     init_admin_claim 0
   fi
   success "Yaemipaste install/update completed."
@@ -1018,6 +1103,11 @@ Options:
   --install-dir <path>   Default: ${DEFAULT_INSTALL_DIR}
   --repo-url <url>       Default: ${DEFAULT_REPO_URL}
   --branch <name>        Default: ${DEFAULT_BRANCH}
+  --public-url <url>     Public UI origin; HTTPS DNS is preferred, HTTP/IP is supported
+  --ui-bind <address>    UI bind address; use 0.0.0.0 for direct IP access
+  --deployment <mode>    same (default) or split
+  --api-origin <url>     Required public API origin for split --yes installs
+  --split-role <role>    ui or api for split --yes installs
   --yes                  Non-interactive confirmations; requires a non-menu action
   --dry-run              Print actions without changing system state
   -h, --help             Show this help
@@ -1052,6 +1142,31 @@ parse_args() {
       --branch)
         [[ $# -ge 2 ]] || die "--branch requires a value"
         BRANCH="$2"
+        shift 2
+        ;;
+      --public-url)
+        [[ $# -ge 2 ]] || die "--public-url requires a URL"
+        PUBLIC_URL_OVERRIDE="$2"
+        shift 2
+        ;;
+      --ui-bind)
+        [[ $# -ge 2 ]] || die "--ui-bind requires an address"
+        UI_BIND_OVERRIDE="$2"
+        shift 2
+        ;;
+      --deployment)
+        [[ $# -ge 2 ]] || die "--deployment requires same or split"
+        DEPLOYMENT_MODE_OVERRIDE="$2"
+        shift 2
+        ;;
+      --api-origin)
+        [[ $# -ge 2 ]] || die "--api-origin requires a URL"
+        API_ORIGIN_OVERRIDE="$2"
+        shift 2
+        ;;
+      --split-role)
+        [[ $# -ge 2 ]] || die "--split-role requires ui or api"
+        SPLIT_ROLE_OVERRIDE="$2"
         shift 2
         ;;
       --interactive)

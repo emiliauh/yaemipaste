@@ -199,11 +199,29 @@ pub enum TokenType {
 impl Config {
     /// Parses the config file and returns the values.
     pub fn parse(path: &Path) -> Result<Config, ConfigError> {
-        config::Config::builder()
+        let mut parsed: Config = config::Config::builder()
             .add_source(config::File::from(path))
             .add_source(config::Environment::default().separator("__"))
             .build()?
-            .try_deserialize()
+            .try_deserialize()?;
+
+        if let Ok(origins) = env::var("CORS_ALLOWED_ORIGINS") {
+            let origins = origins
+                .split(',')
+                .map(str::trim)
+                .filter(|origin| !origin.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            if !origins.is_empty() {
+                parsed
+                    .server
+                    .cors
+                    .get_or_insert_with(CorsConfig::default)
+                    .allowed_origins = origins;
+            }
+        }
+
+        Ok(parsed)
     }
 
     /// Retrieves all configured auth/delete tokens.

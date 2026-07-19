@@ -30,7 +30,11 @@ ENV VITE_MAX_EXPIRY_DAYS=$VITE_MAX_EXPIRY_DAYS
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+ENV CSP_CONNECT_SRC=""
+ENV CSP_TURNSTILE_SRC=""
+ENV API_UPSTREAM="http://paste-api:8000"
+ENV NGINX_ENVSUBST_FILTER="^(CSP_(CONNECT|TURNSTILE)_SRC|API_UPSTREAM)$"
+COPY docker/nginx/default.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

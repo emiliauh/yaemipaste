@@ -38,7 +38,7 @@ set -a
 . "$env_file"
 set +a
 username="${CODEX_TEST_USERNAME:-codex}"
-password="${CODEX_TEST_PASSWORD:-codex123}"
+password="${CODEX_TEST_PASSWORD:?Set CODEX_TEST_PASSWORD to provision the local test account}"
 payload="$(CODEX_TEST_USERNAME="$username" CODEX_TEST_PASSWORD="$password" node -e 'process.stdout.write(JSON.stringify({ username: process.env.CODEX_TEST_USERNAME, password: process.env.CODEX_TEST_PASSWORD }))')"
 curl -fsS \
   -H "Authorization: Bearer $AUTH_ADMIN_BEARER" \

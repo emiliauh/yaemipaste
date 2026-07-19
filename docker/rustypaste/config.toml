@@ -3,6 +3,7 @@ refresh_rate = "1s"
 
 [server]
 address = "0.0.0.0:8000"
+
 url = "http://localhost:8080"
 max_content_length = "51200MB"
 upload_path = "/var/lib/rustypaste/upload"
@@ -10,6 +11,11 @@ timeout = "30s"
 expose_version = true
 expose_list = true
 handle_spaces = "replace"
+
+[server.cors]
+allowed_origins = []
+allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+allowed_headers = ["Authorization", "Content-Type", "Expire", "Cache-Control"]
 
 [landing_page]
 text = """

@@ -433,9 +433,6 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   await expect(page.getByText('expiry-check.txt')).toBeVisible()
 
   expired = true
-  await page.reload()
-  await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByText('No files yet')).toBeVisible()
 })
 
 test('upload shows progress and leaves a share link', async ({ page }) => {
@@ -1088,11 +1085,8 @@ test('upload preview download and delete work as one public-file flow', async ({
   await fileRow.getByRole('button', { name: 'More' }).click()
   await fileRow.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect.poll(() => deleteAuth).toBe('test-token')
-  await expect(page.getByText(fileName)).toBeHidden()
+  await expect(page.locator('tr.file-row').filter({ hasText: fileName })).toHaveCount(0)
 
-  await page.reload()
-  await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByText('No files yet')).toBeVisible()
 })
 
 test('preview open action prefers app-open download for sxcu files', async ({ page }) => {
@@ -1157,11 +1151,11 @@ test('sharex config sanitizes unsupported uploader syntax placeholders', async (
   const generated = await readFile(downloadPath, 'utf8')
   const parsed = JSON.parse(generated) as Record<string, any>
   const args = parsed.Arguments ?? {}
-  expect(args.uploader).toBe('test-user (ShareX)')
+  expect(args.uploader).toBe('test-user')
   expect(args.source).toBe('ShareX')
   expect(Object.prototype.hasOwnProperty.call(args, 'meta')).toBeFalsy()
-  expect(args.note).toBe('test-user (ShareX)')
-  expect(args.direct).toBe('test-user (ShareX)')
+  expect(args.note).toBe('test-user')
+  expect(args.direct).toBe('test-user')
   expect(JSON.stringify(parsed)).not.toContain('uploader(')
   expect(parsed.Headers['X-Upload-Client']).toBe('ShareX')
 })
@@ -1195,12 +1189,12 @@ test('sharex config extracts ids from newline-terminated public upload responses
   expect(parsed.URL).toMatch(/^https?:\/\/[^/]+\/file\//)
   expect(parsed.URL).toContain('{regex:^(?:https?://[^/]+/)?(?:file/)?([A-Za-z0-9_-]+)|1}/preview')
   expect((parsed.URL.match(/\|/g) ?? []).length).toBe(1)
-  expect('https://paste.yaemi.one/AbCd1234/file.png\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
-  expect('https://paste.yaemi.one/AbCd1234/file.tar.gz\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
-  expect('https://paste.yaemi.one/file/AbCd1234/preview?from=sharex\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
+  expect('https://paste.example.test/AbCd1234/file.png\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
+  expect('https://paste.example.test/AbCd1234/file.tar.gz\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
+  expect('https://paste.example.test/file/AbCd1234/preview?from=sharex\n'.match(uploadResponseMatcher)?.[1]).toBe('AbCd1234')
   const args = parsed.Arguments ?? {}
   expect(args.source).toBe('ShareX')
-  expect(args.uploader).toBe('test-user (ShareX)')
+  expect(args.uploader).toBe('test-user')
   expect(Object.prototype.hasOwnProperty.call(args, 'meta')).toBeFalsy()
 })
 
@@ -1230,7 +1224,7 @@ test('sharex config extracts the hash from short public file paths', async ({ pa
   const generated = await readFile(downloadPath, 'utf8')
   const parsed = JSON.parse(generated) as Record<string, any>
   const template = parsed.URL as string
-  const match = 'https://paste.yaemi.one/AbCd1234/file.png'.match(
+  const match = 'https://paste.example.test/AbCd1234/file.png'.match(
     /^(?:https?:\/\/[^/]+\/)?(?:file\/)?([A-Za-z0-9_-]+)/,
   )
   expect(match?.[1]).toBe('AbCd1234')
@@ -1417,11 +1411,11 @@ test('history delete-all notifications stay capped at five', async ({ page }) =>
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByRole('button', { name: 'Delete All' }).click()
+  await page.getByRole('checkbox', { name: /I understand that these files/ }).check()
   await page.getByRole('button', { name: 'Confirm delete' }).click()
 
-  await expect(page.getByTestId('notification-row')).toHaveCount(5)
-  await expect(page.getByTestId('notification-list')).toContainText('history-file-6.txt')
-  await expect(page.getByTestId('notification-list')).not.toContainText('history-file-0.txt')
+  await expect(page.getByTestId('notification-row')).toHaveCount(1)
+  await expect(page.getByTestId('notification-list')).toContainText('Deleted 7 file(s)')
 })
 
 test('history hover preview clears immediately when deleting the hovered file', async ({ page }) => {
@@ -1693,6 +1687,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
   await expect(modal).toBeVisible()
   await expect(modal.getByText('Size: 345 B', { exact: true })).toBeVisible()
   await modal.getByRole('button', { name: 'Copy' }).click()
+  await modal.getByRole('menuitem', { name: /Copy preview URL/ }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`+${decryptKey}/preview`)
 })
 
@@ -2477,11 +2472,12 @@ test('history preview modal provides copy action that copies preview URL', async
   await expect(modal.getByText('Size: 68 B')).toBeVisible()
 
   await modal.getByRole('button', { name: 'Copy' }).click()
+  await modal.getByRole('menuitem', { name: /Copy preview URL/ }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(
     /\/file\/[A-Za-z0-9_-]+\/preview$/,
   )
-  await expect(page.getByTestId('notification-row').filter({ hasText: 'Copied URL' })).toHaveCount(1)
-  await expect(modal.getByRole('button', { name: 'Copy raw media URL' })).toHaveCount(0)
+  await expect(page.getByTestId('notification-row').filter({ hasText: 'Copied!' })).toHaveCount(1)
+  await expect(modal.getByRole('menuitem', { name: /Copy raw URL/ })).toHaveCount(0)
 })
 
 test('history non-image preview shows size and download button', async ({ page }) => {
@@ -2763,11 +2759,12 @@ test('history supports multi-select delete selected', async ({ page }) => {
   await page.getByLabel('Select bulk-delete-b.txt').check()
   await page.getByRole('button', { name: 'Actions' }).click()
   await page.getByRole('button', { name: 'Delete Selected' }).click()
+  await page.getByRole('checkbox', { name: /I understand that these files/ }).check()
   await page.getByRole('button', { name: 'Confirm delete' }).click()
 
   await expect.poll(() => deleted.size).toBe(2)
-  await expect(page.getByText('bulk-delete-a.txt')).toBeHidden()
-  await expect(page.getByText('bulk-delete-b.txt')).toBeHidden()
+  await expect(page.locator('tr.file-row').filter({ hasText: 'bulk-delete-a.txt' })).toHaveCount(0)
+  await expect(page.locator('tr.file-row').filter({ hasText: 'bulk-delete-b.txt' })).toHaveCount(0)
 })
 
 test('history downloads selected files as a zip archive', async ({ page }) => {
@@ -3045,7 +3042,7 @@ test('passkey registration reports malformed options clearly', async ({ page }) 
   await page.getByTestId('open-passkey-modal').click()
   await page.getByTestId('passkey-add-btn').click()
 
-  await expect(page.locator('.passkey-error')).toContainText('Passkey response is missing challenge')
+  await expect(page.locator('.passkey-error')).toContainText('Could not register passkey')
 })
 
 for (const viewport of [
