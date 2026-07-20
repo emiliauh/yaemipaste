@@ -2,27 +2,20 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  adminAuditLog,
   adminBulkDeleteUploads,
   adminUploadContentUrl,
   adminCreateUser,
   adminCreateWebhook,
-  adminDashboard,
   adminDeleteUpload,
   adminDeleteUser,
   adminDeleteWebhook,
   adminPurgeExpired,
   adminPurgeUserUploads,
   adminRotateUserToken,
-  adminSettings,
   adminTestWebhook,
   adminUpdateSettings,
   adminUpdateUser,
   adminUpdateWebhook,
-  adminUploads,
-  adminUsers,
-  adminWebhookDeliveries,
-  adminWebhooks,
   authLogout,
   displayUploaderName,
   formatBytes,
@@ -47,6 +40,7 @@ import FilePreview from '../components/FilePreview.vue'
 import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
+import { loadAdminData, peekAdminData } from '../lib/adminData'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
 
 const router = useRouter()
@@ -77,16 +71,17 @@ const confirmationAcknowledged = ref(false)
 const confirmationBusy = ref(false)
 const tokenDialog = ref<{ username: string; token: string } | null>(null)
 const tokenCopied = ref(false)
-const loading = ref(false)
+const initialAdminData = peekAdminData()
+const loading = ref(!initialAdminData)
 const error = ref('')
-const dashboard = ref<AdminDashboard | null>(null)
-const users = ref<AdminUser[]>([])
-const uploads = ref<AdminUpload[]>([])
+const dashboard = ref<AdminDashboard | null>(initialAdminData?.dashboard ?? null)
+const users = ref<AdminUser[]>(initialAdminData?.users ?? [])
+const uploads = ref<AdminUpload[]>(initialAdminData?.uploads ?? [])
 const selectedUploads = ref<Set<string>>(new Set())
-const settings = ref<AdminSettings>({})
-const webhooks = ref<AdminWebhook[]>([])
-const deliveries = ref<WebhookDelivery[]>([])
-const audit = ref<AdminAuditEntry[]>([])
+const settings = ref<AdminSettings>(initialAdminData?.settings ?? {})
+const webhooks = ref<AdminWebhook[]>(initialAdminData?.webhooks ?? [])
+const deliveries = ref<WebhookDelivery[]>(initialAdminData?.deliveries ?? [])
+const audit = ref<AdminAuditEntry[]>(initialAdminData?.audit ?? [])
 let refreshSequence = 0
 
 function tabFromRoute(): AdminTab {
@@ -105,7 +100,18 @@ watch(() => route.params.section, () => {
 
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
-const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public', turnstile_enabled: false, turnstile_site_key: '', turnstile_secret_key: '' })
+const settingsForm = ref({
+  app_name: initialAdminData?.settings.app_name ?? '',
+  public_title: initialAdminData?.settings.public_title ?? '',
+  base_api_url: initialAdminData?.settings.base_api_url ?? '',
+  registration_enabled: initialAdminData?.settings.registration_enabled !== 'false',
+  file_size_limit_bytes: Number(initialAdminData?.settings.file_size_limit_bytes ?? 0) || 0,
+  file_size_limit_unlimited: initialAdminData?.settings.file_size_limit_unlimited === 'true',
+  upload_access_mode: initialAdminData?.settings.upload_access_mode === 'public' ? 'public' as const : 'private' as const,
+  turnstile_enabled: initialAdminData?.settings.turnstile_enabled === 'true',
+  turnstile_site_key: initialAdminData?.settings.turnstile_site_key ?? '',
+  turnstile_secret_key: '',
+})
 const turnstileSecretPlaceholder = computed(() => settings.value.turnstile_secret_configured === 'true'
   ? '*****************'
   : 'Enter a secret key')
@@ -443,36 +449,28 @@ async function refreshAll() {
   loading.value = true
   error.value = ''
   try {
-    const [nextDashboard, nextUsers, nextUploads, nextSettings, nextWebhooks, nextDeliveries, nextAudit] = await Promise.all([
-      adminDashboard(),
-      adminUsers(),
-      adminUploads(),
-      adminSettings(),
-      adminWebhooks(),
-      adminWebhookDeliveries(),
-      adminAuditLog(),
-    ])
+    const next = await loadAdminData(true)
     // A page-load refresh may still be in flight when an admin action
     // completes. Only the newest response may update the visible state;
     // otherwise a stale uploads list can reappear after deletion.
     if (sequence !== refreshSequence) return
-    dashboard.value = nextDashboard
-    users.value = nextUsers
-    uploads.value = nextUploads
-    settings.value = nextSettings
-    webhooks.value = nextWebhooks
-    deliveries.value = nextDeliveries
-    audit.value = nextAudit
+    dashboard.value = next.dashboard
+    users.value = next.users
+    uploads.value = next.uploads
+    settings.value = next.settings
+    webhooks.value = next.webhooks
+    deliveries.value = next.deliveries
+    audit.value = next.audit
     settingsForm.value = {
-      app_name: nextSettings.app_name ?? 'yaemipaste',
-      public_title: nextSettings.public_title ?? 'yaemipaste',
-      base_api_url: nextSettings.base_api_url ?? '',
-      registration_enabled: nextSettings.registration_enabled !== 'false',
-      file_size_limit_bytes: Number(nextSettings.file_size_limit_bytes ?? 0) || 0,
-      file_size_limit_unlimited: nextSettings.file_size_limit_unlimited === 'true',
-      upload_access_mode: nextSettings.upload_access_mode === 'public' ? 'public' : 'private',
-      turnstile_enabled: nextSettings.turnstile_enabled === 'true',
-      turnstile_site_key: nextSettings.turnstile_site_key ?? '',
+      app_name: next.settings.app_name ?? 'yaemipaste',
+      public_title: next.settings.public_title ?? 'yaemipaste',
+      base_api_url: next.settings.base_api_url ?? '',
+      registration_enabled: next.settings.registration_enabled !== 'false',
+      file_size_limit_bytes: Number(next.settings.file_size_limit_bytes ?? 0) || 0,
+      file_size_limit_unlimited: next.settings.file_size_limit_unlimited === 'true',
+      upload_access_mode: next.settings.upload_access_mode === 'public' ? 'public' : 'private',
+      turnstile_enabled: next.settings.turnstile_enabled === 'true',
+      turnstile_site_key: next.settings.turnstile_site_key ?? '',
       // Secrets are intentionally write-only: never repopulate one from the API.
       turnstile_secret_key: '',
     }
@@ -713,7 +711,7 @@ watch(pagedUsers, (nextUsers) => {
 
 onMounted(() => {
   void refreshPublicSettings()
-  void refreshAll()
+  if (!initialAdminData) void refreshAll()
   document.addEventListener('visibilitychange', refreshAdminWhenVisible)
   document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.addEventListener('blur', hideUploadHover)

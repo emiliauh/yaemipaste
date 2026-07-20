@@ -8,6 +8,7 @@ import AppSidebar from '../components/AppSidebar.vue'
 import { isAuthEnabled } from '../lib/features'
 import { isAuthAdmin, isLoggedIn, refreshAuthAdmin } from '../lib/api'
 import { usePublicSettings } from '../lib/publicSettings'
+import { loadAdminData } from '../lib/adminData'
 
 const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
 const HISTORY_REFRESH_EVENT = 'rp:history-refresh'
@@ -55,10 +56,13 @@ function syncTabFromRoute() {
 
 onMounted(() => {
   void refreshPublicSettings()
-  void refreshAuthAdmin().then((isAdmin) => { adminEnabled.value = isAdmin })
-  // Let the admin panel code arrive before the administrator navigates there,
-  // so the content transition animates the panel rather than its loading shell.
-  void import('../views/AdminView.vue')
+  void refreshAuthAdmin().then((isAdmin) => {
+    adminEnabled.value = isAdmin
+    if (isAdmin) {
+      void import('../views/AdminView.vue')
+      void loadAdminData()
+    }
+  })
   syncTabFromRoute()
 })
 
