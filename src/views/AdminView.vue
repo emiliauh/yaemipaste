@@ -16,7 +16,6 @@ import {
   adminRotateUserToken,
   adminSettings,
   adminTestWebhook,
-  adminTestTurnstile,
   adminUpdateSettings,
   adminUpdateUser,
   adminUpdateWebhook,
@@ -41,7 +40,6 @@ import {
   type PasteFile,
   type WebhookDelivery,
 } from '../lib/api'
-import { useTurnstile } from '../lib/turnstile'
 import SettingsPanel from '../components/SettingsPanel.vue'
 import AppSidebar from '../components/AppSidebar.vue'
 import ActionConfirmDialog from '../components/ActionConfirmDialog.vue'
@@ -108,10 +106,6 @@ watch(() => route.params.section, () => {
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
 const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public', turnstile_enabled: false, turnstile_site_key: '', turnstile_secret_key: '' })
-const turnstileTestContainer = ref<HTMLElement | null>(null)
-const turnstileTestBusy = ref(false)
-const turnstileTest = useTurnstile()
-const turnstileTestSiteKey = ref('')
 const webhookEventOptions = [
   { value: 'file.uploaded', label: 'File uploaded', description: 'When a new file or paste is stored.' },
   { value: 'file.deleted', label: 'File deleted', description: 'When a file is removed manually or by cleanup.' },
@@ -497,37 +491,6 @@ async function saveSettings() {
   }, 'Settings updated')
 }
 
-async function testTurnstile() {
-  if (!settingsForm.value.turnstile_site_key.trim() || !settingsForm.value.turnstile_secret_key.trim()) {
-    notifications.push('Enter both Turnstile keys before testing.', 'error')
-    return
-  }
-  await nextTick()
-  try {
-    const siteKey = settingsForm.value.turnstile_site_key.trim()
-    if (turnstileTestSiteKey.value && turnstileTestSiteKey.value !== siteKey) turnstileTest.destroy()
-    turnstileTestSiteKey.value = siteKey
-    if (!turnstileTest.token.value) {
-      await adminTestTurnstile(settingsForm.value.turnstile_secret_key.trim())
-      notifications.push('Cloudflare accepted the secret key. Complete the visible challenge to verify the site key and domain.', 'success')
-    }
-    await turnstileTest.mount(turnstileTestContainer.value!, siteKey, 'always')
-    if (turnstileTest.fatalError.value) throw new Error(turnstileTest.fatalError.value)
-    if (!turnstileTest.token.value) {
-      return
-    }
-    turnstileTestBusy.value = true
-    const token = turnstileTest.token.value
-    await adminTestTurnstile(settingsForm.value.turnstile_secret_key.trim(), token)
-    notifications.push('Turnstile credentials verified successfully.', 'success')
-  } catch (error: any) {
-    notifications.push(error.message ?? 'Turnstile verification failed.', 'error')
-  } finally {
-    turnstileTestBusy.value = false
-    // Keep the solved widget visible. Resetting it destroys the completed state.
-  }
-}
-
 async function deleteUploadWithConfirmation(path: string) {
   requestConfirmation({
     title: 'Delete upload?',
@@ -732,7 +695,6 @@ function repositionUserRowMenu() {
 
 watch(tab, async (nextTab) => {
   closeUserRowMenu()
-  if (nextTab !== 'Settings') turnstileTest.destroy()
   await nextTick()
   if (nextTab === 'Users') usersTableScroll.value?.scrollTo({ left: 0 })
   if (nextTab === 'Uploads') uploadsTableScroll.value?.scrollTo({ left: 0 })
@@ -755,7 +717,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', refreshAdminWhenVisible)
-  turnstileTest.destroy()
   document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.removeEventListener('blur', hideUploadHover)
   window.removeEventListener('scroll', hideUploadHover, true)
@@ -1138,10 +1099,6 @@ onBeforeUnmount(() => {
           <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
             <label class="turnstile-key-field"><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" placeholder="Enter a new key to replace the existing one" /></label>
             <label class="turnstile-key-field"><span>Turnstile secret key</span><small>Private server verification key. It is never displayed after saving.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" placeholder="Enter a new key to replace the existing one" /></label>
-            <div class="turnstile-test-actions span-2">
-              <div ref="turnstileTestContainer" class="turnstile-test-widget"></div>
-              <button class="btn-orange turnstile-test" type="button" :disabled="turnstileTestBusy" @click="testTurnstile">{{ turnstileTestBusy ? 'Verifying credentials…' : turnstileTest.token ? 'Verify Turnstile credentials' : 'Start Turnstile verification' }}</button>
-            </div>
           </div>
         </div>
       </section>
@@ -2711,9 +2668,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   background: color-mix(in srgb, var(--bg2) 78%, var(--surface));
 }
 .turnstile-key-field { display: grid; grid-template-rows: auto minmax(calc(1.45em * 2), auto) auto; align-content: start; }
-.turnstile-test-actions { display: grid; gap: var(--space-2); }
-.turnstile-test { width: 100%; background: #d69e00; }
-.turnstile-test:hover:not(:disabled), .turnstile-test:focus-visible { background: #f0b900; border-color: #f0b900; color: #1b1600; }
 .settings-group-branding .settings-fields label:last-child {
   grid-column: 1 / -1;
 }
