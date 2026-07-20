@@ -1284,10 +1284,10 @@ onBeforeUnmount(() => {
 }
 .admin-content-stage { position: relative; display: grid; }
 .admin-content-stage > * { grid-area: 1 / 1; }
-.workspace-content-enter-active, .workspace-content-leave-active { transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+.workspace-content-enter-active, .workspace-content-leave-active { transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out); }
 .workspace-content-leave-active { position: absolute; inset: 0; width: 100%; pointer-events: none; }
-.workspace-content-enter-from { opacity: 0; transform: translateY(4px); }
-.workspace-content-leave-to { opacity: 0; transform: translateY(-2px); }
+.workspace-content-enter-from { opacity: 0; transform: translateY(8px); }
+.workspace-content-leave-to { opacity: 0; transform: translateY(-4px); }
 .layout.sidebar-collapsed {
   grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
 }
