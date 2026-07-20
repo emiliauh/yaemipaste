@@ -742,7 +742,7 @@ onBeforeUnmount(() => {
       :collapsed="sidebarCollapsed"
       @update:collapsed="sidebarCollapsed = $event"
       @select-files="router.push('/files')"
-      @select-history="router.push('/files?tab=history')"
+      @select-history="router.push('/history')"
       @select-admin="router.push('/admin')"
       @toggle-settings="openSettings"
     />

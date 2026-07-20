@@ -34,19 +34,18 @@ function setTab(next: 'files' | 'history') {
   tab.value = next
   showSettings.value = false
   if (next === 'history') window.dispatchEvent(new CustomEvent(HISTORY_REFRESH_EVENT))
-  const nextQuery = { ...route.query }
-  if (next === 'history') nextQuery.tab = 'history'
-  else delete nextQuery.tab
-  if (route.query.tab !== nextQuery.tab) {
-    void router.replace({ path: '/files', query: nextQuery })
-  }
+  const path = next === 'history' ? '/history' : '/files'
+  if (route.path !== path) void router.push(path)
 }
 
-// Deep-link support so other views (e.g. the admin sidebar) can navigate
-// straight into the History tab via `/files?tab=history` instead of needing
-// a dedicated route for what is otherwise client-side tab state.
-function syncTabFromQuery() {
-  const nextTab = authEnabled && route.query.tab === 'history' ? 'history' : 'files'
+function syncTabFromRoute() {
+  // Normalize the former query-string history URL without keeping it in
+  // navigation or shared links.
+  if (route.path === '/files' && route.query.tab === 'history') {
+    void router.replace('/history')
+    return
+  }
+  const nextTab = authEnabled && route.path === '/history' ? 'history' : 'files'
   if (tab.value !== nextTab) {
     tab.value = nextTab
     showSettings.value = false
@@ -57,10 +56,10 @@ function syncTabFromQuery() {
 onMounted(() => {
   void refreshPublicSettings()
   void refreshAuthAdmin().then((isAdmin) => { adminEnabled.value = isAdmin })
-  syncTabFromQuery()
+  syncTabFromRoute()
 })
 
-watch(() => route.query.tab, syncTabFromQuery)
+watch(() => route.path, syncTabFromRoute)
 </script>
 
 <template>

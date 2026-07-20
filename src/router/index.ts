@@ -68,6 +68,11 @@ const router = createRouter({
       component: () => import('../views/DashboardView.vue'),
       meta: { requiresAuth: isAuthEnabled() },
     },
+    {
+      path: '/history',
+      component: () => import('../views/DashboardView.vue'),
+      meta: { requiresAuth: isAuthEnabled() },
+    },
     // backward compat: old /{id}/file.ext style direct URLs
     {
       path: '/:id/:tail',
