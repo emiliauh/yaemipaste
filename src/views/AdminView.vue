@@ -2238,7 +2238,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     grid-template-columns: 1fr;
   }
   .workspace {
-    padding: var(--space-3) var(--space-3) calc(var(--mobile-bar-space) + 42px);
+    padding: 18px var(--space-3) calc(var(--mobile-bar-space) + 42px);
   }
   .admin-header {
     padding: var(--space-4);
