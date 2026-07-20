@@ -83,7 +83,7 @@ watch(() => route.path, syncTabFromRoute)
     <main id="main-content" class="workspace">
       <section class="content">
         <div class="content-stage">
-          <Transition name="workspace-content">
+          <Transition name="workspace-content" appear>
             <FilesTab v-if="tab === 'files'" key="files" />
             <HistoryTab v-else-if="authEnabled" key="history" />
           </Transition>

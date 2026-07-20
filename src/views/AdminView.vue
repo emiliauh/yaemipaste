@@ -767,7 +767,7 @@ onBeforeUnmount(() => {
         </div>
 
     <div class="admin-content-stage">
-    <Transition name="workspace-content">
+    <Transition name="workspace-content" appear>
     <div :key="tab">
     <div v-if="error" class="error-box">{{ error }}</div>
     <div v-if="loading" class="info-box">Loading admin data…</div>
@@ -1299,7 +1299,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
-  padding: var(--space-5) var(--space-5) var(--space-7);
+  padding: 32px 32px 38px;
 }
 .admin-shell :deep(.sidebar) {
   height: 100dvh;
@@ -1309,7 +1309,7 @@ onBeforeUnmount(() => {
   top: 0;
 }
 .admin-layout {
-  max-width: 1180px;
+  max-width: 1120px;
   width: 100%;
   margin: 0 auto;
 }
