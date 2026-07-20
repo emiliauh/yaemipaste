@@ -106,6 +106,9 @@ watch(() => route.params.section, () => {
 const newUser = ref({ username: '', password: '', upload_token: '', is_admin: false })
 const webhookForm = ref({ url: '', events: 'file.uploaded,file.deleted', secret: '', enabled: true })
 const settingsForm = ref({ app_name: '', public_title: '', base_api_url: '', registration_enabled: true, file_size_limit_bytes: 0, file_size_limit_unlimited: false, upload_access_mode: 'private' as 'private' | 'public', turnstile_enabled: false, turnstile_site_key: '', turnstile_secret_key: '' })
+const turnstileSecretPlaceholder = computed(() => settings.value.turnstile_secret_configured === 'true'
+  ? '*****************'
+  : 'Enter a secret key')
 const webhookEventOptions = [
   { value: 'file.uploaded', label: 'File uploaded', description: 'When a new file or paste is stored.' },
   { value: 'file.deleted', label: 'File deleted', description: 'When a file is removed manually or by cleanup.' },
@@ -487,6 +490,7 @@ async function saveSettings() {
       // An empty password field means retain the server-side secret.
       turnstile_secret_key: settingsForm.value.turnstile_secret_key.trim() || undefined,
     })
+    settings.value = updated
     if (settingsForm.value.turnstile_enabled && !updated.turnstile_secret_configured) {
       throw new Error('Turnstile is enabled but no secret key was saved')
     }
@@ -1101,7 +1105,7 @@ onBeforeUnmount(() => {
           <label class="inline-check span-2"><input v-model="settingsForm.turnstile_enabled" type="checkbox" /> <span><strong>Enable Turnstile</strong><small>Require Cloudflare Turnstile verification before account login.</small></span></label>
           <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
             <label class="turnstile-key-field"><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" placeholder="Enter a new key to replace the existing one" /></label>
-            <label class="turnstile-key-field"><span>Turnstile secret key</span><small>Private server verification key. It is never displayed after saving.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" placeholder="Enter a new key to replace the existing one" /></label>
+            <label class="turnstile-key-field"><span>Turnstile secret key</span><small>Private server verification key. It is never displayed after saving.</small><input v-model="settingsForm.turnstile_secret_key" type="password" autocomplete="new-password" :placeholder="turnstileSecretPlaceholder" /></label>
           </div>
         </div>
       </section>
