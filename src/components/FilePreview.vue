@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getAuthJwt, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
-import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob } from '../lib/e2ee'
+import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob, passwordEncryptedShareUrl } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -52,18 +52,19 @@ const hasEncryptedSuffix = computed(() =>
 const isEncrypted = computed(() => !!storedEncrypted.value || hasEncryptedSuffix.value || detectedEncrypted.value)
 const isDecryptedBlobSource = computed(() => url.value.startsWith('blob:'))
 const encryptedPreviewLocked = computed(() => isEncrypted.value && !isDecryptedBlobSource.value)
-const previewPageUrl = computed(() => shareUrl(props.file.file_name))
+const previewPageUrl = computed(() => {
+  const origin = storedEncrypted.value?.origin || window.location.origin
+  if (passwordSalt.value) return passwordEncryptedShareUrl(props.file.file_name, passwordSalt.value, origin)
+  if (storedEncrypted.value) return encryptedShareUrl(props.file.file_name, storedEncrypted.value.key, origin)
+  return shareUrl(props.file.file_name)
+})
 const rawFileUrl = computed(() => {
   // Track the live server setting so copied raw links update from /api to its configured API origin.
   void publicSettings.value.base_api_url
   return new URL(fileUrl(props.file.file_name), window.location.origin).toString()
 })
-const copyUrl = computed(() => {
-  if (storedEncrypted.value) {
-    return encryptedShareUrl(props.file.file_name, storedEncrypted.value.key, storedEncrypted.value.origin)
-  }
-  return isAdminContentUrl.value || url.value.startsWith('blob:') ? shareUrl(props.file.file_name) : url.value
-})
+const copyUrl = computed(() => previewPageUrl.value)
+const openRawUrl = computed(() => (decryptedUrl.value && (isText.value || isImage.value || isVideo.value)) ? decryptedUrl.value : rawFileUrl.value)
 const name = computed(() => decryptedName.value || props.displayName || props.file.file_name)
 const EXPIRY_SUFFIX = '(?:\\.\\d{6,})?'
 const isImage = computed(() => props.mimeType?.startsWith('image/') ?? new RegExp(`\\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
@@ -446,9 +447,9 @@ onBeforeUnmount(() => {
                 <span class="copy-menu-title">Open preview</span>
                 <span class="copy-menu-note">Share page in a new tab</span>
               </a>
-              <a :href="rawFileUrl" target="_blank" rel="noopener" role="menuitem" class="copy-menu-item">
+              <a :href="openRawUrl" target="_blank" rel="noopener" role="menuitem" class="copy-menu-item">
                 <span class="copy-menu-title">Open raw</span>
-                <span class="copy-menu-note">Direct file in a new tab</span>
+                <span class="copy-menu-note">{{ decryptedUrl ? 'Decrypted file in a new tab' : 'Direct file in a new tab' }}</span>
               </a>
             </div>
           </div>
@@ -478,9 +479,9 @@ onBeforeUnmount(() => {
                 <span class="copy-menu-title">Copy preview URL</span>
                 <span class="copy-menu-note">Share page</span>
               </button>
-              <button role="menuitem" @click="copyUrlValue(rawFileUrl)">
+              <button role="menuitem" :disabled="!!decryptedUrl" @click="copyUrlValue(rawFileUrl)">
                 <span class="copy-menu-title">Copy raw URL</span>
-                <span class="copy-menu-note">Direct file</span>
+                <span class="copy-menu-note">{{ decryptedUrl ? 'Decrypted blobs cannot be shared as URLs' : 'Direct file' }}</span>
               </button>
             </div>
           </div>
