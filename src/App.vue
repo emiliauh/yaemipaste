@@ -18,9 +18,9 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 </script>
 
 <template>
-  <router-view v-slot="{ Component, route }">
-    <Transition name="page-fade" mode="out-in">
-      <component :is="Component" :key="route.fullPath" />
+  <router-view v-slot="{ Component }">
+    <Transition name="page-fade">
+      <component :is="Component" />
     </Transition>
   </router-view>
   <a
