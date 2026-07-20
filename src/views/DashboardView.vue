@@ -82,8 +82,12 @@ watch(() => route.path, syncTabFromRoute)
 
     <main id="main-content" class="workspace">
       <section class="content">
-        <FilesTab v-if="tab === 'files'" />
-        <HistoryTab v-if="authEnabled && tab === 'history'" />
+        <div class="content-stage">
+          <Transition name="workspace-content">
+            <FilesTab v-if="tab === 'files'" key="files" />
+            <HistoryTab v-else-if="authEnabled" key="history" />
+          </Transition>
+        </div>
       </section>
     </main>
 
@@ -112,6 +116,12 @@ watch(() => route.path, syncTabFromRoute)
   overflow: hidden;
   transition: grid-template-columns 0.18s;
 }
+.content-stage { position: relative; display: grid; }
+.content-stage > * { grid-area: 1 / 1; }
+.workspace-content-enter-active, .workspace-content-leave-active { transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+.workspace-content-leave-active { position: absolute; inset: 0; width: 100%; pointer-events: none; }
+.workspace-content-enter-from { opacity: 0; transform: translateY(4px); }
+.workspace-content-leave-to { opacity: 0; transform: translateY(-2px); }
 
 .layout.sidebar-collapsed {
   grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);

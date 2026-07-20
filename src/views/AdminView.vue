@@ -766,6 +766,9 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
+    <div class="admin-content-stage">
+    <Transition name="workspace-content">
+    <div :key="tab">
     <div v-if="error" class="error-box">{{ error }}</div>
     <div v-if="loading" class="info-box">Loading admin data…</div>
 
@@ -1200,6 +1203,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </section>
+    </div>
+    </Transition>
+    </div>
       </section>
     </main>
 
@@ -1276,6 +1282,12 @@ onBeforeUnmount(() => {
   max-height: 100dvh;
   overflow: hidden;
 }
+.admin-content-stage { position: relative; display: grid; }
+.admin-content-stage > * { grid-area: 1 / 1; }
+.workspace-content-enter-active, .workspace-content-leave-active { transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+.workspace-content-leave-active { position: absolute; inset: 0; width: 100%; pointer-events: none; }
+.workspace-content-enter-from { opacity: 0; transform: translateY(4px); }
+.workspace-content-leave-to { opacity: 0; transform: translateY(-2px); }
 .layout.sidebar-collapsed {
   grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
 }

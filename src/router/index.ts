@@ -45,12 +45,12 @@ const router = createRouter({
     {
       path: '/admin',
       component: () => import('../views/AdminView.vue'),
-      meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true },
+      meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true, workspace: true },
     },
     {
       path: '/admin/:section(overview|users|uploads|settings|webhooks|audit)',
       component: () => import('../views/AdminView.vue'),
-      meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true },
+      meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true, workspace: true },
     },
     { path: '/file/:filekey/preview', component: () => import('../views/FileView.vue') },
     { path: '/file/:filekey/raw', component: () => import('../views/RawRedirectView.vue') },
@@ -66,12 +66,12 @@ const router = createRouter({
     {
       path: '/files',
       component: () => import('../views/DashboardView.vue'),
-      meta: { requiresAuth: isAuthEnabled() },
+      meta: { requiresAuth: isAuthEnabled(), workspace: true },
     },
     {
       path: '/history',
       component: () => import('../views/DashboardView.vue'),
-      meta: { requiresAuth: isAuthEnabled() },
+      meta: { requiresAuth: isAuthEnabled(), workspace: true },
     },
     // backward compat: old /{id}/file.ext style direct URLs
     {
