@@ -19,8 +19,8 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 
 <template>
   <router-view v-slot="{ Component, route }">
-    <Transition :name="route.meta.transition === 'login-fade' ? 'login-fade' : ''" mode="out-in">
-      <component :is="Component" />
+    <Transition name="page-fade" mode="out-in">
+      <component :is="Component" :key="route.fullPath" />
     </Transition>
   </router-view>
   <a
@@ -79,13 +79,13 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
   height: 16px;
 }
 
-.login-fade-enter-active,
-.login-fade-leave-active {
+.page-fade-enter-active,
+.page-fade-leave-active {
   transition: opacity 180ms var(--ease-out);
 }
 
-.login-fade-enter-from,
-.login-fade-leave-to {
+.page-fade-enter-from,
+.page-fade-leave-to {
   opacity: 0;
 }
 </style>
