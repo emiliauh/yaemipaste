@@ -1719,13 +1719,13 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .inline-check > input[type="checkbox"] {
   box-sizing: border-box;
-  flex: 0 0 20px;
-  width: 20px;
-  min-width: 20px;
-  max-width: 20px;
-  height: 20px;
-  min-height: 20px;
-  max-height: 20px;
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  max-height: 16px;
   aspect-ratio: 1;
 }
 .inline-check.span-2 > span > strong {
