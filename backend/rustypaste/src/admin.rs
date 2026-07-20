@@ -2576,7 +2576,12 @@ async fn public_settings() -> HttpResponse {
     let settings = setting_map(&connection).unwrap_or_default();
     let turnstile_enabled = settings.get("turnstile_enabled").map(String::as_str) == Some("true");
     let turnstile_site_key = settings.get("turnstile_site_key").cloned().unwrap_or_default();
-    let turnstile_secret_configured = settings.get("turnstile_secret_key").map(|value| !value.trim().is_empty()).unwrap_or(false);
+    let turnstile_secret_configured = settings
+        .get("turnstile_secret_key")
+        .map(String::as_str)
+        .unwrap_or(&auth_env.turnstile_secret_key)
+        .trim()
+        .len() > 0;
     HttpResponse::Ok().json(json!({
         "app_name": settings.get("app_name").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "public_title": settings.get("public_title").cloned().unwrap_or_else(|| "yaemipaste".to_string()),

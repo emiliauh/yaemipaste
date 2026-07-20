@@ -83,7 +83,7 @@ struct RegisterRequest {
 struct LoginRequest {
     username: String,
     password: String,
-    #[serde(default, rename = "error-codes")]
+    #[serde(default)]
     turnstile_token: String,
 }
 
