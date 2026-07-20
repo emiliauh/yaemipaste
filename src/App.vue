@@ -18,8 +18,8 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 </script>
 
 <template>
-  <router-view v-slot="{ Component, route }">
-    <Transition :name="route.meta.workspace ? '' : 'page-fade'">
+  <router-view v-slot="{ Component }">
+    <Transition name="page-fade">
       <component :is="Component" />
     </Transition>
   </router-view>
@@ -42,7 +42,7 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
   <NotificationStack />
 </template>
 
-<style scoped>
+<style>
 .github-link {
   position: fixed;
   right: var(--space-4);
@@ -87,5 +87,30 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 .page-fade-enter-from,
 .page-fade-leave-to {
   opacity: 0;
+}
+
+/* Workspace routes retain their navigation. Only their main panel crossfades. */
+.layout.page-fade-enter-active,
+.layout.page-fade-leave-active {
+  opacity: 1;
+  transition: none;
+}
+.layout.page-fade-leave-active {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
+}
+.layout.page-fade-enter-active .workspace,
+.layout.page-fade-leave-active .workspace {
+  transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out);
+}
+.layout.page-fade-enter-from .workspace {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.layout.page-fade-leave-to .workspace {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>

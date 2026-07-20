@@ -25,6 +25,11 @@ const sidebarCollapsed = ref(
 )
 const { refreshPublicSettings } = usePublicSettings()
 
+if (adminEnabled.value) {
+  void import('../views/AdminView.vue')
+  void loadAdminData()
+}
+
 function toggleSettings() {
   if (!authEnabled) return
   showSettings.value = !showSettings.value
