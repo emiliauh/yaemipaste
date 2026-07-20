@@ -879,7 +879,7 @@ async fn login(
     let settings = crate::admin::setting_map(&connection).unwrap_or_default();
     let turnstile_enabled = settings.get("turnstile_enabled").map(String::as_str) == Some("true");
     let turnstile_secret = settings.get("turnstile_secret_key").map(String::as_str).unwrap_or(&auth_env.turnstile_secret_key);
-    if turnstile_enabled && !verify_turnstile(&client, turnstile_secret, &body.turnstile_token).await {
+    if turnstile_enabled && (turnstile_secret.trim().is_empty() || !verify_turnstile(&client, turnstile_secret, &body.turnstile_token).await) {
         return json_error(actix_web::http::StatusCode::BAD_REQUEST, "Security check failed");
     }
     let username = normalize_username(&body.username);

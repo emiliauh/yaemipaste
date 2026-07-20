@@ -482,11 +482,14 @@ async function refreshAll() {
 
 async function saveSettings() {
   await runAction(async () => {
-    await adminUpdateSettings({
+    const updated = await adminUpdateSettings({
       ...settingsForm.value,
       // An empty password field means retain the server-side secret.
       turnstile_secret_key: settingsForm.value.turnstile_secret_key.trim() || undefined,
     })
+    if (settingsForm.value.turnstile_enabled && !updated.turnstile_secret_configured) {
+      throw new Error('Turnstile is enabled but no secret key was saved')
+    }
     await refreshPublicSettings(true)
   }, 'Settings updated')
 }

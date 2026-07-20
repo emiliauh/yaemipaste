@@ -1176,7 +1176,7 @@ export interface AdminSettings {
   base_api_url?: string
   turnstile_enabled?: string
   turnstile_site_key?: string
-  turnstile_secret_key?: string
+  turnstile_secret_configured?: string
 }
 
 export interface PublicAdminSettings {

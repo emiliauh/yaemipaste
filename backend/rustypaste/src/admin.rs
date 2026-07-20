@@ -2197,7 +2197,9 @@ async fn get_settings(request: HttpRequest) -> HttpResponse {
     }
     match setting_map(&connection) {
         Ok(mut settings) => {
+            let secret_configured = settings.get("turnstile_secret_key").map(|value| !value.trim().is_empty()).unwrap_or(false);
             settings.remove("turnstile_secret_key");
+            settings.insert("turnstile_secret_configured".to_string(), secret_configured.to_string());
             HttpResponse::Ok().json(settings)
         }
         Err(error) => {
@@ -2295,7 +2297,9 @@ async fn put_settings(request: HttpRequest, body: web::Json<SettingsRequest>) ->
     }
     match setting_map(&connection) {
         Ok(mut settings) => {
+            let secret_configured = settings.get("turnstile_secret_key").map(|value| !value.trim().is_empty()).unwrap_or(false);
             settings.remove("turnstile_secret_key");
+            settings.insert("turnstile_secret_configured".to_string(), secret_configured.to_string());
             HttpResponse::Ok().json(settings)
         }
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "Could not read settings"),
@@ -2572,6 +2576,7 @@ async fn public_settings() -> HttpResponse {
     let settings = setting_map(&connection).unwrap_or_default();
     let turnstile_enabled = settings.get("turnstile_enabled").map(String::as_str) == Some("true");
     let turnstile_site_key = settings.get("turnstile_site_key").cloned().unwrap_or_default();
+    let turnstile_secret_configured = settings.get("turnstile_secret_key").map(|value| !value.trim().is_empty()).unwrap_or(false);
     HttpResponse::Ok().json(json!({
         "app_name": settings.get("app_name").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
         "public_title": settings.get("public_title").cloned().unwrap_or_else(|| "yaemipaste".to_string()),
@@ -2584,7 +2589,7 @@ async fn public_settings() -> HttpResponse {
         "file_size_limit_bytes": settings.get("file_size_limit_bytes").and_then(|value| value.parse::<u64>().ok()).unwrap_or(0),
         "file_size_limit_unlimited": settings.get("file_size_limit_unlimited").map(|value| value == "true").unwrap_or(false),
         "turnstile_site_key": turnstile_site_key,
-        "turnstile_required": turnstile_enabled && !turnstile_site_key.trim().is_empty(),
+        "turnstile_required": turnstile_enabled && !turnstile_site_key.trim().is_empty() && turnstile_secret_configured,
     }))
 }
 
