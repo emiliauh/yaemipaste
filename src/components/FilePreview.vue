@@ -20,6 +20,7 @@ const { publicSettings, refreshPublicSettings } = usePublicSettings()
 
 const decryptedUrl = ref('')
 const decryptedName = ref('')
+const decryptedPayload = ref<Blob | null>(null)
 const detectedEncrypted = ref(false)
 const encryptedPayload = ref<Blob | null>(null)
 const decryptionKey = ref('')
@@ -98,6 +99,7 @@ function clearDecryptedUrl() {
   if (decryptedUrl.value.startsWith('blob:')) URL.revokeObjectURL(decryptedUrl.value)
   decryptedUrl.value = ''
   decryptedName.value = ''
+  decryptedPayload.value = null
 }
 
 async function decryptPreview() {
@@ -120,6 +122,7 @@ async function decryptPreview() {
       ? await decryptBlobWithPassword(payload, key, passwordSalt.value)
       : await decryptEncryptedBlob(payload, key)
     clearDecryptedUrl()
+    decryptedPayload.value = decrypted.blob
     decryptedUrl.value = URL.createObjectURL(decrypted.blob)
     decryptedName.value = decrypted.metadata.name
   } catch (error) {
@@ -185,6 +188,12 @@ async function loadTextPreview() {
     if (typeof props.textContent === 'string') {
       await yieldToBrowser()
       const preview = truncateText(props.textContent)
+      textPreview.value = preview.text
+      textPreviewTruncated.value = preview.truncated
+      return
+    }
+    if (decryptedPayload.value) {
+      const preview = await readTextPreviewFromResponse(new Response(decryptedPayload.value))
       textPreview.value = preview.text
       textPreviewTruncated.value = preview.truncated
       return
