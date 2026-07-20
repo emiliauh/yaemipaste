@@ -768,7 +768,7 @@ onBeforeUnmount(() => {
 
     <div class="admin-content-stage">
     <Transition name="workspace-content" appear>
-    <div :key="tab">
+    <div :key="`${tab}-${loading ? 'loading' : 'ready'}`">
     <div v-if="error" class="error-box">{{ error }}</div>
     <div v-if="loading" class="info-box">Loading admin data…</div>
 

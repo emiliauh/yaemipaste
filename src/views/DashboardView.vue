@@ -56,6 +56,9 @@ function syncTabFromRoute() {
 onMounted(() => {
   void refreshPublicSettings()
   void refreshAuthAdmin().then((isAdmin) => { adminEnabled.value = isAdmin })
+  // Let the admin panel code arrive before the administrator navigates there,
+  // so the content transition animates the panel rather than its loading shell.
+  void import('../views/AdminView.vue')
   syncTabFromRoute()
 })
 
