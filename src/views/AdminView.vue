@@ -1717,6 +1717,17 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   align-items: center;
   gap: var(--space-2);
 }
+.inline-check > input[type="checkbox"] {
+  box-sizing: border-box;
+  flex: 0 0 20px;
+  width: 20px;
+  min-width: 20px;
+  max-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  max-height: 20px;
+  aspect-ratio: 1;
+}
 .inline-check.span-2 > span > strong {
   font-weight: 500;
 }
