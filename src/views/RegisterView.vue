@@ -244,8 +244,9 @@ async function submit() {
   .page { padding: var(--space-3); }
   .register-card { padding: var(--space-4); }
   .field input,
-  .form-footer button,
-  .inline-link {
+   .form-footer button,
+   .form-footer .link,
+   .inline-link {
     min-height: calc(var(--space-6) + var(--space-2));
   }
   .form-footer { flex-direction: column; align-items: stretch; }

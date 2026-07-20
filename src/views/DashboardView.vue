@@ -109,6 +109,7 @@ watch(() => route.path, syncTabFromRoute)
         <SettingsPanel
           @close="showSettings = false"
           @login="router.push('/login')"
+          @register="router.push('/register')"
           @logout="router.push('/login')"
         />
       </div>

@@ -485,8 +485,9 @@ async function loginWithPasskey() {
   .login-card { padding: var(--space-4); }
   .field input,
   .login-tabs button,
-  .form-footer button,
-  .inline-link {
+   .form-footer button,
+   .form-footer .link,
+   .inline-link {
     min-height: calc(var(--space-6) + var(--space-2));
   }
   .password-toggle { width: calc(var(--space-6) + var(--space-2)); height: calc(var(--space-6) + var(--space-2)); }

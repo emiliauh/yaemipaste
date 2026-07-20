@@ -1254,6 +1254,7 @@ onBeforeUnmount(() => {
         <SettingsPanel
           @close="closeSettings"
           @login="router.push('/login')"
+          @register="router.push('/register')"
           @logout="router.push('/login')"
         />
       </div>

@@ -24,7 +24,7 @@ import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
 import { useTheme, type ThemeMode } from '../lib/theme'
 
-const emit = defineEmits<{ close: [], login: [], logout: [] }>()
+const emit = defineEmits<{ close: [], login: [], register: [], logout: [] }>()
 const notificationStore = useNotificationStore()
 
 const username = getAuthUsername()
@@ -296,7 +296,10 @@ async function submitPasswordChange() {
         Change Password
       </button>
     </div>
-    <button v-else-if="authEnabled" class="btn-primary login-btn" type="button" @click="emit('login')">Log in</button>
+    <div v-else-if="authEnabled" class="account-action-row" :class="{ 'single-action': !publicSettings.registration_enabled }">
+      <button class="btn-primary login-btn" type="button" @click="emit('login')">Log in</button>
+      <button v-if="publicSettings.registration_enabled" class="btn-ghost register-btn" type="button" @click="emit('register')">Create account</button>
+    </div>
 
     <div style="margin-top:var(--space-2); color:var(--text2); font-size:var(--fs-xs); text-align:center">
       {{ appName }} + rustypaste
@@ -408,7 +411,8 @@ async function submitPasswordChange() {
 .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: var(--space-3) 0; }
 .account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.login-btn { width: 100%; font-size: var(--fs-xs); }
+.account-action-row.single-action { grid-template-columns: 1fr; }
+.login-btn, .register-btn { width: 100%; min-height: 40px; font-size: var(--fs-xs); }
 .logout-btn { width: 100%; font-size: var(--fs-xs); }
 .change-password-btn { width: 100%; font-size: var(--fs-xs); }
 .passkey-open-btn {
