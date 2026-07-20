@@ -457,15 +457,21 @@ onBeforeUnmount(() => {
             <button
               class="btn-ghost btn-copy"
               aria-label="Copy file content or URL"
-              aria-haspopup="menu"
-              :aria-expanded="copyMenuOpen"
-              @click.stop="copyMenuOpen = !copyMenuOpen; openMenuOpen = false"
+              @click="copyUrlValue(previewPageUrl)"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="5.25" y="5.25" width="7.25" height="8.25" rx="1" />
                 <path d="M10.25 5.25V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1v7.25a1 1 0 0 0 1 1h1.75" />
               </svg>
               <span>Copy</span>
+            </button>
+            <button
+              class="btn-ghost btn-copy-menu"
+              aria-label="More copy options"
+              aria-haspopup="menu"
+              :aria-expanded="copyMenuOpen"
+              @click.stop="copyMenuOpen = !copyMenuOpen; openMenuOpen = false"
+            >
               <svg class="copy-chevron" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="m4.5 6 3.5 3.5L11.5 6" />
               </svg>
@@ -702,6 +708,8 @@ onBeforeUnmount(() => {
   height: 32px;
   min-height: 32px;
 }
+.btn-copy-menu { min-width: 28px; height: 32px; margin-left: -7px; padding: var(--space-1); border-left-color: transparent; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.btn-copy:has(+ .btn-copy-menu) { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
 .btn-open:focus-visible,
 .btn-copy:focus-visible {
   outline: 2px solid var(--accent);
