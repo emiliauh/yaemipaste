@@ -115,15 +115,18 @@ function onDocumentPointerDown(event: PointerEvent) {
 }
 
 function onViewportChange() { if (open.value) positionMenu() }
+function onVisibilityChange() { if (document.visibilityState === 'hidden') close() }
 
 watch(() => props.modelValue, syncActive)
 onMounted(() => {
   document.addEventListener('pointerdown', onDocumentPointerDown, true)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('resize', onViewportChange)
   window.addEventListener('scroll', onViewportChange, true)
 })
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('resize', onViewportChange)
   window.removeEventListener('scroll', onViewportChange, true)
   window.clearTimeout(typeaheadTimer)

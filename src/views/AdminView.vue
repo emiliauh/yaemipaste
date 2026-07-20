@@ -444,9 +444,9 @@ async function copyToken() {
   }
 }
 
-async function refreshAll() {
+async function refreshAll(showLoading = true) {
   const sequence = ++refreshSequence
-  loading.value = true
+  if (showLoading) loading.value = true
   error.value = ''
   try {
     const next = await loadAdminData(true)
@@ -649,7 +649,14 @@ function requestUserDelete(username: string) {
 function refreshAdminWhenVisible() {
   // Do not replace unsaved settings, or the Turnstile widget and secret lose
   // their backing form state when the administrator returns to this tab.
-  if (document.visibilityState === 'visible' && tab.value !== 'Settings') void refreshAll()
+  if (document.visibilityState === 'hidden') {
+    uploadsActionsOpen.value = false
+    uploadRowMenuOpen.value = null
+    closeUserRowMenu()
+    hideUploadHover()
+    return
+  }
+  if (tab.value !== 'Settings') void refreshAll(false)
 }
 
 function closeUploadMenusOnOutsidePointer(event: PointerEvent) {
@@ -713,6 +720,7 @@ onMounted(() => {
   void refreshPublicSettings()
   if (!initialAdminData) void refreshAll()
   document.addEventListener('visibilitychange', refreshAdminWhenVisible)
+  window.addEventListener('focus', refreshAdminWhenVisible)
   document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.addEventListener('blur', hideUploadHover)
   window.addEventListener('scroll', hideUploadHover, true)
@@ -722,6 +730,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', refreshAdminWhenVisible)
+  window.removeEventListener('focus', refreshAdminWhenVisible)
   document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   window.removeEventListener('blur', hideUploadHover)
   window.removeEventListener('scroll', hideUploadHover, true)
@@ -1283,10 +1292,10 @@ onBeforeUnmount(() => {
 }
 .admin-content-stage { position: relative; display: grid; }
 .admin-content-stage > * { grid-area: 1 / 1; }
-.workspace-content-enter-active, .workspace-content-leave-active { transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out); }
+.workspace-content-enter-active, .workspace-content-leave-active { transition: opacity 250ms var(--ease-out); }
 .workspace-content-leave-active { position: absolute; inset: 0; width: 100%; pointer-events: none; }
-.workspace-content-enter-from { opacity: 0; transform: translateY(8px); }
-.workspace-content-leave-to { opacity: 0; transform: translateY(-4px); }
+.workspace-content-enter-from { opacity: 0; }
+.workspace-content-leave-to { opacity: 0; }
 .layout.sidebar-collapsed {
   grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
 }

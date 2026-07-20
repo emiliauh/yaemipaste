@@ -1243,12 +1243,21 @@ function onHistoryRefreshEvent() {
 }
 
 function onWindowFocus() {
+  actionsOpen.value = false
+  closeRowMoreMenu()
+  hideHover()
   if (accountRequired.value) return
   void refreshSilently()
 }
 
 function onVisibilityChange() {
-  if (!accountRequired.value && document.visibilityState === 'visible') void refreshSilently()
+  if (document.visibilityState === 'hidden') {
+    actionsOpen.value = false
+    closeRowMoreMenu()
+    hideHover()
+    return
+  }
+  if (!accountRequired.value) void refreshSilently()
 }
 
 function onCompactNamesMediaChange(event: MediaQueryListEvent) {

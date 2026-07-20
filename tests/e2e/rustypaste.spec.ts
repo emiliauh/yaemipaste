@@ -2637,6 +2637,121 @@ test('history refreshes when History tab is clicked again', async ({ page }) => 
   await expect(page.getByText('second-list.txt')).toBeVisible()
 })
 
+test('history and admin close transient controls when the page becomes hidden', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.route('**/api/list**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        file_name: 'visibility-history.txt',
+        file_size: 10,
+        creation_date_utc: '2026-04-17T01:00:00Z',
+        expires_at_utc: null,
+      }]),
+    })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  const historyRow = page.locator('tr.file-row').first()
+  await expect(historyRow).toBeVisible()
+  await historyRow.getByRole('button', { name: 'More' }).click()
+  await expect(historyRow.locator('.row-item-menu')).toBeVisible()
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect(historyRow.locator('.row-item-menu')).toHaveCount(0)
+
+  await page.goto('/admin/uploads')
+  const uploadRow = page.locator('.admin-table tbody tr').filter({ hasText: 'ShareX screenshot.png' }).first()
+  await expect(uploadRow).toBeVisible()
+  await uploadRow.getByRole('button', { name: 'More' }).click()
+  await expect(uploadRow.locator('.upload-row-menu-panel')).toBeVisible()
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect(uploadRow.locator('.upload-row-menu-panel')).toHaveCount(0)
+
+  await expect(page.locator('.info-box')).toHaveCount(0)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect(page.locator('.info-box')).toHaveCount(0)
+})
+
+test('preview action groups keep Copy aligned with Open', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin/uploads')
+
+  await page.getByRole('button', { name: 'ShareX screenshot.png', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Preview ShareX screenshot.png' })
+  await page.waitForTimeout(400)
+  const openButton = dialog.getByRole('button', { name: 'Open file preview or raw content' })
+  const copyButton = dialog.getByRole('button', { name: 'Copy file content or URL' })
+  const copyMenuButton = dialog.getByRole('button', { name: 'More copy options' })
+  const openChevron = openButton.locator('.copy-chevron')
+  const copyChevron = copyMenuButton.locator('.copy-chevron')
+  const copyActions = dialog.locator('.copy-actions')
+  const openBox = await openButton.boundingBox()
+  const copyBox = await copyButton.boundingBox()
+  const copyMenuBox = await copyMenuButton.boundingBox()
+  const copyActionsBox = await copyActions.boundingBox()
+
+  expect(openBox).not.toBeNull()
+  expect(copyBox).not.toBeNull()
+  expect(copyMenuBox).not.toBeNull()
+  expect(copyActionsBox).not.toBeNull()
+  expect(await dialog.evaluate((element) => element.closest('.modal-backdrop')?.parentElement === document.body)).toBeTruthy()
+  await expect(copyActions).toHaveCSS('align-items', 'stretch')
+  await expect(copyChevron).not.toHaveClass(/is-open/)
+  const copyMenuButtonBox = await copyMenuButton.boundingBox()
+  const copyChevronBox = await copyChevron.boundingBox()
+  expect(copyMenuButtonBox).not.toBeNull()
+  expect(copyChevronBox).not.toBeNull()
+  if (copyMenuButtonBox && copyChevronBox) {
+    expect(Math.abs((copyMenuButtonBox.x + copyMenuButtonBox.width / 2) - (copyChevronBox.x + copyChevronBox.width / 2))).toBeLessThanOrEqual(1)
+    expect(Math.abs((copyMenuButtonBox.y + copyMenuButtonBox.height / 2) - (copyChevronBox.y + copyChevronBox.height / 2))).toBeLessThanOrEqual(1)
+  }
+  await copyMenuButton.click()
+  await expect(copyChevron).toHaveClass(/is-open/)
+  await copyMenuButton.click()
+  await expect(copyChevron).not.toHaveClass(/is-open/)
+  await openButton.click()
+  await expect(openChevron).toHaveClass(/is-open/)
+  await openButton.click()
+  await expect(openChevron).not.toHaveClass(/is-open/)
+  if (openBox && copyBox && copyMenuBox && copyActionsBox) {
+    expect(Math.abs(openBox.width - copyBox.width)).toBeLessThanOrEqual(1)
+    expect(Math.abs(openBox.y - copyBox.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(copyActionsBox.width - (copyBox.width + copyMenuBox.width - 1))).toBeLessThanOrEqual(1)
+  }
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.waitForTimeout(400)
+  const recoveredBox = await dialog.boundingBox()
+  const viewport = page.viewportSize()!
+  expect(recoveredBox).not.toBeNull()
+  if (recoveredBox) {
+    expect(recoveredBox.x).toBeGreaterThanOrEqual(0)
+    expect(recoveredBox.y).toBeGreaterThanOrEqual(0)
+    expect(recoveredBox.x + recoveredBox.width).toBeLessThanOrEqual(viewport.width)
+    expect(recoveredBox.y + recoveredBox.height).toBeLessThanOrEqual(viewport.height)
+  }
+})
+
 test('history shows ShareX badge for token-uploaded screenshot files', async ({ page }) => {
   await signInWithToken(page)
   await page.route('**/api/list**', async (route) => {

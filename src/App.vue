@@ -103,14 +103,8 @@ const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://
 }
 .layout.page-fade-enter-active .workspace,
 .layout.page-fade-leave-active .workspace {
-  transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out);
+  transition: opacity 250ms var(--ease-out);
 }
-.layout.page-fade-enter-from .workspace {
-  opacity: 0;
-  transform: translateY(8px);
-}
-.layout.page-fade-leave-to .workspace {
-  opacity: 0;
-  transform: translateY(-4px);
-}
+.layout.page-fade-enter-from .workspace,
+.layout.page-fade-leave-to .workspace { opacity: 0; }
 </style>

@@ -362,6 +362,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <Teleport to="body">
   <div v-if="encryptedPreviewLocked" class="modal-backdrop" @click.self="emit('close')">
     <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="encrypted-preview-title">
       <div class="password-modal-header"><strong id="encrypted-preview-title">Preview encrypted file</strong><button class="modal-close btn-ghost" :disabled="decryptionBusy" aria-label="Close key prompt" @click="emit('close')">✕</button></div>
@@ -438,7 +439,7 @@ onBeforeUnmount(() => {
                 <path d="M9 2.5h4.5V7M13.25 2.75 7.5 8.5" />
               </svg>
               <span>Open</span>
-              <svg class="copy-chevron" viewBox="0 0 16 16" aria-hidden="true">
+              <svg class="copy-chevron" :class="{ 'is-open': openMenuOpen }" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="m4.5 6 3.5 3.5L11.5 6" />
               </svg>
             </button>
@@ -472,7 +473,7 @@ onBeforeUnmount(() => {
               :aria-expanded="copyMenuOpen"
               @click.stop="copyMenuOpen = !copyMenuOpen; openMenuOpen = false"
             >
-              <svg class="copy-chevron" viewBox="0 0 16 16" aria-hidden="true">
+              <svg class="copy-chevron" :class="{ 'is-open': copyMenuOpen }" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="m4.5 6 3.5 3.5L11.5 6" />
               </svg>
             </button>
@@ -495,6 +496,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -691,6 +693,8 @@ onBeforeUnmount(() => {
 }
 .open-actions {
   position: relative;
+  display: inline-flex;
+  align-items: stretch;
 }
 .btn-open {
   display: inline-flex;
@@ -708,7 +712,7 @@ onBeforeUnmount(() => {
   height: 32px;
   min-height: 32px;
 }
-.btn-copy-menu { min-width: 28px; height: 32px; margin-left: -7px; padding: var(--space-1); border-left-color: transparent; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.btn-copy-menu { display: inline-flex; flex: 0 0 28px; align-items: center; justify-content: center; width: 28px; min-width: 28px; height: 32px; margin-left: -1px; padding: var(--space-1); border-left-color: var(--border); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--bg1); }
 .btn-copy:has(+ .btn-copy-menu) { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
 .btn-open:focus-visible,
 .btn-copy:focus-visible {
@@ -716,7 +720,8 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 .btn-open svg,
-.btn-copy svg {
+.btn-copy svg,
+.btn-copy-menu svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -727,11 +732,20 @@ onBeforeUnmount(() => {
 }
 .copy-actions {
   position: relative;
+  display: inline-flex;
+  align-items: stretch;
 }
 .copy-chevron {
   width: 12px !important;
   height: 12px !important;
   margin-left: 2px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.btn-copy-menu .copy-chevron {
+  margin-left: 0;
+}
+.copy-chevron.is-open {
+  transform: rotate(180deg);
 }
 .copy-menu {
   position: absolute;
@@ -865,6 +879,18 @@ onBeforeUnmount(() => {
   }
   .open-actions {
     min-width: 0;
+  }
+  .footer-actions .copy-actions {
+    width: calc(100% + 28px);
+  }
+  .footer-actions .btn-copy {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .footer-actions .btn-copy-menu {
+    height: 40px;
+    min-height: 40px;
   }
   .footer-actions .btn-open,
   .footer-actions .btn-copy {

@@ -46,12 +46,21 @@ function onPointerDown(event: PointerEvent) {
   }
 }
 
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    open.value = false
+    mobileCollapsed.value = true
+  }
+}
+
 onMounted(() => {
   document.addEventListener('pointerdown', onPointerDown, true)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onPointerDown, true)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 
