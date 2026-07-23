@@ -18,7 +18,8 @@ async function redirect() {
     }
     window.location.replace(fileUrl(fileName))
   } catch {
-    window.location.replace('/files')
+    // Keep public-link failures out of the authenticated workspace fallback.
+    window.location.replace(`/file/${encodeURIComponent(fileKey)}/preview`)
   }
 }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, displayUploaderName, downloadFileUrl, effectivePublicMimeType, formatBytes, getPublicFileMeta, preferredPublicFileName, publicRawFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, displayUploaderName, effectivePublicMimeType, formatBytes, getPublicFileMeta, preferredPublicFileName, publicDownloadFileUrl, publicRawFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { usePublicSettings } from '../lib/publicSettings'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
@@ -14,7 +14,6 @@ const textPreview = ref('')
 const meta = ref<PublicFileMeta | null>(null)
 const resolvedFileName = ref('')
 const resolvedOwner = ref('')
-const routeFileKey = computed(() => String(route.params.filekey ?? ''))
 
 const requestedFileName = computed(() => {
   const pk = String(route.params.filekey ?? '')
@@ -33,9 +32,7 @@ const rawUrl = computed(() => {
   return resolvedFileName.value ? publicRawFileUrl(resolvedFileName.value) : ''
 })
 const downloadUrl = computed(() => {
-  const token = routeFileKey.value.split('+')[0]
-  if (token) return `/file/${token}/download`
-  return resolvedFileName.value ? downloadFileUrl(resolvedFileName.value) : ''
+  return resolvedFileName.value ? publicDownloadFileUrl(resolvedFileName.value) : ''
 })
 const mediaUrl = computed(() => rawUrl.value)
 const displayFileName = computed(() => preferredPublicFileName(meta.value, resolvedFileName.value || requestedFileName.value))

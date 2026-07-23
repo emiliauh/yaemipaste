@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
 const liveToken = process.env.PLAYWRIGHT_LIVE_PASTE_TOKEN?.trim() ?? ''
+const publicFileToken = process.env.PLAYWRIGHT_LIVE_PUBLIC_FILE_TOKEN?.trim() ?? ''
 const liveBaseUrl = process.env.PLAYWRIGHT_LIVE_BASE_URL?.replace(/\/$/, '') ?? ''
 const liveApiBaseUrl = process.env.PLAYWRIGHT_LIVE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 const liveResolveBaseUrl = process.env.PLAYWRIGHT_LIVE_RESOLVE_BASE_URL?.replace(/\/$/, '') ?? (liveBaseUrl ? `${liveBaseUrl}/api/resolve` : '')
@@ -16,6 +17,36 @@ function tokenFromPreviewHref(href: string): string {
 function rewritePreviewOrigin(href: string): string {
   return href.replace(/^https?:\/\/[^/]+/, liveBrowserBaseUrl)
 }
+
+test('production: anonymous public preview resolves, renders, and downloads', async ({ page, request }) => {
+  test.skip(!publicFileToken, 'Set PLAYWRIGHT_LIVE_PUBLIC_FILE_TOKEN to run public preview verification')
+  test.skip(!liveBrowserBaseUrl, 'Set PLAYWRIGHT_BROWSER_BASE_URL to run public preview verification')
+
+  const apiRequests: Array<{ url: string; authorization: string | undefined }> = []
+  page.on('request', (req) => {
+    if (req.url().includes('/api/')) {
+      apiRequests.push({ url: req.url(), authorization: req.headers().authorization })
+    }
+  })
+
+  await page.goto(`${liveBrowserBaseUrl}/file/${encodeURIComponent(publicFileToken)}/preview`)
+  await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
+  await expect(page.getByText('File not found')).toHaveCount(0)
+
+  const rawLink = page.getByRole('link', { name: 'View raw' })
+  const rawHref = await rawLink.getAttribute('href')
+  expect(rawHref).toContain('?raw=1')
+  const rawResponse = await request.get(new URL(rawHref ?? '', liveBrowserBaseUrl).toString())
+  expect(rawResponse.ok()).toBeTruthy()
+  expect((await rawResponse.body()).length).toBeGreaterThan(0)
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Download file' }).click()
+  const download = await downloadPromise
+  expect(await download.path()).not.toBeNull()
+
+  expect(apiRequests.filter((entry) => entry.url.includes('/api/resolve/')).every((entry) => !entry.authorization)).toBeTruthy()
+})
 
 test('production: password encryption upload + preview + history thumbnail', async ({ page, request }) => {
   test.skip(!liveToken, 'Set PLAYWRIGHT_LIVE_PASTE_TOKEN to run production live verification')

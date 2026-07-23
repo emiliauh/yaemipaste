@@ -1286,6 +1286,14 @@ test('public preview page shows metadata and download action', async ({ page }) 
       body: 'preview content',
     })
   })
+  await page.route('**/api/preview-check.txt?download=true', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      headers: { 'Content-Disposition': 'attachment; filename="Invoice-April.txt"' },
+      body: 'download content',
+    })
+  })
 
   await page.goto('/#/preview?p=/preview-check/file.txt')
   await expect(page.getByText('Invoice-April.txt')).toBeVisible()
@@ -1295,10 +1303,15 @@ test('public preview page shows metadata and download action', async ({ page }) 
   await expect(page.getByLabel('Uploaded with ShareX')).toHaveCSS('text-transform', 'none')
   await expect(page.getByText('(ShareX)', { exact: true })).toHaveCount(0)
   await expect(page.getByText('preview content')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Download file' })).toHaveAttribute(
-    'href',
-    /\/file\/[A-Za-z0-9_.-]+\/download$/,
-  )
+  const downloadLink = page.getByRole('link', { name: 'Download file' })
+  await expect(downloadLink).toHaveAttribute('href', '/api/preview-check.txt?download=true')
+  const downloadPromise = page.waitForEvent('download', { timeout: 10_000 })
+  await downloadLink.click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('Invoice-April.txt')
+  const downloadPath = await download.path()
+  expect(downloadPath).not.toBeNull()
+  if (downloadPath) expect(await readFile(downloadPath, 'utf8')).toBe('download content')
 })
 
 test('public preview labels an unknown token uploader as Anonymous', async ({ page }) => {
@@ -1403,6 +1416,14 @@ test('upload preview download and delete work as one public-file flow', async ({
   })
   await page.route(`**/api/${fileName}?raw=1`, async (route) => {
     await route.fulfill({ status: deleted ? 404 : 200, contentType: 'text/plain', body: deleted ? 'not found' : body })
+  })
+  await page.route(`**/api/${fileName}?download=true`, async (route) => {
+    await route.fulfill({
+      status: deleted ? 404 : 200,
+      contentType: 'text/plain',
+      headers: { 'Content-Disposition': `attachment; filename="${fileName}"` },
+      body: deleted ? 'not found' : body,
+    })
   })
   await page.route('**/api/list**', async (route) => {
     await route.fulfill({
@@ -2729,9 +2750,18 @@ test('preview action groups keep Copy aligned with Open', async ({ page }) => {
   await openButton.click()
   await expect(openChevron).not.toHaveClass(/is-open/)
   if (openBox && copyBox && copyMenuBox && copyActionsBox) {
-    expect(Math.abs(openBox.width - copyBox.width)).toBeLessThanOrEqual(1)
+    const viewport = page.viewportSize()!
+    if (viewport.width > 600) {
+      expect(Math.abs(openBox.width - copyBox.width)).toBeLessThanOrEqual(1)
+    } else {
+      expect(Math.abs(openBox.width - copyActionsBox.width)).toBeLessThanOrEqual(1)
+    }
     expect(Math.abs(openBox.y - copyBox.y)).toBeLessThanOrEqual(1)
     expect(Math.abs(copyActionsBox.width - (copyBox.width + copyMenuBox.width - 1))).toBeLessThanOrEqual(1)
+    if (viewport.width <= 600) {
+      expect(copyActionsBox.x).toBeGreaterThanOrEqual(0)
+      expect(copyActionsBox.x + copyActionsBox.width).toBeLessThanOrEqual(viewport.width)
+    }
   }
 
   await page.evaluate(() => {
@@ -2750,6 +2780,33 @@ test('preview action groups keep Copy aligned with Open', async ({ page }) => {
     expect(recoveredBox.x + recoveredBox.width).toBeLessThanOrEqual(viewport.width)
     expect(recoveredBox.y + recoveredBox.height).toBeLessThanOrEqual(viewport.height)
   }
+})
+
+test('workspace navigation fades between pages', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/list**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  })
+
+  await page.goto('/files')
+  await expect(page.getByRole('button', { name: 'History' })).toBeVisible()
+  await page.evaluate(() => {
+    const events: string[] = []
+    document.addEventListener('transitionrun', (event) => {
+      if (event.propertyName === 'opacity') events.push('run')
+    }, true)
+    document.addEventListener('transitionend', (event) => {
+      if (event.propertyName === 'opacity') events.push('end')
+    }, true)
+    ;(window as Window & { __opacityTransitions?: string[] }).__opacityTransitions = events
+  })
+
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page).toHaveURL(/\/history$/)
+  await expect(page.locator('.history-tab')).toBeVisible()
+  await page.waitForTimeout(350)
+  await expect.poll(() => page.evaluate(() => (window as Window & { __opacityTransitions?: string[] }).__opacityTransitions ?? [])).toContain('run')
+  await expect.poll(() => page.evaluate(() => (window as Window & { __opacityTransitions?: string[] }).__opacityTransitions ?? [])).toContain('end')
 })
 
 test('history shows ShareX badge for token-uploaded screenshot files', async ({ page }) => {
@@ -4287,7 +4344,7 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
     expect(Math.abs(downloadBox.width - copyBox.width)).toBeLessThanOrEqual(1)
     expect(Math.abs(copyBox.width - moreBox.width)).toBeLessThanOrEqual(1)
     expect(actionBox.width).toBeGreaterThan(downloadBox.width * 2)
-    expect(fileNameBox.y).toBeGreaterThanOrEqual(fileIconBox.y + 6)
+    expect(Math.abs((fileNameBox.y + fileNameBox.height / 2) - (fileIconBox.y + fileIconBox.height / 2))).toBeLessThanOrEqual(1)
   }
 
   await copyButton.focus()
@@ -4307,6 +4364,52 @@ test('admin upload library keeps row controls keyboard accessible on mobile', as
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: 'Close preview' }).click()
   await expect(dialog).toBeHidden()
+})
+
+test('admin upload preview keeps the mobile filename behind the modal', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await mockClipboard(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/auth/admin/uploads/content?path=files%2Fupload-1.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700"><rect width="100%" height="100%" fill="#1d2734"/></svg>',
+    })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+
+  const row = page.locator('.admin-table tbody tr').filter({ hasText: 'ShareX screenshot.png' }).first()
+  const previewButton = row.getByRole('button', { name: 'ShareX screenshot.png', exact: true })
+  await previewButton.click()
+  const dialog = page.getByRole('dialog', { name: 'Preview ShareX screenshot.png' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveCSS('opacity', '1')
+  await expect.poll(() => page.locator('.modal-backdrop').evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10))).toBeGreaterThan(300)
+
+  const filenameBox = await previewButton.boundingBox()
+  const filenameTextBox = await previewButton.locator('.upload-filename-base').boundingBox()
+  const iconBox = await row.locator('.upload-file-icon').boundingBox()
+  expect(filenameBox).not.toBeNull()
+  expect(filenameTextBox).not.toBeNull()
+  expect(iconBox).not.toBeNull()
+  if (filenameTextBox && iconBox) {
+    expect(Math.abs((filenameTextBox.y + filenameTextBox.height / 2) - (iconBox.y + iconBox.height / 2))).toBeLessThanOrEqual(1)
+  }
+  if (filenameBox) {
+    const coveredByModal = await page.evaluate(({ x, y }) => {
+      const element = document.elementFromPoint(x, y)
+      return element?.closest('.modal-backdrop') !== null
+    }, {
+      x: filenameBox.x + filenameBox.width / 2,
+      y: filenameBox.y + filenameBox.height / 2,
+    })
+    expect(coveredByModal).toBeTruthy()
+  }
+  await expect(page.locator('.upload-hover-preview')).toHaveCount(0)
 })
 
 test('admin upload filenames truncate their base while keeping extensions visible on mobile', async ({ page }) => {

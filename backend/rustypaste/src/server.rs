@@ -156,6 +156,7 @@ struct TokenOwnerItem {
 struct ResolveMatch {
     file_name: String,
     owner_token: Option<String>,
+    path: PathBuf,
 }
 
 fn decode_dir_token(dir_name: &str) -> Option<String> {
@@ -199,6 +200,7 @@ fn resolve_matches_in_dir(
                 Some(ResolveMatch {
                     file_name: name,
                     owner_token: owner_token.map(str::to_string),
+                    path: entry.path(),
                 })
             } else {
                 None
@@ -239,8 +241,35 @@ fn resolve_token_to_file(token: &str, upload_path: &Path) -> Result<ResolveMatch
         matches.append(&mut nested_matches);
     }
 
+    // Root-level compatibility symlinks and their account-scoped targets are
+    // aliases for one upload, not two ambiguous matches.
+    let mut unique_matches = Vec::with_capacity(matches.len());
+    for candidate in matches {
+        let duplicate_position = unique_matches.iter().position(|existing: &ResolveMatch| {
+            match (
+                fs::canonicalize(&existing.path),
+                fs::canonicalize(&candidate.path),
+            ) {
+                (Ok(existing), Ok(candidate)) => existing == candidate,
+                _ => existing.path == candidate.path,
+            }
+        });
+        if let Some(position) = duplicate_position {
+            let existing_is_symlink = fs::symlink_metadata(&unique_matches[position].path)
+                .map(|metadata| metadata.file_type().is_symlink())
+                .unwrap_or(false);
+            let candidate_is_symlink = fs::symlink_metadata(&candidate.path)
+                .map(|metadata| metadata.file_type().is_symlink())
+                .unwrap_or(false);
+            if existing_is_symlink && !candidate_is_symlink {
+                unique_matches[position] = candidate;
+            }
+        } else {
+            unique_matches.push(candidate);
+        }
+    }
+    let mut matches = unique_matches;
     matches.sort_by(|left, right| left.file_name.cmp(&right.file_name));
-    matches.dedup_by(|left, right| left.file_name == right.file_name);
     if matches.len() != 1 {
         return Err(error::ErrorNotFound("file is not found or expired :(\n"));
     }
@@ -1188,6 +1217,28 @@ mod tests {
             stored_file_name("ZSlZjhsX.jpg", Some(1784356059807))
         );
     }
+
+    #[test]
+    fn test_resolve_token_finds_timestamped_account_upload() -> Result<(), Error> {
+        let upload_path = env::temp_dir().join(format!(
+            "rustypaste-resolve-account-upload-{}",
+            std::process::id()
+        ));
+        let account_dir = upload_path.join(token_to_dir_name("account-upload-token"));
+        fs::create_dir_all(&account_dir)?;
+        let stored_path = account_dir.join("Iv5BL2Oi.txt.1785792991336");
+        fs::write(&stored_path, b"account upload")?;
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&stored_path, upload_path.join("Iv5BL2Oi.txt"))?;
+
+        let resolved = resolve_token_to_file("Iv5BL2Oi", &upload_path)?;
+        assert_eq!(resolved.file_name, "Iv5BL2Oi.txt.1785792991336");
+        assert_eq!(resolved.owner_token.as_deref(), Some("account-upload-token"));
+
+        fs::remove_dir_all(upload_path)?;
+        Ok(())
+    }
+
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
@@ -2032,6 +2083,7 @@ mod tests {
                 display_name: Some("screenshot.jpg".to_string()),
                 uploader: Some("Unknown (token user)".to_string()),
                 source: Some("WebUI".to_string()),
+                password_salt: None,
             })?,
         )?;
 
@@ -2068,6 +2120,7 @@ mod tests {
                 display_name: Some("screenshot.jpg".to_string()),
                 uploader: None,
                 source: None,
+                password_salt: None,
             })?,
         )?;
         let legacy_response = test::call_service(

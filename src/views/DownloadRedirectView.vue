@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { downloadFileUrl, encodeFileToken, resolveFileName } from '../lib/api'
+import { encodeFileToken, publicDownloadFileUrl, resolveFileName } from '../lib/api'
 import { usePublicSettings } from '../lib/publicSettings'
 
 const route = useRoute()
@@ -16,7 +16,7 @@ async function redirect() {
       window.location.replace(`/file/${encodeURIComponent(fileKey)}/preview${window.location.hash}`)
       return
     }
-    const rawUrl = downloadFileUrl(fileName)
+    const rawUrl = publicDownloadFileUrl(fileName)
     const previewUrl = `/file/${encodeFileToken(fileName)}/preview`
     const link = document.createElement('a')
     link.href = rawUrl

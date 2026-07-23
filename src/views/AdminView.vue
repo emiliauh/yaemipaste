@@ -2517,7 +2517,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     grid-column: 2;
   }
   .uploads-table .upload-name-cell {
-    display: block;
+    display: flex;
+    align-items: center;
     text-align: left;
     min-width: 0;
     white-space: normal;
@@ -2526,7 +2527,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     width: auto;
     max-width: calc(100% - 36px);
     min-width: 0;
-    transform: translateY(12px);
+    align-items: center;
   }
   .uploads-table .upload-filename-base {
     flex: 0 1 auto;

@@ -1012,6 +1012,11 @@ export function publicRawFileUrl(fileName: string): string {
   return `${publicSiteOrigin()}/api/${encodeURIComponent(fileName)}?raw=1`
 }
 
+export function publicDownloadFileUrl(fileName: string): string {
+  const path = `/api/${encodeURIComponent(fileName)}?download=true`
+  return publicSiteOrigin() === window.location.origin ? path : `${publicSiteOrigin()}${path}`
+}
+
 export function browserFileUrl(fileName: string, query = ''): string {
   const base = getPasteApiBase()
   return `${base}/${encodeURIComponent(fileName)}${query ? `?${query}` : ''}`

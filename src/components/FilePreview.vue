@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: 400;
   animation: backdrop-in var(--duration-fast) var(--ease-out) both;
 }
 .modal {
@@ -878,10 +878,12 @@ onBeforeUnmount(() => {
     gap: var(--space-1);
   }
   .open-actions {
+    width: 100%;
     min-width: 0;
   }
   .footer-actions .copy-actions {
-    width: calc(100% + 28px);
+    width: 100%;
+    min-width: 0;
   }
   .footer-actions .btn-copy {
     width: auto;

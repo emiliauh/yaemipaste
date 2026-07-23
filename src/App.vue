@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
 import NotificationStack from './components/NotificationStack.vue'
 
 function sanitizeRepoUrl(value: string): string {
@@ -15,12 +16,13 @@ function sanitizeRepoUrl(value: string): string {
 }
 
 const repoUrl = sanitizeRepoUrl(import.meta.env.VITE_REPOSITORY_URL ?? 'https://github.com/emiliauh/yaemipaste')
+const route = useRoute()
 </script>
 
 <template>
   <router-view v-slot="{ Component }">
-    <Transition name="page-fade">
-      <component :is="Component" />
+    <Transition name="page-fade" mode="out-in">
+      <component :is="Component" :key="route.fullPath" />
     </Transition>
   </router-view>
   <a
