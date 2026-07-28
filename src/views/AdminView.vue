@@ -158,6 +158,7 @@ const pageByTab = ref<Record<string, number>>({
   Users: 1,
   Uploads: 1,
   Webhooks: 1,
+  Deliveries: 1,
   Audit: 1,
 })
 
@@ -196,11 +197,13 @@ const expiryFilterOptions: SelectOption[] = [
 const pagedUsers = computed(() => paginate(users.value, 'Users'))
 const pagedUploads = computed(() => paginate(filteredUploads.value, 'Uploads', uploadsPageSize.value))
 const pagedWebhooks = computed(() => paginate(webhooks.value, 'Webhooks'))
+const pagedDeliveries = computed(() => paginate(deliveries.value, 'Deliveries'))
 const pagedAudit = computed(() => paginate(audit.value, 'Audit'))
 const activeUserMenuUser = computed(() => users.value.find((user) => user.username === userRowMenuOpen.value) ?? null)
 const usersPageCount = computed(() => pageCount(users.value.length))
 const uploadsPageCount = computed(() => pageCount(filteredUploads.value.length, uploadsPageSize.value))
 const webhooksPageCount = computed(() => pageCount(webhooks.value.length))
+const deliveriesPageCount = computed(() => pageCount(deliveries.value.length))
 const auditPageCount = computed(() => pageCount(audit.value.length))
 const allPagedUploadsSelected = computed(
   () => pagedUploads.value.length > 0 && pagedUploads.value.every((upload) => selectedUploads.value.has(upload.path)),
@@ -496,11 +499,12 @@ async function saveSettings() {
   }, 'Settings updated')
 }
 
-async function deleteUploadWithConfirmation(path: string) {
+async function deleteUploadWithConfirmation(upload: AdminUpload) {
+  const path = upload.path
   requestConfirmation({
     title: 'Delete upload?',
     message: 'This upload will be permanently removed from the server.',
-    detail: path,
+    detail: uploadDisplayName(upload),
     confirmLabel: 'Delete upload',
     success: 'Upload deleted',
     work: async () => {
@@ -555,6 +559,21 @@ async function rotateToken(username: string) {
     const result = await adminRotateUserToken(username)
     showTokenDialog(username, result.upload_token)
   }, 'Token rotated')
+}
+
+function rejectSelfAction(username: string): boolean {
+  if (username.trim().toLowerCase() !== currentUser.trim().toLowerCase()) return false
+  notifications.push('You cannot take action on your own account.', 'error')
+  return true
+}
+
+function updateUserFromMenu(user: AdminUser, payload: { suspended?: boolean; is_admin?: boolean }, success: string) {
+  if (rejectSelfAction(user.username)) {
+    closeUserRowMenu(true)
+    return
+  }
+  void runAction(() => adminUpdateUser(user.username, payload), success)
+  closeUserRowMenu(true)
 }
 
 function toggleSelection(path: string, checked: boolean) {
@@ -632,6 +651,7 @@ function requestUserPurge(username: string) {
 }
 
 function requestUserDelete(username: string) {
+  if (rejectSelfAction(username)) return
   requestConfirmation({
     title: 'Delete user?',
     message: `The account and all associated uploads for ${username} will be permanently removed.`,
@@ -889,8 +909,8 @@ onBeforeUnmount(() => {
       </div>
       <Teleport to="body">
         <div v-if="activeUserMenuUser" :id="`user-actions-${activeUserMenuUser.username}`" ref="userRowMenuPanel" class="user-row-menu-panel" :style="userRowMenuStyle" role="group" aria-label="User actions" @keydown.escape.prevent="closeUserRowMenu(true)">
-          <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(activeUserMenuUser!.username, { suspended: !activeUserMenuUser!.suspended_at, suspension_reason: 'Suspended by administrator' }), activeUserMenuUser!.suspended_at ? 'User unsuspended' : 'User suspended'); closeUserRowMenu(true)">{{ activeUserMenuUser.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
-          <button class="menu-action" type="button" @click="runAction(() => adminUpdateUser(activeUserMenuUser!.username, { is_admin: !activeUserMenuUser!.is_admin }), 'Role updated'); closeUserRowMenu(true)">{{ activeUserMenuUser.is_admin ? 'Demote' : 'Promote' }}</button>
+          <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { suspended: !activeUserMenuUser!.suspended_at }, activeUserMenuUser!.suspended_at ? 'User unsuspended' : 'User suspended')">{{ activeUserMenuUser.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
+          <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { is_admin: !activeUserMenuUser!.is_admin }, 'Role updated')">{{ activeUserMenuUser.is_admin ? 'Demote' : 'Promote' }}</button>
           <button class="menu-action" type="button" @click="rotateToken(activeUserMenuUser!.username); closeUserRowMenu(true)">Rotate token</button>
           <button class="menu-action danger" type="button" @click="requestUserPurge(activeUserMenuUser!.username); closeUserRowMenu()">Purge uploads</button>
         </div>
@@ -1040,7 +1060,7 @@ onBeforeUnmount(() => {
                   <button class="btn-ghost upload-more" type="button" aria-label="More" :aria-expanded="uploadRowMenuOpen === upload.path ? 'true' : 'false'" @click="uploadRowMenuOpen = uploadRowMenuOpen === upload.path ? null : upload.path">⋯</button>
                   <div v-if="uploadRowMenuOpen === upload.path" class="upload-row-menu-panel" role="menu">
                     <button class="menu-action" type="button" role="menuitem" @click="openUploadPreview(upload)">Preview</button>
-                    <button class="menu-action danger" type="button" role="menuitem" @click="deleteUploadWithConfirmation(upload.path); uploadRowMenuOpen = null">Delete</button>
+                    <button class="menu-action danger" type="button" role="menuitem" @click="deleteUploadWithConfirmation(upload); uploadRowMenuOpen = null">Delete</button>
                   </div>
                 </div>
               </td>
@@ -1177,15 +1197,23 @@ onBeforeUnmount(() => {
       <div class="card">
         <h2>Recent deliveries</h2>
         <div class="table-scroll">
-        <table class="file-table admin-table">
-          <tbody>
-            <tr v-for="delivery in deliveries" :key="delivery.id">
-              <td>{{ ts(delivery.created_at) }}</td><td>{{ delivery.event }}</td><td>{{ delivery.status }}</td><td>{{ delivery.error ?? delivery.status_code ?? 'N/A' }}</td>
+         <table class="file-table admin-table webhook-deliveries-table">
+           <thead><tr><th scope="col">Time</th><th scope="col">Event</th><th scope="col">Status</th><th scope="col">Result</th></tr></thead>
+           <tbody>
+             <tr v-for="delivery in pagedDeliveries" :key="delivery.id">
+               <td data-label="Time">{{ ts(delivery.created_at) }}</td><td data-label="Event">{{ delivery.event }}</td><td data-label="Status">{{ delivery.status }}</td><td data-label="Result">{{ delivery.error ?? delivery.status_code ?? 'N/A' }}</td>
             </tr>
           </tbody>
         </table>
         </div>
-        <p v-if="!deliveries.length && !loading" class="empty-state">No webhook deliveries recorded yet.</p>
+         <p v-if="!deliveries.length && !loading" class="empty-state">No webhook deliveries recorded yet.</p>
+         <div class="pagination-bar" aria-label="Delivery pagination">
+           <span>{{ pageLabel('Deliveries', deliveries.length) }}</span>
+           <div>
+             <button class="btn-ghost" type="button" :disabled="pageFor('Deliveries', deliveries.length) <= 1" @click="setPage('Deliveries', pageFor('Deliveries', deliveries.length) - 1, deliveries.length)">Previous</button>
+             <button class="btn-ghost" type="button" :disabled="pageFor('Deliveries', deliveries.length) >= deliveriesPageCount" @click="setPage('Deliveries', pageFor('Deliveries', deliveries.length) + 1, deliveries.length)">Next</button>
+           </div>
+         </div>
       </div>
     </section>
 
@@ -1758,11 +1786,13 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .upload-search {
   position: relative;
-  display: block;
+  display: flex;
+  align-self: stretch;
 }
 .upload-search input {
   width: min(450px, 48vw);
-  min-height: 40px;
+  height: 100%;
+  min-height: 0;
   padding-right: 38px;
 }
 .upload-search svg {

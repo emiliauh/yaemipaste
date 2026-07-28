@@ -427,6 +427,15 @@ fn require_jwt_admin(
     Ok(username)
 }
 
+fn reject_self_action(actor: &str, target: &str) -> Option<HttpResponse> {
+    (actor == target).then(|| {
+        json_error(
+            StatusCode::FORBIDDEN,
+            "Cannot take action on your own account",
+        )
+    })
+}
+
 fn token_available(
     connection: &Connection,
     configured: Option<&HashSet<String>>,
@@ -1554,11 +1563,32 @@ async fn update_user(
         Err(response) => return response,
     };
     let username = normalize_username(&path.into_inner());
+    if let Some(response) = reject_self_action(&actor, &username) {
+        return response;
+    }
     if !user_exists(&connection, &username) {
         return json_error(StatusCode::NOT_FOUND, "User not found");
     }
     if let Some(suspended) = body.suspended {
         if suspended {
+            let target_is_admin: bool = connection
+                .query_row(
+                    "SELECT is_admin FROM users WHERE username=?1",
+                    params![username],
+                    |row| row.get::<_, i64>(0),
+                )
+                .ok()
+                .map(|value| value == 1)
+                .unwrap_or(false);
+            let admin_count: i64 = connection
+                .query_row("SELECT COUNT(*) FROM users WHERE is_admin=1", [], |row| row.get(0))
+                .unwrap_or(0);
+            if target_is_admin && admin_count <= 1 {
+                return json_error(
+                    StatusCode::BAD_REQUEST,
+                    "Cannot suspend the last administrator",
+                );
+            }
             let reason = body
                 .suspension_reason
                 .as_deref()
@@ -1764,6 +1794,9 @@ async fn delete_user(
         return json_error(StatusCode::BAD_REQUEST, "Confirmation text mismatch");
     }
     let username = normalize_username(&path.into_inner());
+    if let Some(response) = reject_self_action(&actor, &username) {
+        return response;
+    }
     let row = connection
         .query_row(
             "SELECT token, is_admin FROM users WHERE username=?1",

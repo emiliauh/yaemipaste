@@ -630,10 +630,19 @@ export async function listFiles(): Promise<PasteFile[]> {
   // Authenticated list responses must never be reused after an admin purge.
   // The request cache mode protects the browser; the nonce also prevents an
   // intermediary from replaying an older authenticated response.
-  const r = await fetch(`${getPasteApiBase()}/list?cb=${Date.now().toString(36)}`, {
+  const configuredBase = getPasteApiBase()
+  const sameOriginBase = `${publicSiteOrigin()}/api`
+  const request = (base: string) => fetch(`${base}/list?cb=${Date.now().toString(36)}`, {
     cache: 'no-store',
     headers: tokenHeader(),
   })
+  let r: Response
+  try {
+    r = await request(configuredBase)
+  } catch (error) {
+    if (configuredBase === sameOriginBase) throw error
+    r = await request(sameOriginBase)
+  }
   if (!r.ok) throw new Error(await responseDetail(r, 'Failed to list files'))
   const data = await readJson<RawPasteFile[]>(r, 'Failed to list files')
   return data.map((f) => {

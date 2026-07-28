@@ -3942,6 +3942,19 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
 
   await page.locator('.admin-tabs').getByRole('button', { name: 'Uploads', exact: true }).click()
   await expect(page.getByText('1-12 of 12')).toBeVisible()
+  const ownerFilter = page.locator('.upload-toolbar .custom-select-trigger').first()
+  const searchInput = page.getByLabel('Search uploads')
+  await expect.poll(async () => {
+    const [ownerBox, searchBox] = await Promise.all([ownerFilter.boundingBox(), searchInput.boundingBox()])
+    return ownerBox && searchBox ? Math.abs(ownerBox.height - searchBox.height) : -1
+  }).toBeLessThan(1)
+  const expiringRow = page.locator('.uploads-table tbody tr').filter({ hasText: 'expiring-paste.txt' }).first()
+  await expiringRow.getByRole('button', { name: 'More' }).click()
+  await expiringRow.getByRole('menuitem', { name: 'Delete' }).click()
+  const deleteDialog = page.getByRole('dialog', { name: 'Delete upload?' })
+  await expect(deleteDialog).toBeVisible()
+  await expect(deleteDialog.locator('.action-confirm-detail')).toHaveText('expiring-paste.txt')
+  await deleteDialog.getByRole('button', { name: 'Cancel' }).click()
   await page.getByLabel('Search uploads').fill('upload-12')
   await expect(page.getByText('1-1 of 1')).toBeVisible()
   await expect(page.getByText('upload-12.txt')).toBeVisible()
@@ -3958,6 +3971,129 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   )
   await saveSettings.click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('admin paginates recent webhook deliveries', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  const deliveries = Array.from({ length: 23 }, (_, index) => ({
+    id: index + 1,
+    webhook_id: 1,
+    event: index % 2 ? 'file.deleted' : 'file.uploaded',
+    status: index % 3 ? 'delivered' : 'failed',
+    status_code: index % 3 ? 200 : 500,
+    error: index % 3 ? null : `delivery-${index + 1} failed`,
+    created_at: 1_775_000_000 + index,
+    delivered_at: 1_775_000_001 + index,
+  }))
+  await page.route('**/auth/admin/webhooks/deliveries**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(deliveries) })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Webhooks', exact: true }).click()
+  const table = page.locator('.webhook-deliveries-table')
+  const pagination = page.locator('[aria-label="Delivery pagination"]')
+  await expect(pagination).toContainText('1-10 of 23')
+  await expect(table.locator('tbody tr')).toHaveCount(10)
+  await expect(table.getByText('delivery-11 failed', { exact: true })).toHaveCount(0)
+
+  await pagination.getByRole('button', { name: 'Next' }).click()
+  await expect(pagination).toContainText('11-20 of 23')
+  await expect(table.locator('tbody tr')).toHaveCount(10)
+  await expect(table.getByText('delivery-13 failed', { exact: true })).toBeVisible()
+
+  await pagination.getByRole('button', { name: 'Next' }).click()
+  await expect(pagination).toContainText('21-23 of 23')
+  await expect(table.locator('tbody tr')).toHaveCount(3)
+})
+
+test('admin users cannot take actions against their own account', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.route('**/auth/admin/users**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        { username: 'admin-user', created_at: 1_775_000_000, is_admin: true, suspended_at: null, suspended_reason: null, upload_token_preview: 'tok…admin', upload_count: 1, disk_usage_bytes: 10 },
+        { username: 'managed-user', created_at: 1_775_000_001, is_admin: false, suspended_at: null, suspended_reason: null, upload_token_preview: 'tok…user', upload_count: 0, disk_usage_bytes: 0 },
+      ]),
+    })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Users', exact: true }).click()
+  const row = page.locator('.users-table tbody tr').filter({ hasText: 'admin-user' }).first()
+  await row.getByRole('button', { name: 'Delete' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('You cannot take action on your own account')
+  await expect(page.getByRole('dialog', { name: 'Delete user?' })).toHaveCount(0)
+
+  await row.getByRole('button', { name: 'More actions' }).click()
+  const menu = page.getByRole('group', { name: 'User actions' })
+  await menu.getByRole('button', { name: 'Suspend' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('You cannot take action on your own account')
+
+  await row.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('group', { name: 'User actions' }).getByRole('button', { name: 'Rotate token' }).click()
+  await expect(page.getByRole('dialog', { name: 'Upload token ready' })).toBeVisible()
+  await page.getByRole('button', { name: 'Close token dialog' }).click()
+
+  await row.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('group', { name: 'User actions' }).getByRole('button', { name: 'Purge uploads' }).click()
+  const purgeDialog = page.getByRole('dialog', { name: 'Purge user uploads?' })
+  await expect(purgeDialog).toBeVisible()
+  await purgeDialog.getByRole('button', { name: 'Purge uploads' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Uploads purged')
+})
+
+test('history falls back to the public API when the configured API host is unavailable', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: true,
+        base_api_url: 'https://papi.example.test',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'private',
+      }),
+    })
+  })
+  await page.route('https://papi.example.test/list**', async (route) => {
+    await route.abort()
+  })
+  await page.route('**/api/list**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ file_name: 'sharex-text.txt', file_size: 24, creation_date_utc: '2026-07-26 22:00:00', expires_at_utc: null }]),
+    })
+  })
+  await page.route('**/api/meta/sharex-text.txt', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        file_name: 'sharex-text.txt',
+        display_name: 'sharex-text.txt',
+        uploader: 'test-user',
+        source: 'ShareX',
+        upload_date_utc: '2026-07-26 22:00:00',
+        download_name: 'sharex-text.txt',
+        file_size: 24,
+        mime_type: 'text/plain',
+      }),
+    })
+  })
+
+  await page.goto('/history')
+  await expect(page.getByText('sharex-text.txt', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Uploaded with ShareX')).toBeVisible()
 })
 
 test('admin panel covers every tab and responsive viewport class', async ({ page }) => {

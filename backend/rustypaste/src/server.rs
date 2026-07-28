@@ -414,7 +414,7 @@ fn persist_upload_metadata(
     file_name: &str,
     meta: &UploadMetaField,
 ) -> Result<(), Error> {
-    if !meta.keep_file_name && meta.uploader.trim().is_empty() {
+    if !meta.keep_file_name && meta.uploader.trim().is_empty() && meta.source.trim().is_empty() {
         return Ok(());
     }
     let metadata_dir = upload_path.join(".rpmeta");
@@ -880,6 +880,21 @@ async fn upload(
     let header_filename = header::parse_header_filename(request.headers())?;
     let mut urls: Vec<String> = Vec::new();
     let mut upload_meta = UploadMetaField::default();
+    let sharex_client = request
+        .headers()
+        .get("X-Upload-Client")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("ShareX"));
+    if sharex_client {
+        upload_meta.source = "ShareX".to_string();
+        let config_snapshot = config
+            .read()
+            .map_err(|_| error::ErrorInternalServerError("cannot acquire config"))?
+            .clone();
+        if let Some(token) = get_auth_token(&request, &config_snapshot) {
+            upload_meta.uploader = lookup_username_for_token(&token).unwrap_or_default();
+        }
+    }
     while let Some(item) = payload.next().await {
         let mut field = item?;
         let content = ContentDisposition::from(
@@ -2231,6 +2246,47 @@ mod tests {
             fs::remove_file(&file_name)?;
         }
 
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_upload_file_marks_header_only_sharex_uploads() -> Result<(), Error> {
+        let mut config = Config::default();
+        let upload_path = env::temp_dir().join(format!(
+            "rustypaste-sharex-header-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&upload_path)?;
+        config.server.upload_path = upload_path.clone();
+        config.server.tokens = Some(["sharex-test-token".to_string()].into());
+        let app = test::init_service(
+            App::new()
+                .app_data(Data::new(RwLock::new(config.clone())))
+                .app_data(Data::new(Client::default()))
+                .configure(configure_routes),
+        )
+        .await;
+
+        let timestamp = util::get_system_time()?.as_secs().to_string();
+        let file_name = format!("sharex-header-{timestamp}.txt");
+        let response = test::call_service(
+            &app,
+            get_multipart_request_with_fields(&timestamp, "file", &file_name, &[])
+                .insert_header(("X-Upload-Client", "ShareX"))
+                .insert_header((AUTHORIZATION, "sharex-test-token"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(StatusCode::OK, response.status());
+
+        let meta_request = TestRequest::get()
+            .uri(&format!("/meta/{file_name}"))
+            .insert_header((AUTHORIZATION, "sharex-test-token"))
+            .to_request();
+        let meta: PublicFileMeta = test::call_and_read_body_json(&app, meta_request).await;
+        assert_eq!(meta.source.as_deref(), Some("ShareX"));
+
+        fs::remove_dir_all(upload_path)?;
         Ok(())
     }
 

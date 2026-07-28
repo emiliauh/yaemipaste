@@ -1842,7 +1842,11 @@ mod tests {
 
     fn test_config() -> Config {
         let mut config = Config::default();
-        config.server.tokens = Some(["seed-token".to_string(), "spare-token".to_string()].into());
+        config.server.tokens = Some([
+            "seed-token".to_string(),
+            "spare-token".to_string(),
+            "managed-token".to_string(),
+        ].into());
         config
     }
 
@@ -2029,6 +2033,48 @@ mod tests {
             .expect("admin jwt should exist")
             .to_string();
 
+        for (method, uri, body) in [
+            (
+                "PATCH",
+                "/auth/admin/users/admin",
+                json!({ "is_admin": false }),
+            ),
+            (
+                "DELETE",
+                "/auth/admin/users/admin",
+                json!({ "confirmation": "DELETE USER" }),
+            ),
+        ] {
+            let request = test::TestRequest::with_uri(uri)
+                .method(actix_web::http::Method::from_bytes(method.as_bytes()).unwrap())
+                .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+                .set_json(body)
+                .to_request();
+            let response = test::call_service(&app, request).await;
+            assert_eq!(StatusCode::FORBIDDEN, response.status(), "{method} {uri}");
+            let body: Value = test::read_body_json(response).await;
+            assert_eq!(body["detail"], "Cannot take action on your own account");
+        }
+
+        let rotate_self = test::TestRequest::post()
+            .uri("/auth/admin/users/admin/token")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({}))
+            .to_request();
+        assert_eq!(
+            StatusCode::OK,
+            test::call_service(&app, rotate_self).await.status()
+        );
+        let purge_self = test::TestRequest::post()
+            .uri("/auth/admin/users/admin/purge")
+            .insert_header((AUTHORIZATION, format!("Bearer {admin_jwt}")))
+            .set_json(json!({ "confirmation": "PURGE UPLOADS" }))
+            .to_request();
+        assert_eq!(
+            StatusCode::OK,
+            test::call_service(&app, purge_self).await.status()
+        );
+
         let reused_claim = test::TestRequest::post()
             .uri("/auth/admin/claim")
             .set_json(json!({
@@ -2084,7 +2130,6 @@ mod tests {
             .set_json(json!({
                 "username": "managed",
                 "password": "password123",
-                "upload_token": "spare-token",
             }))
             .to_request();
         let create_user_response = test::call_service(&app, create_user).await;
