@@ -14,7 +14,9 @@ simple deployments by setting `PASTE_URL=http://<ip>:8080` and
 Set `PASTE_URL=https://paste.example.com`, `PASTE_PUBLIC_API=https://paste.example.com/api`,
 and retain `/api`, `/auth`, `/api/resolve`, and `/api/token-owner` frontend
 routes. Point Caddy or Nginx at `127.0.0.1:8080`; the bundled UI proxy routes
-API and auth traffic internally.
+traffic to the native NestJS backend in `backend/nestjs`. Persist both
+`DB_PATH` (SQLite auth and admin state) and `SERVER__UPLOAD_PATH` (uploaded
+bytes and metadata).
 
 ## Split Host
 
@@ -48,7 +50,7 @@ requests; preview navigation stays on the UI SPA.
 
 - `/api/*`: backend root with `/api` stripped.
 - `/auth/*`: backend auth routes.
-- `/api/resolve/*`: backend resolver routes.
+- `/api/resolve/*`: native backend public-link resolution routes.
 - `/api/token-owner`: backend token-owner route.
 - `/file/<token>/*`: SPA preview/raw/download routes.
 - `/<id>/file[.ext]?raw=1|download=true`: backend file bytes.
@@ -61,3 +63,7 @@ requests; preview navigation stays on the UI SPA.
 4. Claim/login as administrator and verify server-side authorization.
 5. Test ShareX, Turnstile, and passkeys when enabled.
 6. Restore a backup to an isolated environment periodically.
+
+Do not cache HTML, `/api/*`, `/auth/*`, metadata, or 404 responses. Cache only
+fingerprinted frontend assets. Verify the origin and public edge separately
+after any proxy, tunnel, or CDN change.

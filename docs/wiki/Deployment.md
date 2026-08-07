@@ -1,83 +1,62 @@
 # Deployment
 
-## Recommended Deployment Flow
-
-1. Build the frontend:
+## Build And Test
 
 ```bash
 npm ci
 npm run build
+npm run api:build
+npm run api:test
+npm run test:e2e:preview
 ```
 
-2. Publish `dist/` to your static host.
-3. Route frontend-relative API paths to the NestJS backend.
-4. Validate upload, history, preview, and download flows.
-
-For a remote static-host deployment, the pattern is:
-
-```bash
-npm ci
-npm run build
-# Copy dist/ to your static host using its deployment mechanism.
-ssh user@host 'sudo systemctl reload <your-web-server>'
-```
-
-Replace the host, path, and reload command with your own environment. Keep these values out of reusable public docs.
-
-## Reverse Proxy Requirements
-
-Route these paths:
-
-- `/api/*` to the backend file API
-- `/auth/*` to the backend auth API if enabled
-- resolver path, usually `/api/resolve/*`, to the backend resolver route
-- raw file paths such as `/<id>/file` and `/<id>/file.<ext>` to backend file bytes
-
-Recommended security headers for the frontend host:
-- `Content-Security-Policy` that restricts scripts, frames, and object embeds
-- `X-Content-Type-Options: nosniff`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy` with unused browser features disabled
-- `Cache-Control: no-store` on the HTML shell when fast rollout of route fixes matters
+`npm run validate:release` runs the frontend build, backend build and tests,
+and preview end-to-end suite as one release check.
 
 ## Container Deployment
 
-The bundled `docker-compose.yml` is for local or self-hosted deployments that want:
-- a static frontend container
-- a NestJS backend container
-
-Use:
+The standard stack contains the static frontend and native NestJS backend:
 
 ```bash
-docker compose --profile ui --profile api up --build -d
+cp .env.example .env
+COMPOSE_PROFILES=ui,api DEPLOYMENT_IMAGE_MODE=build docker compose up --build -d
 ```
 
-Enable the legacy resolver only if needed:
+Use persistent volumes for `DB_PATH` and `SERVER__UPLOAD_PATH`. Keep both when
+upgrading so users, auth state, metadata, and uploads remain intact.
 
-```bash
-docker compose --profile ui --profile api --profile with-resolver up --build -d
-```
+## Reverse Proxy Contract
 
-Use that resolver profile only for older deployments whose backend still lacks a native resolve route.
+The simplest same-host deployment proxies the entire public hostname to the
+bundled UI service. Its Nginx configuration handles:
 
-## Remote Validation Checklist
+- SPA pages including `/files`, `/history`, `/login`, `/register`, and `/admin`
+- `/api/*` to the backend with `/api` stripped
+- `/auth/*` to backend auth routes
+- public preview and explicit raw/download file requests
 
-After changing deployment or routing, verify:
-- `GET /` returns the frontend
-- upload succeeds from the Files page
-- History lists the uploaded item
-- `/file/<token>/preview` resolves correctly
-- `/file/<token>/raw` and `/file/<token>/download` work
-- raw public paths such as `/<id>/file` or `/<id>/file.<ext>` serve bytes directly
-- auth and passkey flows still match backend support if enabled
-- reverse-proxy config validates before reload if your host uses Caddy or nginx
+When serving `dist/` directly, reproduce the API, auth, and public-file
+matchers before the SPA fallback. Do not send unknown paths to the API because
+browser pages must receive `index.html`.
 
-## Deployment Validation
+HTML, API, auth, metadata, and error responses should not be cached at an edge.
+Cache only fingerprinted static assets. This prevents an obsolete HTML shell,
+metadata response, or 404 from surviving a deployment.
 
-After each deployment:
-- upload a text paste
-- upload an image
-- open history
-- open a public preview link
-- verify raw and download links
-- verify auth/passkey flows only if enabled
+## Production Validation
+
+After every deployment:
+
+1. Confirm `/`, `/files`, `/history`, `/login`, `/register`, and `/admin`
+   return the current frontend HTML.
+2. Confirm `/api/` and `/auth/admin/public-settings` reach the NestJS backend.
+3. Register or sign in, upload text and an image, and verify history metadata.
+4. Verify preview, raw, download, and deletion behavior.
+5. Download and test the authenticated ShareX configuration.
+6. Verify admin authorization and enabled Turnstile or passkey flows.
+7. Compare origin and edge responses, including cache headers, when a CDN or
+   tunnel is present.
+8. Restore SQLite and upload backups in an isolated environment periodically.
+
+The optional service in `resolver-server/` is migration-only. Do not enable it
+for a normal NestJS deployment.

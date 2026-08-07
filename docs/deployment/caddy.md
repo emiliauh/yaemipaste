@@ -42,8 +42,8 @@ paste.example.com {
 ```
 
 The direct-static example is intentionally incomplete for public raw-file and
-resolver routes. Prefer proxying the entire host to the bundled UI unless those
-routes are also reproduced from `docker/nginx/default.conf`.
+native API resolution routes. Prefer proxying the entire host to the bundled UI
+unless those routes are also reproduced from `docker/nginx/default.conf`.
 
 Validate before reload with `caddy validate --config /etc/caddy/Caddyfile`.
 
@@ -62,11 +62,16 @@ curl -skS -D- --resolve paste.example.com:443:127.0.0.1 \
 curl -sS -D- https://paste.example.com/history -o /dev/null
 ```
 
-Check both `A` and `AAAA` records, Cloudflare Origin Rules, Redirect Rules,
-Workers routes, and cache rules for the hostname. Remove any rule that sends UI
-paths to the API port and purge cached 404 responses after correcting the
-route. A healthy response for each browser route is `200` with
+Check both `A` and `AAAA` records, Cloudflare Tunnel ingress, Origin Rules,
+Redirect Rules, Workers routes, and cache rules for the hostname. Remove any
+rule that sends UI paths to the API port and purge cached HTML, metadata, and
+404 responses after correcting the route. A healthy response for each browser route is `200` with
 `Content-Type: text/html`; `/api/` should remain the API response.
+
+Set `Cache-Control: no-store` for HTML, `/api/*`, and `/auth/*` at every active
+origin listener, including a separate listener used by a tunnel. Cache only
+fingerprinted assets. Test the tunnel-facing listener directly as well as the
+normal HTTPS listener; two listeners can otherwise serve different UI roots.
 
 ## Split Host
 

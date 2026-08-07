@@ -1,6 +1,7 @@
 # Environment Reference
 
-This file explains the variables in `.env.example` and how they affect deployment.
+This file explains the variables in `.env.example` and how they affect the
+native Vue and NestJS deployment.
 
 ## Quick Start
 
@@ -21,11 +22,9 @@ The standard same-host setup pulls prebuilt UI and API images. Use
 `DEPLOYMENT_IMAGE_MODE=build` only when changing compile-time `VITE_*` UI
 settings or using a split deployment.
 
-Legacy compatibility resolver:
-
-```bash
-docker compose --profile with-resolver up --build -d
-```
+The API service is the custom backend in `backend/nestjs`. It stores auth and
+administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
+`SERVER__UPLOAD_PATH`.
 
 ## Core Frontend Variables
 
@@ -35,7 +34,7 @@ docker compose --profile with-resolver up --build -d
 | `VITE_AUTH_API` | Auth API base used by the frontend | `/auth` |
 | `VITE_PUBLIC_SITE_ORIGIN` | Explicit public site origin for generated links | empty |
 | `VITE_HISTORY_WS` | Optional history websocket override | empty |
-| `VITE_FILE_RESOLVE_BASE` | Resolver path for `/file/<token>/...` links | `/api/resolve` |
+| `VITE_FILE_RESOLVE_BASE` | Native API resolution base used by public file links | `/api/resolve` |
 | `VITE_TOKEN_OWNER_PATH` | Optional token-owner lookup path | `/api/token-owner` |
 | `VITE_ENABLE_SHAREX` | Enable ShareX settings UI and `/auth/sharex` config generation | `1` |
 | `VITE_ENABLE_AUTH` | Enable login/register/account UI | `1` |
@@ -82,10 +81,10 @@ docker compose --profile with-resolver up --build -d
 | `API_UPSTREAM` | UI container API/raw upstream | `http://paste-api:8000` |
 | `MAX_CONCURRENT_UPLOADS_PER_CLIENT` | Maximum in-flight multipart uploads per trusted client IP | `4` |
 | `MAX_UPLOAD_DIR_SIZE` | Total upload-directory quota; use `0` only with an external quota | `10GiB` |
-| `RESOLVER_ENABLED` | Enable legacy Node resolver workflow in installer | `0` |
-| `RESOLVER_PORT` | Legacy resolver loopback port | `3101` |
-| `RESOLVER_PUBLIC_ORIGIN` | Public site origin used by legacy resolver redirects | `http://localhost:8080` |
-| `RESOLVER_CACHE_TTL_MS` | Legacy resolver cache TTL | `30000` |
+| `RESOLVER_ENABLED` | Enable the optional migration-only compatibility resolver | `0` |
+| `RESOLVER_PORT` | Migration resolver loopback port | `3101` |
+| `RESOLVER_PUBLIC_ORIGIN` | Public origin used by migration resolver redirects | `http://localhost:8080` |
+| `RESOLVER_CACHE_TTL_MS` | Migration resolver cache TTL | `30000` |
 
 ## Installer / Admin Variables
 
@@ -111,11 +110,12 @@ For a new deployment:
 - set `JWT_SECRET` and `AUTH_ADMIN_BEARER` with `openssl rand -hex 32`
 - set upload policy flags explicitly before upgrading an existing deployment
 
-## When To Enable The Legacy Resolver
+## Migration-Only Resolver
 
-Only enable the compatibility resolver if:
-- your backend does not expose a native resolve endpoint yet
-- you still need tokenized preview/raw/download links for existing deployments
+`resolver-server/` is not part of the default backend. Enable it only while
+migrating an installation that explicitly depends on its older token-resolution
+behavior. New installations and completed NestJS migrations must keep
+`RESOLVER_ENABLED=0`.
 
 If you enable it:
 - set `RESOLVER_ENABLED=1`
@@ -124,18 +124,10 @@ If you enable it:
 
 ## Backend Contract
 
-The frontend can run in multiple modes.
-
-Anonymous-only mode:
-- `VITE_ENABLE_AUTH=0`
-- backend file routes only
-
-Full feature mode:
-- upload/list/delete/meta routes
-- `/auth/*`
-- `/auth/passkeys/*` if passkeys are enabled
-- `/resolve/{token}` or equivalent resolver path
-- `/token-owner` if token-owner hydration is enabled
+The native NestJS backend provides upload, list, delete, metadata, token-owner,
+public file, `/auth/*`, ShareX, and admin routes. Passkey routes are available
+when passkeys are enabled. Browser pages remain path-based SPA routes such as
+`/files`, `/history`, `/login`, `/register`, and `/admin`.
 
 ## Validation Checklist
 
@@ -146,3 +138,5 @@ After changing env or deployment routing, validate:
 - a public preview link opens
 - raw/download links resolve correctly
 - auth, passkeys, and token lifecycle commands only if those features are enabled
+- ShareX configuration downloads and performs a multipart upload
+- SQLite and upload filesystem paths remain mounted after container replacement

@@ -11,7 +11,9 @@ server {
 }
 ```
 
-The bundled UI proxy handles API, auth, resolver, and public raw paths.
+The bundled UI proxy handles the native NestJS API, auth, public-link
+resolution, and public raw paths. Browser routes such as `/files`, `/history`,
+`/login`, `/register`, and `/admin` receive the SPA shell.
 Validate with `nginx -t` before reload.
 
 ## Split Host
@@ -21,3 +23,6 @@ Expose the NestJS API through a separate TLS server block at
 public file byte requests to that API host and apply SPA fallback only after
 API/auth/raw route matching. Configure exact CORS and CSP values from
 `docs/deployment/production.md`.
+
+Do not cache `index.html`, API/auth responses, metadata, or 404s. Fingerprinted
+files under `/assets/` are the appropriate cacheable surface.
