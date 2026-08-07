@@ -1136,10 +1136,19 @@ export async function resolveFileLookup(tokenOrFileName: string, origin = public
       lastError = await responseDetail(response, 'Could not resolve the file URL')
       continue
     }
-    const payload = await readJson<{ file_name?: string; uploader?: unknown; owner?: unknown }>(response, 'Could not resolve the file URL')
-    if (!payload.file_name || typeof payload.file_name !== 'string') throw new Error('Could not resolve the file URL')
-    const uploader = normalizeResolvedUploader(payload.uploader) ?? normalizeResolvedUploader(payload.owner)
-    return { fileName: payload.file_name, uploader }
+    try {
+      const payload = await readJson<{ file_name?: string; uploader?: unknown; owner?: unknown }>(response, 'Could not resolve the file URL')
+      if (!payload.file_name || typeof payload.file_name !== 'string') {
+        lastError = 'Could not resolve the file URL'
+        continue
+      }
+      const uploader = normalizeResolvedUploader(payload.uploader) ?? normalizeResolvedUploader(payload.owner)
+      return { fileName: payload.file_name, uploader }
+    } catch {
+      // A SPA fallback or another non-JSON resolver response should not block
+      // the next compatible resolver endpoint.
+      lastError = 'Could not resolve the file URL'
+    }
   }
   throw new Error(sawNotFound ? 'File not found or expired' : lastError)
 }

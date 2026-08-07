@@ -271,10 +271,11 @@ async function submitPasswordChange() {
         {{ downloading ? 'Generating…' : 'Download .sxcu' }}
       </button>
     </div>
-    <div v-if="hasAccount && publicSettings.passkeys_enabled" class="field">
+    <div v-if="hasAccount" class="field">
       <label>Passkeys</label>
+      <p v-if="!publicSettings.passkeys_enabled" class="field-hint">Passkey sign-in is disabled by the administrator. Existing passkeys can still be removed.</p>
       <button class="btn-primary passkey-open-btn" type="button" data-testid="open-passkey-modal" @click="openPasskeyModal">
-        <span>Add passkey</span>
+        <span>Manage passkeys</span>
       </button>
     </div>
 
@@ -314,9 +315,10 @@ async function submitPasswordChange() {
       </div>
       <p class="passkey-copy">Use passkeys for passwordless login on supported devices and managers.</p>
 
-      <button class="btn-primary passkey-add-btn" type="button" data-testid="passkey-add-btn" :disabled="passkeyBusy" @click="registerPasskey">
+      <button v-if="publicSettings.passkeys_enabled" class="btn-primary passkey-add-btn" type="button" data-testid="passkey-add-btn" :disabled="passkeyBusy" @click="registerPasskey">
         {{ passkeyBusy ? 'Working…' : 'Add passkey' }}
       </button>
+      <div v-else class="passkey-state">Passkey sign-in and registration are disabled.</div>
 
       <div v-if="passkeyLoading" class="passkey-state">Loading passkeys…</div>
       <div v-else-if="!passkeys.length" class="passkey-state">No passkeys yet.</div>

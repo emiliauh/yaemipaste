@@ -3440,6 +3440,46 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
   await expect(page.getByTestId('passkey-add-btn')).toBeVisible()
 })
 
+test('settings keeps passkey removal available while sign-in is disabled', async ({ page }) => {
+  await signInWithAccount(page)
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: true,
+        base_api_url: '',
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'private',
+        passkeys_enabled: false,
+      }),
+    })
+  })
+  let deleted = false
+  await page.route('**/auth/passkeys', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: 7, credential_id: 'disabled-passkey', created_at: 1_775_000_000, last_used_at: null, transports: ['internal'] }]),
+    })
+  })
+  await page.route('**/auth/passkeys/7', async (route) => {
+    deleted = true
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ detail: 'Passkey deleted' }) })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'Preferences' }).click()
+  await page.getByTestId('open-passkey-modal').click()
+  await expect(page.getByTestId('passkey-add-btn')).toHaveCount(0)
+  await page.getByTestId('passkey-row').getByRole('button', { name: 'Delete' }).click()
+  await expect.poll(() => deleted).toBeTruthy()
+})
+
 test('admin Preferences control opens and fades closed on desktop and mobile', async ({ page }) => {
   await signInAsAdmin(page)
   await mockAdminApi(page)
@@ -4666,6 +4706,13 @@ test('admin copy link opens an anonymous upload with an expiry storage suffix', 
   await page.route('**/auth/admin/uploads**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([anonymousUpload]) })
+  })
+  await page.route('**/resolve/rmIRgRJG**', async (route) => {
+    if (new URL(route.request().url()).pathname !== '/resolve/rmIRgRJG') {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><body>SPA shell</body></html>' })
   })
   await page.route('**/api/resolve/rmIRgRJG**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ file_name: 'rmIRgRJG.txt.1785698019153', uploader: null }) })

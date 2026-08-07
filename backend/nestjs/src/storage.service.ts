@@ -131,7 +131,7 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
   private metadataPath(root: string, fileName: string) { return join(root, '.rpmeta', `${fileName.replaceAll('/', '_')}.json`) }
 
   writeMetadata(root: string, storedName: string, metadata: UploadMetadata) {
-    if (!metadata.keep_file_name && !metadata.uploader.trim() && !metadata.source.trim()) return
+    if (!metadata.keep_file_name && !metadata.uploader.trim() && !metadata.source.trim() && !metadata.password_salt?.trim()) return
     mkdirSync(join(root, '.rpmeta'), { recursive: true })
     const body = {
       display_name: metadata.keep_file_name && metadata.original_name.trim() ? metadata.original_name.trim() : undefined,
@@ -308,7 +308,7 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     const roots = [this.root, ...readdirSync(this.root, { withFileTypes: true }).filter(entry => entry.isDirectory() && !hiddenDirs.has(entry.name)).map(entry => join(this.root, entry.name))]
     return roots.flatMap(root => [root, join(root, 'oneshot'), join(root, 'url'), join(root, 'oneshot_url')]).flatMap(directory => {
       if (!existsSync(directory)) return []
-      const root = roots.find(candidate => directory === candidate || directory.startsWith(`${candidate}/`)) ?? this.root
+      const root = roots.filter(candidate => directory === candidate || directory.startsWith(`${candidate}/`)).sort((a, b) => b.length - a.length)[0] ?? this.root
       return readdirSync(directory, { withFileTypes: true }).filter(entry => entry.isFile() && !entry.name.startsWith('.')).map(entry => ({ path: join(directory, entry.name), root, name: entry.name }))
     })
   }
