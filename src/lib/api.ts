@@ -1326,6 +1326,13 @@ export function adminCreateUser(payload: { username: string; password: string; u
   }, 'Could not create user')
 }
 
+export function adminCreateRegistrationToken(payload: { label?: string; ttl_seconds?: number }) {
+  return adminRequest<{ detail: string; token: string; label: string; expires_at: number | null }>('/registration-tokens', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, 'Could not create registration token')
+}
+
 export function adminUpdateUser(username: string, payload: { suspended?: boolean; suspension_reason?: string; is_admin?: boolean }) {
   return adminRequest<{ detail: string }>(`/users/${encodeURIComponent(username)}`, {
     method: 'PATCH',

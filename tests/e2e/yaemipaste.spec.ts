@@ -259,6 +259,15 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(users) })
   })
+  await page.route('**/auth/admin/registration-tokens', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    expect(route.request().postDataJSON()).toEqual({ label: 'contractor invite', ttl_seconds: 3600 })
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'created', token: 'single-use-registration-token', label: 'contractor invite', expires_at: 1_775_000_000 }),
+    })
+  })
   await page.route('**/auth/admin/users/*/token', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     await route.fulfill({
@@ -4028,6 +4037,25 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   )
   await saveSettings.click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('admin generates a single-use registration token with expiration', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await mockClipboard(page)
+
+  await page.goto('/admin/users')
+  await page.locator('.create-mode-tabs').getByRole('tab', { name: 'Token' }).last().click()
+  await page.getByLabel('Token label').fill('contractor invite')
+  await page.getByLabel('Token expiration').selectOption('3600')
+  await page.getByRole('button', { name: 'Generate token' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Registration token ready' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('single-use-registration-token', { exact: true })).toBeVisible()
+  await expect(dialog).toContainText('Expires')
+  await dialog.getByRole('button', { name: 'Copy token' }).click()
+  await expect(dialog.getByRole('button', { name: 'Copied' })).toBeVisible()
 })
 
 test('admin paginates recent webhook deliveries', async ({ page }) => {

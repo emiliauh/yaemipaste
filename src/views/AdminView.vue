@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   adminBulkDeleteUploads,
   adminUploadContentUrl,
+  adminCreateRegistrationToken,
   adminCreateUser,
   adminCreateWebhook,
   adminDeleteUpload,
@@ -70,8 +71,17 @@ const settingsTrigger = ref<HTMLElement | null>(null)
 const confirmationRequest = ref<ConfirmationRequest | null>(null)
 const confirmationAcknowledged = ref(false)
 const confirmationBusy = ref(false)
-const tokenDialog = ref<{ username: string; token: string } | null>(null)
+const tokenDialog = ref<{ username: string; token: string; kind: 'upload' | 'registration'; expiresAt: number | null } | null>(null)
 const tokenCopied = ref(false)
+const createMode = ref<'user' | 'token'>('user')
+const newRegistrationToken = ref({ label: '', ttl_seconds: '86400' })
+const registrationTokenExpiryOptions = [
+  { value: '3600', label: '1 hour' },
+  { value: '86400', label: '24 hours' },
+  { value: '604800', label: '7 days' },
+  { value: '2592000', label: '30 days' },
+  { value: '0', label: 'Never' },
+]
 const initialAdminData = peekAdminData()
 const loading = ref(!initialAdminData)
 const error = ref('')
@@ -433,8 +443,8 @@ async function submitConfirmation() {
   }
 }
 
-function showTokenDialog(username: string, token: string) {
-  tokenDialog.value = { username, token }
+function showTokenDialog(username: string, token: string, options: { kind?: 'upload' | 'registration'; expiresAt?: number | null } = {}) {
+  tokenDialog.value = { username, token, kind: options.kind ?? 'upload', expiresAt: options.expiresAt ?? null }
   tokenCopied.value = false
 }
 
@@ -554,6 +564,22 @@ async function createUser() {
     showTokenDialog(username, result.upload_token)
     newUser.value = { username: '', password: '', upload_token: '', is_admin: false }
   }, 'User created')
+}
+
+async function createRegistrationToken() {
+  await runAction(async () => {
+    const result = await adminCreateRegistrationToken({
+      label: newRegistrationToken.value.label.trim() || undefined,
+      ttl_seconds: Number(newRegistrationToken.value.ttl_seconds),
+    })
+    showTokenDialog('single-use registration', result.token, { kind: 'registration', expiresAt: result.expires_at })
+    newRegistrationToken.value = { label: '', ttl_seconds: '86400' }
+  }, 'Registration token created')
+}
+
+async function submitCreateMode() {
+  if (createMode.value === 'token') await createRegistrationToken()
+  else await createUser()
 }
 
 async function rotateToken(username: string) {
@@ -869,14 +895,41 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-if="tab === 'Users'" class="stack">
-      <form class="card form-grid" @submit.prevent="createUser">
-        <h2>Create user</h2>
-        <input v-model="newUser.username" placeholder="username" />
-        <input v-model="newUser.password" type="password" placeholder="password" />
-        <input v-model="newUser.upload_token" type="password" placeholder="custom upload token (optional)" />
-        <label class="inline-check"><input v-model="newUser.is_admin" type="checkbox" /> administrator</label>
-        <button class="btn-orange" type="submit">Create user</button>
-      </form>
+      <div class="card create-user-card">
+        <div class="card-heading">
+          <div>
+            <h2>Create user</h2>
+            <p class="subtle">Create an account or generate a single-use registration token.</p>
+          </div>
+        </div>
+        <div class="create-mode-tabs" role="tablist" aria-label="Create user or token">
+          <button class="btn-ghost" :class="{ active: createMode === 'user' }" type="button" role="tab" :aria-selected="createMode === 'user'" @click="createMode = 'user'">User</button>
+          <button class="btn-ghost" :class="{ active: createMode === 'token' }" type="button" role="tab" :aria-selected="createMode === 'token'" @click="createMode = 'token'">Token</button>
+        </div>
+        <form class="form-grid" @submit.prevent="submitCreateMode">
+          <template v-if="createMode === 'user'">
+            <input v-model="newUser.username" placeholder="username" aria-label="username" />
+            <input v-model="newUser.password" type="password" placeholder="password" aria-label="password" />
+            <input v-model="newUser.upload_token" type="password" placeholder="custom upload token (optional)" aria-label="custom upload token (optional)" />
+            <label class="inline-check"><input v-model="newUser.is_admin" type="checkbox" /> administrator</label>
+            <button class="btn-orange" type="submit">Create user</button>
+          </template>
+          <template v-else>
+            <label>
+              Token label
+              <input v-model="newRegistrationToken.label" placeholder="e.g. contractor invite" aria-label="Token label" />
+            </label>
+            <label>
+              Expires
+              <select v-model="newRegistrationToken.ttl_seconds" aria-label="Token expiration">
+                <option v-for="option in registrationTokenExpiryOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+            </label>
+            <p class="subtle token-help">This token can be used once to create one account. It will be shown only once after generation.</p>
+            <button class="btn-orange" type="submit">Generate token</button>
+          </template>
+        </form>
+      </div>
 
       <div class="card">
         <h2>Users</h2>
@@ -1265,11 +1318,12 @@ onBeforeUnmount(() => {
         <div class="token-dialog-header">
           <div>
             <p class="eyebrow">One-time credential</p>
-            <h2 id="token-dialog-title">Upload token ready</h2>
+            <h2 id="token-dialog-title">{{ tokenDialog.kind === 'registration' ? 'Registration token ready' : 'Upload token ready' }}</h2>
           </div>
           <button class="btn-ghost" type="button" aria-label="Close token dialog" @click="tokenDialog = null">✕</button>
         </div>
-        <p class="subtle">Token for {{ tokenDialog.username }}. Save it now; it will not be shown again.</p>
+        <p class="subtle">{{ tokenDialog.kind === 'registration' ? 'This single-use token can create one account.' : `Token for ${tokenDialog.username}.` }} Save it now; it will not be shown again.</p>
+        <p v-if="tokenDialog.expiresAt" class="subtle token-expiry">Expires {{ formatTimestamp(tokenDialog.expiresAt) }}</p>
         <code class="token-value">{{ tokenDialog.token }}</code>
         <div class="token-dialog-actions">
           <button class="btn-ghost" type="button" @click="copyToken">{{ tokenCopied ? 'Copied' : 'Copy token' }}</button>
@@ -1507,6 +1561,31 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .form-grid {
   display: grid;
   gap: var(--space-3);
+}
+.create-user-card {
+  display: grid;
+  gap: var(--space-3);
+}
+.create-mode-tabs {
+  display: inline-flex;
+  width: fit-content;
+  gap: var(--space-1);
+  padding: 3px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.create-mode-tabs button {
+  min-width: 84px;
+  border-color: transparent;
+}
+.create-mode-tabs button.active {
+  border-color: var(--border2);
+  background: var(--surface2);
+  color: var(--text);
+}
+.token-help {
+  margin: 0;
 }
 .form-grid label {
   display: grid;
@@ -2227,6 +2306,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-4);
+}
+.token-expiry {
+  margin-top: var(--space-2);
 }
 @media (max-width: 760px) {
   .workspace { padding: var(--space-4); }

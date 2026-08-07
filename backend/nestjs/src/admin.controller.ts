@@ -109,6 +109,20 @@ export class AdminController {
     return { detail: 'User created', username: created.username, upload_token: created.token }
   }
 
+  @Post('registration-tokens')
+  @HttpCode(200)
+  createRegistrationToken(@Req() request: Request, @Body() body: { label?: string; ttl_seconds?: number | string | null }) {
+    const actor = this.actor(request)
+    const rawTtl = body.ttl_seconds
+    const ttlSeconds = rawTtl == null || rawTtl === '' ? undefined : Number(rawTtl)
+    if (ttlSeconds != null && (!Number.isSafeInteger(ttlSeconds) || ttlSeconds < 0)) throw apiError(400, 'Token expiration must be a non-negative number of seconds')
+    const label = String(body.label ?? '').trim() || 'generated'
+    const token = this.auth.createRegistrationToken(label, ttlSeconds)
+    const expiresAt = this.db.get<{ expires_at: number | null }>('SELECT expires_at FROM registration_tokens WHERE token=?', [token])?.expires_at ?? null
+    this.auth.audit(actor.username, 'admin.registration_token.create', label, 'success')
+    return { detail: 'Registration token created', token, label, expires_at: expiresAt }
+  }
+
   @Patch('users/:username') updateUser(@Req() request: Request, @Param('username') username: string, @Body() body: { suspended?: boolean; suspension_reason?: string; is_admin?: boolean }) { const actor = this.actor(request); const result = this.auth.updateUser(username, body, actor); this.auth.audit(actor.username, 'admin.user.update', username, 'success'); return result }
 
   @Post('users/:username/token')

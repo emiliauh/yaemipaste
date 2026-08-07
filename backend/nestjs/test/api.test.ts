@@ -156,6 +156,14 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.equal(expiringMeta.response.status, 200)
     assert.equal(expiringMeta.json.display_name, 'expiring-original.txt')
 
+    const oneSecondForm = new FormData()
+    oneSecondForm.append('file', new Blob(['one second']), 'one-second-expiry.txt')
+    const oneSecondUpload = await request('/', { method: 'POST', headers: { Authorization: pasteToken, Expire: '1s' }, body: oneSecondForm })
+    assert.equal(oneSecondUpload.response.status, 200)
+    assert.equal((await request('/one-second-expiry.txt?raw=1')).response.status, 200)
+    await new Promise(resolve => setTimeout(resolve, 1_100))
+    assert.equal((await request('/one-second-expiry.txt?raw=1')).response.status, 404)
+
     const passwordOnlyForm = new FormData()
     passwordOnlyForm.append('meta', JSON.stringify({ passwordSalt: '0123456789abcdefghijkl' }))
     passwordOnlyForm.append('file', new Blob(['password-only metadata']), 'password-only.txt')
@@ -186,6 +194,13 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.equal(revokedRegistration.response.status, 200)
     const usedAfterRevoke = await request('/auth/token/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: registrationToken }) })
     assert.equal(usedAfterRevoke.json.status, 'used')
+    const expiringRegistration = await request('/auth/admin/registration-tokens', { method: 'POST', headers: { Authorization: `Bearer ${adminJwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ label: 'one-second-registration', ttl_seconds: 1 }) })
+    assert.equal(expiringRegistration.response.status, 200, expiringRegistration.text)
+    assert.equal(expiringRegistration.json.label, 'one-second-registration')
+    const expiringToken = expiringRegistration.json.token
+    assert.equal((await request('/auth/token/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: expiringToken }) })).json.status, 'available')
+    await new Promise(resolve => setTimeout(resolve, 1_100))
+    assert.equal((await request('/auth/token/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: expiringToken }) })).json.status, 'invalid')
     const aliceLogin = await request('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'alice', password: 'secret123' }) })
     assert.equal(aliceLogin.response.status, 200)
     const aliceJwt = aliceLogin.json.access_token
@@ -337,7 +352,7 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
   })
 })
 
-describe('outbound address policy', () => {
+describe('outbound address policy', { concurrency: false }, () => {
   test('permits only globally routable unicast addresses', () => {
     for (const address of ['8.8.8.8', '1.1.1.1', '2606:4700:4700::1111']) assert.equal(blockedAddress(address), false, address)
     for (const address of [
