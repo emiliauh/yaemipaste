@@ -1265,6 +1265,17 @@ export interface AdminClaimStatus {
   claim_available: boolean
 }
 
+export interface AdminRegistrationToken {
+  token_ref: string
+  label: string
+  created_at: number
+  expires_at: number | null
+  revoked_at: number | null
+  status: 'available' | 'used' | 'expired' | 'revoked'
+  used_by: string | null
+  used_at: number | null
+}
+
 export interface AdminClaimInitResponse {
   token: string | null
   expires_at: number | null
@@ -1331,6 +1342,16 @@ export function adminCreateRegistrationToken(payload: { label?: string; ttl_seco
     method: 'POST',
     body: JSON.stringify(payload),
   }, 'Could not create registration token')
+}
+
+export function adminListRegistrationTokens() {
+  return adminRequest<AdminRegistrationToken[]>('/registration-tokens', {}, 'Could not load registration tokens')
+}
+
+export function adminRevokeRegistrationToken(tokenRef: string) {
+  return adminRequest<{ detail: string }>(`/registration-tokens/${encodeURIComponent(tokenRef)}`, {
+    method: 'DELETE',
+  }, 'Could not revoke registration token')
 }
 
 export function adminUpdateUser(username: string, payload: { suspended?: boolean; suspension_reason?: string; is_admin?: boolean }) {

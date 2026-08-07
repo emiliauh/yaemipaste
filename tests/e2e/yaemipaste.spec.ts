@@ -259,14 +259,35 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(users) })
   })
-  await page.route('**/auth/admin/registration-tokens', async (route) => {
+  let registrationTokenList = [{
+    token_ref: 'registration-ref',
+    label: 'contractor invite',
+    created_at: 1_774_900_000,
+    expires_at: 1_775_000_000,
+    revoked_at: null,
+    status: 'available',
+    used_by: null,
+    used_at: null,
+  }]
+  await page.route('**/auth/admin/registration-tokens**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(registrationTokenList) })
+      return
+    }
+    expect(route.request().method()).toBe('POST')
     expect(route.request().postDataJSON()).toEqual({ label: 'contractor invite', ttl_seconds: 3600 })
+    registrationTokenList = [{ ...registrationTokenList[0], label: 'contractor invite' }, ...registrationTokenList]
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ detail: 'created', token: 'single-use-registration-token', label: 'contractor invite', expires_at: 1_775_000_000 }),
     })
+  })
+  await page.route('**/auth/admin/registration-tokens/*', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    expect(route.request().method()).toBe('DELETE')
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ detail: 'revoked' }) })
   })
   await page.route('**/auth/admin/users/*/token', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
@@ -4047,7 +4068,8 @@ test('admin generates a single-use registration token with expiration', async ({
   await page.goto('/admin/users')
   await page.locator('.create-mode-tabs').getByRole('tab', { name: 'Token' }).last().click()
   await page.getByLabel('Token label').fill('contractor invite')
-  await page.getByLabel('Token expiration').selectOption('3600')
+  await page.getByRole('button', { name: 'Token expiration' }).click()
+  await page.getByRole('option', { name: '1 hour' }).click()
   await page.getByRole('button', { name: 'Generate token' }).click()
 
   const dialog = page.getByRole('dialog', { name: 'Registration token ready' })
@@ -4056,6 +4078,10 @@ test('admin generates a single-use registration token with expiration', async ({
   await expect(dialog).toContainText('Expires')
   await dialog.getByRole('button', { name: 'Copy token' }).click()
   await expect(dialog.getByRole('button', { name: 'Copied' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByRole('heading', { name: 'Registration tokens' }).last()).toBeVisible()
+  await expect(page.getByText('Active', { exact: true }).last()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Revoke contractor invite token' }).last()).toBeVisible()
 })
 
 test('admin paginates recent webhook deliveries', async ({ page }) => {

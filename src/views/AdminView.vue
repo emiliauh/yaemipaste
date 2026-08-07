@@ -6,6 +6,8 @@ import {
   adminUploadContentUrl,
   adminCreateRegistrationToken,
   adminCreateUser,
+  adminListRegistrationTokens,
+  adminRevokeRegistrationToken,
   adminCreateWebhook,
   adminDeleteUpload,
   adminDeleteUser,
@@ -29,6 +31,7 @@ import {
   type AdminAuditEntry,
   type AdminDashboard,
   type AdminSettings,
+  type AdminRegistrationToken,
   type AdminUpload,
   type AdminUser,
   type AdminWebhook,
@@ -75,6 +78,10 @@ const tokenDialog = ref<{ username: string; token: string; kind: 'upload' | 'reg
 const tokenCopied = ref(false)
 const createMode = ref<'user' | 'token'>('user')
 const newRegistrationToken = ref({ label: '', ttl_seconds: '86400' })
+const registrationTokens = ref<AdminRegistrationToken[]>([])
+const registrationTokensLoading = ref(false)
+const registrationExpiryOpen = ref(false)
+const registrationExpiryPicker = ref<HTMLElement | null>(null)
 const registrationTokenExpiryOptions = [
   { value: '3600', label: '1 hour' },
   { value: '86400', label: '24 hours' },
@@ -82,6 +89,11 @@ const registrationTokenExpiryOptions = [
   { value: '2592000', label: '30 days' },
   { value: '0', label: 'Never' },
 ]
+const selectedRegistrationExpiry = computed(() => (
+  registrationTokenExpiryOptions.find((option) => option.value === newRegistrationToken.value.ttl_seconds)
+  ?? registrationTokenExpiryOptions[0]
+))
+const activeRegistrationTokenCount = computed(() => registrationTokens.value.filter((token) => token.status === 'available').length)
 const initialAdminData = peekAdminData()
 const loading = ref(!initialAdminData)
 const error = ref('')
@@ -448,6 +460,52 @@ function showTokenDialog(username: string, token: string, options: { kind?: 'upl
   tokenCopied.value = false
 }
 
+function selectRegistrationExpiry(value: string) {
+  newRegistrationToken.value.ttl_seconds = value
+  registrationExpiryOpen.value = false
+}
+
+function closeRegistrationExpiryOnOutsidePointer(event: PointerEvent) {
+  if (!registrationExpiryOpen.value) return
+  const target = event.target as Node | null
+  if (registrationExpiryPicker.value && !registrationExpiryPicker.value.contains(target)) registrationExpiryOpen.value = false
+}
+
+function registrationTokenStatusLabel(token: AdminRegistrationToken): string {
+  return token.status === 'available' ? 'Active' : token.status.charAt(0).toUpperCase() + token.status.slice(1)
+}
+
+function registrationTokenSummary(token: AdminRegistrationToken): string {
+  const created = `Created ${formatTimestamp(token.created_at)}`
+  if (token.used_by) return `Used by ${token.used_by} · ${created}`
+  if (token.status === 'expired') return `Expired ${formatTimestamp(token.expires_at)} · ${created}`
+  if (token.expires_at) return `Expires ${formatTimestamp(token.expires_at)} · ${created}`
+  return `No expiration · ${created}`
+}
+
+async function loadRegistrationTokens() {
+  registrationTokensLoading.value = true
+  try {
+    registrationTokens.value = await adminListRegistrationTokens()
+  } catch (e: any) {
+    if (tab.value === 'Users') error.value = e.message ?? 'Could not load registration tokens'
+  } finally {
+    registrationTokensLoading.value = false
+  }
+}
+
+function requestRegistrationTokenRevoke(token: AdminRegistrationToken) {
+  if (token.status !== 'available') return
+  requestConfirmation({
+    title: 'Revoke registration token?',
+    message: 'This invitation will stop working immediately.',
+    detail: token.label,
+    confirmLabel: 'Revoke token',
+    success: 'Registration token revoked',
+    work: () => adminRevokeRegistrationToken(token.token_ref),
+  })
+}
+
 async function copyToken() {
   if (!tokenDialog.value) return
   try {
@@ -489,6 +547,7 @@ async function refreshAll(showLoading = true) {
       // Secrets are intentionally write-only: never repopulate one from the API.
       turnstile_secret_key: '',
     }
+    if (tab.value === 'Users') await loadRegistrationTokens()
   } catch (e: any) {
     if (sequence === refreshSequence) error.value = e.message ?? 'Could not load admin data'
   } finally {
@@ -758,6 +817,7 @@ watch(tab, async (nextTab) => {
   await nextTick()
   if (nextTab === 'Users') usersTableScroll.value?.scrollTo({ left: 0 })
   if (nextTab === 'Uploads') uploadsTableScroll.value?.scrollTo({ left: 0 })
+  if (nextTab === 'Users') void loadRegistrationTokens()
 })
 
 watch(pagedUsers, (nextUsers) => {
@@ -770,6 +830,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', refreshAdminWhenVisible)
   window.addEventListener('focus', refreshAdminWhenVisible)
   document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
+  document.addEventListener('pointerdown', closeRegistrationExpiryOnOutsidePointer)
   window.addEventListener('blur', hideUploadHover)
   window.addEventListener('scroll', hideUploadHover, true)
   window.addEventListener('resize', repositionUserRowMenu)
@@ -780,6 +841,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', refreshAdminWhenVisible)
   window.removeEventListener('focus', refreshAdminWhenVisible)
   document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
+  document.removeEventListener('pointerdown', closeRegistrationExpiryOnOutsidePointer)
   window.removeEventListener('blur', hideUploadHover)
   window.removeEventListener('scroll', hideUploadHover, true)
   window.removeEventListener('resize', repositionUserRowMenu)
@@ -919,16 +981,66 @@ onBeforeUnmount(() => {
               Token label
               <input v-model="newRegistrationToken.label" placeholder="e.g. contractor invite" aria-label="Token label" />
             </label>
-            <label>
-              Expires
-              <select v-model="newRegistrationToken.ttl_seconds" aria-label="Token expiration">
-                <option v-for="option in registrationTokenExpiryOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-              </select>
-            </label>
-            <p class="subtle token-help">This token can be used once to create one account. It will be shown only once after generation.</p>
+            <div ref="registrationExpiryPicker" class="registration-expiry-picker" :class="{ open: registrationExpiryOpen }">
+              <button
+                class="registration-expiry-trigger"
+                type="button"
+                aria-label="Token expiration"
+                aria-haspopup="listbox"
+                :aria-expanded="registrationExpiryOpen"
+                aria-controls="registration-expiry-menu"
+                @click="registrationExpiryOpen = !registrationExpiryOpen"
+                @keydown.escape.prevent="registrationExpiryOpen = false"
+              >
+                <span><small>Expires</small><strong>{{ selectedRegistrationExpiry.label }}</strong></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+              </button>
+              <div v-if="registrationExpiryOpen" id="registration-expiry-menu" class="registration-expiry-menu" role="listbox" aria-label="Token expiration">
+                <button
+                  v-for="option in registrationTokenExpiryOptions"
+                  :key="option.value"
+                  type="button"
+                  role="option"
+                  :aria-selected="option.value === newRegistrationToken.ttl_seconds"
+                  :class="{ selected: option.value === newRegistrationToken.ttl_seconds }"
+                  @click="selectRegistrationExpiry(option.value)"
+                >
+                  {{ option.label }} <span v-if="option.value === newRegistrationToken.ttl_seconds" aria-hidden="true">✓</span>
+                </button>
+              </div>
+            </div>
+            <p class="subtle token-help">This token can be used once to create one account.</p>
             <button class="btn-orange" type="submit">Generate token</button>
           </template>
         </form>
+      </div>
+
+      <div class="card registration-token-list-card">
+        <div class="card-heading">
+          <div>
+            <h2>Registration tokens</h2>
+            <p class="subtle">Single-use invitations for creating accounts.</p>
+          </div>
+          <span class="registration-token-count">{{ activeRegistrationTokenCount }} active</span>
+        </div>
+        <div v-if="registrationTokensLoading" class="empty-state registration-token-empty">Loading tokens…</div>
+        <div v-else-if="registrationTokens.length" class="registration-token-list">
+          <article v-for="token in registrationTokens" :key="token.token_ref" class="registration-token-row" :class="`status-${token.status}`">
+            <div class="registration-token-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8.5 14.5 14 9a3.5 3.5 0 1 1 5 5l-4 4a3.5 3.5 0 0 1-5-5l1.5-1.5"/><path d="m5 19 4-4"/></svg>
+            </div>
+            <div class="registration-token-main">
+              <strong>{{ token.label }}</strong>
+              <span>{{ registrationTokenSummary(token) }}</span>
+            </div>
+            <span class="registration-token-status" :class="token.status"><i aria-hidden="true"></i>{{ registrationTokenStatusLabel(token) }}</span>
+            <button v-if="token.status === 'available'" class="btn-ghost btn-sm" type="button" :aria-label="`Revoke ${token.label} token`" @click="requestRegistrationTokenRevoke(token)">Revoke</button>
+          </article>
+        </div>
+        <div v-else class="empty-state registration-token-empty">
+          <strong>No registration tokens yet</strong>
+          <span>Generate one above.</span>
+        </div>
       </div>
 
       <div class="card">
@@ -1587,6 +1699,139 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .token-help {
   margin: 0;
 }
+.registration-expiry-picker {
+  position: relative;
+  width: min(100%, 190px);
+}
+.registration-expiry-trigger {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 7px 10px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text);
+  text-align: left;
+}
+.registration-expiry-trigger:hover,
+.registration-expiry-picker.open .registration-expiry-trigger {
+  border-color: var(--accent);
+  background: var(--surface3);
+}
+.registration-expiry-trigger span { display: grid; gap: 2px; }
+.registration-expiry-trigger small { color: var(--text2); font-size: 10px; line-height: 1; }
+.registration-expiry-trigger strong { font-size: var(--fs-sm); line-height: 1.2; }
+.registration-expiry-trigger svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: var(--text2);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  transition: transform .15s ease;
+}
+.registration-expiry-picker.open .registration-expiry-trigger svg { transform: rotate(180deg); }
+.registration-expiry-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  min-width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 14px 28px #0007;
+}
+.registration-expiry-menu button {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  text-align: left;
+}
+.registration-expiry-menu button:hover,
+.registration-expiry-menu button.selected {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+  color: var(--text);
+}
+.registration-expiry-menu button span { color: var(--accent-h); }
+.registration-token-list-card { display: grid; gap: var(--space-3); }
+.registration-token-count {
+  align-self: center;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface2));
+  color: var(--accent-h);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.registration-token-list { display: grid; gap: var(--space-2); }
+.registration-token-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface2) 55%, transparent);
+}
+.registration-token-mark {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface2));
+  color: var(--accent-h);
+  font-size: 19px;
+}
+.registration-token-mark svg { width: 17px; height: 17px; }
+.registration-token-main { min-width: 0; display: grid; gap: 3px; }
+.registration-token-main strong { overflow: hidden; color: var(--text); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
+.registration-token-main span { overflow: hidden; color: var(--text2); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+.registration-token-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.registration-token-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.registration-token-status.expired,
+.registration-token-status.revoked { color: var(--text3); }
+.registration-token-status.used { color: var(--accent-h); }
+.registration-token-row.status-expired,
+.registration-token-row.status-revoked { opacity: .78; }
+.registration-token-empty {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: var(--space-4) var(--space-2);
+}
+.registration-token-empty strong { color: var(--text); font-size: var(--fs-sm); }
+.registration-token-empty span { color: var(--text2); }
 .form-grid label {
   display: grid;
   gap: var(--space-1);
@@ -2332,6 +2577,16 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .webhook-endpoint-actions button {
     width: 100%;
   }
+  .registration-token-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .registration-token-status {
+    grid-column: 2;
+  }
+  .registration-token-row > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
 }
 @media (min-width: 601px) and (max-width: 960px) {
   .layout {
@@ -2382,6 +2637,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .admin-layout select,
   .admin-layout input:not([type="checkbox"]) {
     min-height: 40px;
+  }
+  .registration-expiry-picker {
+    width: 100%;
   }
   .admin-layout input[type="checkbox"] {
     width: 18px;

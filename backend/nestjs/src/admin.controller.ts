@@ -123,6 +123,48 @@ export class AdminController {
     return { detail: 'Registration token created', token, label, expires_at: expiresAt }
   }
 
+  @Get('registration-tokens')
+  listRegistrationTokens(@Req() request: Request) {
+    this.actor(request)
+    const now = nowSeconds()
+    const rows = this.db.query<{ token: string; label: string | null; created_at: number; expires_at: number | null; revoked_at: number | null }>('SELECT token,label,created_at,expires_at,revoked_at FROM registration_tokens ORDER BY created_at DESC')
+    const tokens = rows.map(row => {
+      const usedBy = this.auth.userByToken(row.token)
+      const status = row.revoked_at != null
+        ? 'revoked'
+        : usedBy
+          ? 'used'
+          : row.expires_at != null && row.expires_at <= now
+            ? 'expired'
+            : 'available'
+      return {
+        token_ref: createHash('sha256').update(row.token).digest('hex'),
+        label: row.label || 'generated',
+        created_at: Number(row.created_at),
+        expires_at: row.expires_at == null ? null : Number(row.expires_at),
+        revoked_at: row.revoked_at == null ? null : Number(row.revoked_at),
+        status,
+        used_by: usedBy?.username ?? null,
+        used_at: usedBy?.created_at ?? null,
+      }
+    }).sort((left, right) => {
+      const rank = { available: 0, used: 1, expired: 2, revoked: 3 } as Record<string, number>
+      return (rank[left.status] - rank[right.status]) || (right.created_at - left.created_at)
+    })
+    return tokens
+  }
+
+  @Delete('registration-tokens/:tokenRef')
+  revokeRegistrationToken(@Req() request: Request, @Param('tokenRef') tokenRef: string) {
+    const actor = this.actor(request)
+    const row = this.db.query<{ token: string; expires_at: number | null; revoked_at: number | null }>('SELECT token,expires_at,revoked_at FROM registration_tokens').find(item => createHash('sha256').update(item.token).digest('hex') === tokenRef)
+    if (!row) throw apiError(404, 'Registration token not found')
+    if (row.revoked_at != null || (row.expires_at != null && row.expires_at <= nowSeconds()) || this.auth.userByToken(row.token)) throw apiError(409, 'Registration token is no longer active')
+    this.auth.revokeToken(row.token)
+    this.auth.audit(actor.username, 'admin.registration_token.revoke', tokenRef, 'success')
+    return { detail: 'Registration token revoked' }
+  }
+
   @Patch('users/:username') updateUser(@Req() request: Request, @Param('username') username: string, @Body() body: { suspended?: boolean; suspension_reason?: string; is_admin?: boolean }) { const actor = this.actor(request); const result = this.auth.updateUser(username, body, actor); this.auth.audit(actor.username, 'admin.user.update', username, 'success'); return result }
 
   @Post('users/:username/token')
