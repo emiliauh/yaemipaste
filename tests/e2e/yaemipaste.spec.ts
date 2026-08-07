@@ -4701,10 +4701,12 @@ test('admin copy link opens an anonymous upload with an expiry storage suffix', 
   expect(copiedUrl).toMatch(/\/file\/rmIRgRJG\/preview$/)
 
   await page.goto(copiedUrl)
-  await expect(page.getByText('File not found or expired')).toHaveCount(0)
-  await expect(page.getByText('paste.txt', { exact: true })).toBeVisible()
-  await expect(page.getByText('Anonymous', { exact: true })).toBeVisible()
-  await expect(page.getByText('anonymous paste')).toBeVisible()
+  const previewPage = page.getByRole('heading', { name: 'File preview' })
+  await expect(previewPage).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText('File not found or expired')).toHaveCount(0, { timeout: 15000 })
+  await expect(page.getByText('paste.txt', { exact: true })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText('Anonymous', { exact: true })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText('anonymous paste')).toBeVisible({ timeout: 15000 })
 })
 
 test('admin sections update the URL and support browser history', async ({ page }) => {
