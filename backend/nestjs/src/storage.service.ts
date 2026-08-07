@@ -143,14 +143,21 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
   }
 
   readMetadata(root: string, name: string): any | undefined {
+    const parse = (value: string) => {
+      const metadata = JSON.parse(value)
+      if (metadata && metadata.password_salt == null && typeof metadata.passwordSalt === 'string') {
+        metadata.password_salt = metadata.passwordSalt
+      }
+      return metadata
+    }
     const candidates = [name, stripExpiry(name)]
     for (const candidate of candidates) {
-      try { return JSON.parse(readFileSync(this.metadataPath(root, candidate), 'utf8')) } catch { /* try the next compatible sidecar name */ }
+      try { return parse(readFileSync(this.metadataPath(root, candidate), 'utf8')) } catch { /* try the next compatible sidecar name */ }
     }
     try {
       const prefix = `${stripExpiry(name)}.`
       const sidecar = readdirSync(join(root, '.rpmeta')).find(entry => entry.startsWith(prefix) && entry.endsWith('.json'))
-      if (sidecar) return JSON.parse(readFileSync(join(root, '.rpmeta', sidecar), 'utf8'))
+      if (sidecar) return parse(readFileSync(join(root, '.rpmeta', sidecar), 'utf8'))
     } catch { /* metadata is optional */ }
     return undefined
   }

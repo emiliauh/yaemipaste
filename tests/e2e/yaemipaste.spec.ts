@@ -27,6 +27,7 @@ test.beforeEach(async ({ page }) => {
         file_size_limit_bytes: 0,
         file_size_limit_unlimited: false,
         upload_access_mode: 'private',
+        passkeys_enabled: true,
       }),
     })
   })
@@ -223,6 +224,7 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
     file_size_limit_bytes: '1073741824',
     file_size_limit_unlimited: 'false',
     upload_access_mode: 'private',
+    passkeys_enabled: 'true',
   }
 
   await page.route('**/auth/admin/dashboard**', async (route) => {
@@ -323,6 +325,7 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
         file_size_limit_bytes: 2147483648,
         file_size_limit_unlimited: false,
         upload_access_mode: 'public',
+        passkeys_enabled: false,
         turnstile_enabled: false,
         turnstile_site_key: '',
       })
@@ -335,6 +338,7 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
           registration_enabled: 'false',
           file_size_limit_bytes: '2147483648',
           upload_access_mode: 'public',
+          passkeys_enabled: 'false',
         }),
       })
       return
@@ -3975,6 +3979,7 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await page.getByLabel('Maximum file size in gigabytes').fill('2')
   await page.getByRole('button', { name: 'Public uploads' }).click()
   await page.getByRole("checkbox", { name: /Allow new registrations/ }).uncheck()
+  await page.getByRole("checkbox", { name: /Enable passkeys/ }).uncheck()
   const saveSettings = page.getByRole('button', { name: 'Save settings' })
   await expect.poll(() => saveSettings.evaluate((button) => getComputedStyle(button).backgroundColor)).toMatch(
     /rgb\((70, 109, 152|78, 120, 170)\)/,
@@ -4332,6 +4337,57 @@ test('admin previews images through the authenticated content endpoint', async (
 
   const dialog = page.getByRole('dialog', { name: 'Preview ShareX screenshot.png' })
   await expect(dialog.locator('img.preview-img')).toHaveAttribute('src', /^blob:/)
+})
+
+test('admin password-encrypted previews ask only for the password', async ({ page }) => {
+  const password = 'AdminPreview!123'
+  const encrypted = await encryptFileWithPassword(
+    new File(['admin encrypted preview'], 'admin-secret.txt', { type: 'text/plain' }),
+    password,
+    'admin-user',
+  )
+  const encryptedRow = {
+    path: 'files/admin-secret.txt.rpenc',
+    owner: 'admin-user',
+    file_name: 'admin-secret.txt.rpenc',
+    display_name: 'admin-secret.txt.rpenc',
+    uploader: 'admin-user',
+    source: 'WebUI',
+    size_bytes: encrypted.blob.size,
+    created_at: 1_775_100_100,
+    expires_at: null,
+    expired: false,
+    content_type: 'application/octet-stream',
+    password_salt: encrypted.salt,
+  }
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.route('**/auth/admin/uploads**', async (route) => {
+    if (route.request().method() === 'GET' && !route.request().url().includes('/content')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([encryptedRow]) })
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/auth/admin/uploads/content?path=files%2Fadmin-secret.txt.rpenc', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/octet-stream',
+      body: Buffer.from(await encrypted.blob.arrayBuffer()),
+    })
+  })
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Uploads', exact: true }).click()
+  await page.getByRole('button', { name: 'admin-secret.txt.rpenc', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Preview encrypted file' })
+  await expect(dialog.getByLabel('Decryption password')).toBeVisible()
+  await expect(dialog.getByLabel('Password-encrypted file link')).toHaveCount(0)
+  await dialog.getByLabel('Decryption password').fill(password)
+  await dialog.getByRole('button', { name: 'Preview file' }).click()
+  await expect(page.locator('.text-preview')).toContainText('admin encrypted preview')
 })
 
 test('admin upload library keeps ShareX provenance beside the name and exposes row actions', async ({ page }) => {

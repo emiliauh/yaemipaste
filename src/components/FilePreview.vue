@@ -20,6 +20,7 @@ const { publicSettings, refreshPublicSettings } = usePublicSettings()
 
 const decryptedUrl = ref('')
 const decryptedName = ref('')
+const decryptedMimeType = ref('')
 const decryptedPayload = ref<Blob | null>(null)
 const detectedEncrypted = ref(false)
 const encryptedPayload = ref<Blob | null>(null)
@@ -73,9 +74,10 @@ const copyUrl = computed(() => previewPageUrl.value)
 const openRawUrl = computed(() => (decryptedUrl.value && (isText.value || isImage.value || isVideo.value)) ? decryptedUrl.value : rawFileUrl.value)
 const name = computed(() => decryptedName.value || props.displayName || props.file.file_name)
 const EXPIRY_SUFFIX = '(?:\\.\\d{6,})?'
-const isImage = computed(() => props.mimeType?.startsWith('image/') ?? new RegExp(`\\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
-const isVideo = computed(() => props.mimeType?.startsWith('video/') ?? new RegExp(`\\.(mp4|webm|mov|avi|mkv|ogv|m4v|3gp)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
-const isText = computed(() => props.mimeType?.startsWith('text/') ?? new RegExp(`\\.(txt|md|markdown|csv|log|json|xml|ya?ml|toml|ini|conf|cfg|js|ts|tsx|jsx|py|rs|go|java|c|cc|cpp|h|hpp|css|html?)${EXPIRY_SUFFIX}$`, 'i').test(name.value))
+const effectiveMimeType = computed(() => decryptedMimeType.value || props.mimeType || '')
+const isImage = computed(() => effectiveMimeType.value ? effectiveMimeType.value.startsWith('image/') : new RegExp('\\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)' + EXPIRY_SUFFIX + '$', 'i').test(name.value))
+const isVideo = computed(() => effectiveMimeType.value ? effectiveMimeType.value.startsWith('video/') : new RegExp('\\.(mp4|webm|mov|avi|mkv|ogv|m4v|3gp)' + EXPIRY_SUFFIX + '$', 'i').test(name.value))
+const isText = computed(() => effectiveMimeType.value ? effectiveMimeType.value.startsWith('text/') : new RegExp('\\.(txt|md|markdown|csv|log|json|xml|ya?ml|toml|ini|conf|cfg|js|ts|tsx|jsx|py|rs|go|java|c|cc|cpp|h|hpp|css|html?)' + EXPIRY_SUFFIX + '$', 'i').test(name.value))
 const isFallbackPreview = computed(() => !isImage.value && !isVideo.value && !isText.value)
 const sizeLabel = computed(() => formatBytes(props.file.file_size ?? 0))
 const textPreview = ref('')
@@ -106,6 +108,7 @@ function clearDecryptedUrl() {
   if (decryptedUrl.value.startsWith('blob:')) URL.revokeObjectURL(decryptedUrl.value)
   decryptedUrl.value = ''
   decryptedName.value = ''
+  decryptedMimeType.value = ''
   decryptedPayload.value = null
 }
 
@@ -132,6 +135,9 @@ async function decryptPreview() {
     decryptedPayload.value = decrypted.blob
     decryptedUrl.value = URL.createObjectURL(decrypted.blob)
     decryptedName.value = decrypted.metadata.name
+    decryptedMimeType.value = decrypted.metadata.type
+    if (isText.value) await loadTextPreview()
+    else if (isImage.value || isVideo.value) await loadMediaPreview()
   } catch (error) {
     decryptionError.value = error instanceof Error ? error.message : 'Could not decrypt file'
   } finally {
@@ -263,7 +269,7 @@ async function loadMediaPreview() {
   }
 }
 
-watch([url, isText, () => props.loading, encryptedPreviewLocked], () => {
+watch([url, isText, () => props.loading, encryptedPreviewLocked, decryptedMimeType, decryptedPayload], () => {
   void loadTextPreview()
 }, { immediate: true })
 watch([url, isImage, isVideo], () => {

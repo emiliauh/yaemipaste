@@ -39,6 +39,7 @@ const passkeyLoading = ref(false)
 const rememberMe = ref(getRememberPreference())
 const showPassword = ref(false)
 const passkeySupported = computed(() => isPasskeySupported())
+const passkeysEnabled = computed(() => publicSettings.value.passkeys_enabled)
 const turnstileContainer = ref<HTMLElement | null>(null)
 const turnstile = useTurnstile()
 
@@ -208,6 +209,7 @@ async function loginWithPasskey() {
               <span>remember me</span>
             </label>
             <button
+              v-if="passkeysEnabled"
               type="button"
               class="passkey-link"
               data-testid="passkey-login-btn"

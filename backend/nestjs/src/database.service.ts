@@ -16,12 +16,11 @@ export class DatabaseService implements OnModuleDestroy {
     mkdirSync(dirname(path), { recursive: true })
     this.db = new DatabaseSync(path)
     this.db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
-    this.initialize()
+    this.initialize(config.value.passkeysEnabled)
     this.logger.log(`Using SQLite database ${path}`)
-    void config
   }
 
-  private initialize() {
+  private initialize(passkeysEnabledByDefault: boolean) {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, token TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0, suspended_at INTEGER, suspended_reason TEXT, passkey_user_uuid TEXT, passkey_reg_state TEXT, passkey_auth_state TEXT, session_revoked_at INTEGER, session_version INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS passkeys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, credential_id TEXT UNIQUE NOT NULL, public_key BLOB NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0, transports TEXT, created_at INTEGER NOT NULL, last_used_at INTEGER, passkey_data TEXT, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
@@ -46,7 +45,7 @@ export class DatabaseService implements OnModuleDestroy {
     const now = nowSeconds()
     const access = process.env.ALLOW_ANONYMOUS_UPLOADS === '1' ? 'public' : 'private'
     const insert = this.db.prepare('INSERT OR IGNORE INTO admin_settings (key,value,updated_at,updated_by) VALUES (?,?,?,?)')
-    for (const [key, value] of [['app_name', 'yaemipaste'], ['public_title', 'yaemipaste'], ['base_api_url', ''], ['registration_enabled', 'true'], ['file_size_limit_bytes', '0'], ['file_size_limit_unlimited', 'false'], ['upload_access_mode', access]]) insert.run(key, value, now, 'system')
+    for (const [key, value] of [['app_name', 'yaemipaste'], ['public_title', 'yaemipaste'], ['base_api_url', ''], ['registration_enabled', 'true'], ['file_size_limit_bytes', '0'], ['file_size_limit_unlimited', 'false'], ['upload_access_mode', access], ['passkeys_enabled', passkeysEnabledByDefault ? 'true' : 'false']]) insert.run(key, value, now, 'system')
   }
 
   query<T extends DbRow = DbRow>(sql: string, params: any[] = []): T[] {

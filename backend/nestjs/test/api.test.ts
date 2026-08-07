@@ -20,6 +20,7 @@ process.env.JWT_SECRET = 'test-only-secret-with-more-than-32-characters'
 process.env.AUTH_ADMIN_BEARER = 'installer-test-bearer'
 process.env.CORS_ALLOWED_ORIGINS = 'https://allowed.example'
 process.env.PASTE_API = 'https://upload.example/api'
+process.env.PASSKEYS_ENABLED = '0'
 
 const { createApp } = await import('../src/main.js')
 const { app, config } = await createApp()
@@ -140,6 +141,7 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     const settings = await request('/auth/admin/settings', { headers: { Authorization: `Bearer ${jwt}` } })
     assert.equal(settings.response.status, 200)
     assert.equal(settings.json.upload_access_mode, 'public')
+    assert.equal(settings.json.passkeys_enabled, 'false')
 
     const dashboard = await request('/auth/admin/dashboard', { headers: { Authorization: `Bearer ${jwt}` } })
     assert.equal(dashboard.response.status, 200)
@@ -187,6 +189,18 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.equal(passkeys.response.status, 400)
     const beginPasskey = await request('/auth/passkeys/register/begin', { method: 'POST', headers: { Authorization: `Bearer ${aliceJwt}` } })
     assert.equal(beginPasskey.response.status, 400)
+    const enabledSettings = await request('/auth/admin/settings', { method: 'PUT', headers: { Authorization: 'Bearer ' + adminJwt, 'Content-Type': 'application/json' }, body: JSON.stringify({ passkeys_enabled: true }) })
+    assert.equal(enabledSettings.response.status, 200)
+    assert.equal(enabledSettings.json.passkeys_enabled, 'true')
+    const enabledPublicSettings = await request('/auth/admin/public-settings')
+    assert.equal(enabledPublicSettings.json.passkeys_enabled, true)
+    const enabledBeginPasskey = await request('/auth/passkeys/register/begin', { method: 'POST', headers: { Authorization: 'Bearer ' + aliceJwt } })
+    assert.equal(enabledBeginPasskey.response.status, 200)
+    assert.equal(typeof enabledBeginPasskey.json.challenge, 'string')
+    const disabledSettings = await request('/auth/admin/settings', { method: 'PUT', headers: { Authorization: 'Bearer ' + adminJwt, 'Content-Type': 'application/json' }, body: JSON.stringify({ passkeys_enabled: false }) })
+    assert.equal(disabledSettings.response.status, 200)
+    const disabledPasskeys = await request('/auth/passkeys', { headers: { Authorization: 'Bearer ' + aliceJwt } })
+    assert.equal(disabledPasskeys.response.status, 400)
 
     const aliceForm = new FormData(); aliceForm.append('file', new Blob(['alice file']), 'alice.txt')
     const aliceUpload = await request('/', { method: 'POST', headers: { Authorization: aliceLogin.json.paste_token }, body: aliceForm })

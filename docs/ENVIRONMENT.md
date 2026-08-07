@@ -54,7 +54,7 @@ administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
 | `PASTE_PUBLIC_API` | Public API upload URL written into ShareX configs | empty |
 | `ALLOW_ANONYMOUS_UPLOADS` | Allow uploads without an account or token | `0` for new installs |
 | `REMOTE_UPLOADS_ENABLED` | Allow backend URL-fetch uploads | `0` for new installs |
-| `PASSKEYS_ENABLED` | Enable backend passkey routes | `0` |
+| `PASSKEYS_ENABLED` | Initial value for the administrator-controlled passkey setting; Admin > Settings can change it at runtime without a rebuild | `0` |
 | `PASSKEY_RP_NAME` | Passkey display name | `yaemipaste` |
 | `PASSKEY_RP_ID` | Passkey RP ID override | empty |
 | `PASSKEY_ORIGINS` | Allowed passkey origins CSV | empty |

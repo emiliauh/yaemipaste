@@ -271,7 +271,7 @@ async function submitPasswordChange() {
         {{ downloading ? 'Generating…' : 'Download .sxcu' }}
       </button>
     </div>
-    <div v-if="hasAccount" class="field">
+    <div v-if="hasAccount && publicSettings.passkeys_enabled" class="field">
       <label>Passkeys</label>
       <button class="btn-primary passkey-open-btn" type="button" data-testid="open-passkey-modal" @click="openPasskeyModal">
         <span>Add passkey</span>

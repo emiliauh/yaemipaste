@@ -376,8 +376,13 @@ export class AuthService {
     })().catch(() => { /* webhook delivery is best-effort and is recorded when possible */ })
   }
 
-  private passkeysEnabled() {
-    if (!this.config.value.passkeysEnabled) throw apiError(400, 'Passkeys are disabled')
+  passkeysEnabled() {
+    const setting = this.settings().passkeys_enabled
+    return setting === undefined ? this.config.value.passkeysEnabled : setting !== 'false'
+  }
+
+  private requirePasskeysEnabled() {
+    if (!this.passkeysEnabled()) throw apiError(400, 'Passkeys are disabled')
   }
 
   private passkeySettings() {
@@ -408,13 +413,13 @@ export class AuthService {
   }
 
   passkeyList(request: { headers: Record<string, any> }) {
-    this.passkeysEnabled()
+    this.requirePasskeysEnabled()
     const user = this.currentUser(request)
     return this.db.query('SELECT id,credential_id,created_at,last_used_at,transports FROM passkeys WHERE user_id=? ORDER BY created_at DESC', [user.id]).map(row => ({ ...row, transports: row.transports ? String(row.transports).split(',').filter(Boolean) : [] }))
   }
 
   passkeyRegisterBegin(request: { headers: Record<string, any> }) {
-    this.passkeysEnabled(); const user = this.currentUser(request); const { origins, rpId } = this.passkeySettings()
+    this.requirePasskeysEnabled(); const user = this.currentUser(request); const { origins, rpId } = this.passkeySettings()
     const existing = this.db.query<{ credential_id: string; transports: string | null }>('SELECT credential_id,transports FROM passkeys WHERE user_id=?', [user.id])
     return generateRegistrationOptions({ rpName: this.config.value.passkeyRpName, rpID: rpId, userName: user.username, userID: Buffer.from(String(user.id)), userDisplayName: user.username, attestationType: 'none', excludeCredentials: existing.map(row => ({ id: row.credential_id, transports: row.transports ? row.transports.split(',') as any : undefined })) }).then(options => {
       this.db.run('UPDATE users SET passkey_reg_state=? WHERE id=?', [JSON.stringify({ challenge: options.challenge, origins, rpId, allowAnyPort: this.config.value.passkeyAllowAnyPort, allowSubdomains: this.config.value.passkeyAllowSubdomains }), user.id])
@@ -423,7 +428,7 @@ export class AuthService {
   }
 
   async passkeyRegisterFinish(request: { headers: Record<string, any> }, credential: unknown) {
-    this.passkeysEnabled(); const user = this.currentUser(request)
+    this.requirePasskeysEnabled(); const user = this.currentUser(request)
     const state = this.db.get<{ passkey_reg_state: string | null }>('SELECT passkey_reg_state FROM users WHERE id=?', [user.id])?.passkey_reg_state
     if (!state || !credential || typeof credential !== 'object') throw apiError(400, 'No passkey registration is pending')
     const ceremony = JSON.parse(state) as { challenge: string; origins: string[]; rpId: string; allowAnyPort?: boolean; allowSubdomains?: boolean }
@@ -441,14 +446,14 @@ export class AuthService {
   }
 
   passkeyDelete(request: { headers: Record<string, any> }, id: number) {
-    this.passkeysEnabled(); const user = this.currentUser(request)
+    this.requirePasskeysEnabled(); const user = this.currentUser(request)
     const result: any = this.db.run('DELETE FROM passkeys WHERE id=? AND user_id=?', [id, user.id])
     if (!result.changes) throw apiError(404, 'Passkey not found')
     return { detail: 'Passkey deleted' }
   }
 
   async passkeyAuthBegin(usernameValue: string) {
-    this.passkeysEnabled(); const username = normalized(usernameValue); const user = this.userByName(username)
+    this.requirePasskeysEnabled(); const username = normalized(usernameValue); const user = this.userByName(username)
     if (!user) throw apiError(404, 'User not found')
     const { origins, rpId } = this.passkeySettings()
     const credentials = this.db.query<{ credential_id: string; transports: string | null }>('SELECT credential_id,transports FROM passkeys WHERE user_id=?', [user.id])
@@ -459,7 +464,7 @@ export class AuthService {
   }
 
   async passkeyAuthFinish(usernameValue: string, credential: unknown) {
-    this.passkeysEnabled(); const username = normalized(usernameValue); const user = this.userByName(username)
+    this.requirePasskeysEnabled(); const username = normalized(usernameValue); const user = this.userByName(username)
     if (!user || user.suspended_at) throw apiError(401, 'Invalid passkey login')
     const state = this.db.get<{ passkey_auth_state: string | null }>('SELECT passkey_auth_state FROM users WHERE id=?', [user.id])?.passkey_auth_state
     if (!state || !credential || typeof credential !== 'object') throw apiError(400, 'No passkey authentication is pending')

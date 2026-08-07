@@ -45,9 +45,11 @@ older resolution behavior. It is not required by the native backend.
 
 ## Passkeys Fail
 
-Check HTTPS, `PASSKEYS_ENABLED=1`, RP ID and origin values, and the configured
-allowed origins. Direct HTTP IP deployments do not provide the secure browser
-context passkeys require.
+Enable passkeys in Admin > Settings. `PASSKEYS_ENABLED=1` only initializes that
+setting for a new database; it is not required after the setting has been
+saved. Then check HTTPS, RP ID and origin values, and the configured allowed
+origins. Direct HTTP IP deployments do not provide the secure browser context
+passkeys require.
 
 ## Tests Will Not Start
 

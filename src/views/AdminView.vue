@@ -108,6 +108,7 @@ const settingsForm = ref({
   file_size_limit_bytes: Number(initialAdminData?.settings.file_size_limit_bytes ?? 0) || 0,
   file_size_limit_unlimited: initialAdminData?.settings.file_size_limit_unlimited === 'true',
   upload_access_mode: initialAdminData?.settings.upload_access_mode === 'public' ? 'public' as const : 'private' as const,
+  passkeys_enabled: initialAdminData?.settings.passkeys_enabled === 'true',
   turnstile_enabled: initialAdminData?.settings.turnstile_enabled === 'true',
   turnstile_site_key: initialAdminData?.settings.turnstile_site_key ?? '',
   turnstile_secret_key: '',
@@ -472,6 +473,7 @@ async function refreshAll(showLoading = true) {
       file_size_limit_bytes: Number(next.settings.file_size_limit_bytes ?? 0) || 0,
       file_size_limit_unlimited: next.settings.file_size_limit_unlimited === 'true',
       upload_access_mode: next.settings.upload_access_mode === 'public' ? 'public' : 'private',
+      passkeys_enabled: next.settings.passkeys_enabled === 'true',
       turnstile_enabled: next.settings.turnstile_enabled === 'true',
       turnstile_site_key: next.settings.turnstile_site_key ?? '',
       // Secrets are intentionally write-only: never repopulate one from the API.
@@ -1132,6 +1134,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <label class="inline-check span-2"><input v-model="settingsForm.registration_enabled" type="checkbox" /> <span><strong>Allow new registrations</strong><small>When disabled, visitors can still sign in but cannot create accounts.</small></span></label>
+          <label class="inline-check span-2"><input v-model="settingsForm.passkeys_enabled" type="checkbox" /> <span><strong>Enable passkeys</strong><small>Allow passkey registration and passwordless login for supported browsers.</small></span></label>
           <label class="inline-check span-2"><input v-model="settingsForm.turnstile_enabled" type="checkbox" /> <span><strong>Enable Turnstile</strong><small>Require Cloudflare Turnstile verification before account login.</small></span></label>
           <div v-if="settingsForm.turnstile_enabled" class="settings-fields span-2">
             <label class="turnstile-key-field"><span>Turnstile site key</span><small>Public site key shown in the browser.</small><input v-model="settingsForm.turnstile_site_key" autocomplete="off" placeholder="Enter a new key to replace the existing one" /></label>

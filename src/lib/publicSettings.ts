@@ -11,6 +11,7 @@ const FALLBACK_SETTINGS: PublicAdminSettings = {
   file_size_limit_bytes: 0,
   file_size_limit_unlimited: false,
   upload_access_mode: 'private',
+  passkeys_enabled: false,
 }
 
 const publicSettings = ref<PublicAdminSettings>({ ...FALLBACK_SETTINGS })
