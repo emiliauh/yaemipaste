@@ -115,7 +115,11 @@ export class ApiController {
     if (!['file', 'oneshot'].includes(located.kind)) throw apiError(404, 'file is not found or expired :(')
     const meta = this.storage.metadataFor(located)
     const stat = this.storage.fileStat(located)
-    return response.json({
+    return response.set({
+      'Cache-Control': 'no-store',
+      'CDN-Cache-Control': 'no-store',
+      'Cloudflare-CDN-Cache-Control': 'no-store',
+    }).json({
       file_name: requested,
       display_name: meta?.display_name ?? requested,
       uploader: meta?.uploader ?? 'Unknown (token user)',

@@ -108,6 +108,7 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
 
     const meta = await request('/meta/hello.txt')
     assert.equal(meta.response.status, 200)
+    assert.equal(meta.response.headers.get('cache-control'), 'no-store')
     assert.equal(meta.json.file_name, 'hello.txt')
     assert.equal(meta.json.display_name, 'hello.txt')
 
