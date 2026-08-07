@@ -610,7 +610,7 @@ export function isShareXEnabled(): boolean {
   return SHAREX_ENABLED
 }
 
-// ── Rustypaste API ──────────────────────────────────────────────────────────
+// ── File API ────────────────────────────────────────────────────────────────
 
 export interface PasteFile {
   file_name: string
@@ -955,7 +955,7 @@ export function effectivePublicMimeType(meta: PublicFileMeta | null | undefined,
   return reported || 'application/octet-stream'
 }
 
-export async function getPublicFileMeta(fileName: string): Promise<PublicFileMeta> {
+export async function getPublicFileMeta(fileName: string, includeAuth = false): Promise<PublicFileMeta> {
   const encodedName = encodeURIComponent(fileName)
   const urls = [
     `${getPasteApiBase()}/meta/${encodedName}`,
@@ -965,7 +965,7 @@ export async function getPublicFileMeta(fileName: string): Promise<PublicFileMet
   let lastError = 'Could not load file metadata'
   for (const url of urls) {
     try {
-      const response = await fetch(url)
+      const response = await fetch(url, includeAuth ? { headers: tokenHeader() } : undefined)
       if (response.ok) {
         rememberResolvedFileName(fileName)
         return readJson(response, 'Could not load file metadata')
@@ -1017,13 +1017,20 @@ export function publicApiFileUrl(fileName: string): string {
   return `${getPasteApiBase()}/${encodeURIComponent(fileName)}`
 }
 
+export function publicPathRawFileUrl(fileName: string): string {
+  return `${publicFileUrl(fileName)}?raw=1`
+}
+
+export function publicPathDownloadFileUrl(fileName: string): string {
+  return `${publicFileUrl(fileName)}?download=true`
+}
+
 export function publicRawFileUrl(fileName: string): string {
-  return `${publicSiteOrigin()}/api/${encodeURIComponent(fileName)}?raw=1`
+  return `${getPasteApiBase()}/${encodeURIComponent(fileName)}?raw=1`
 }
 
 export function publicDownloadFileUrl(fileName: string): string {
-  const path = `/api/${encodeURIComponent(fileName)}?download=true`
-  return publicSiteOrigin() === window.location.origin ? path : `${publicSiteOrigin()}${path}`
+  return `${getPasteApiBase()}/${encodeURIComponent(fileName)}?download=true`
 }
 
 export function browserFileUrl(fileName: string, query = ''): string {

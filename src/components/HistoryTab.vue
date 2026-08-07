@@ -2,8 +2,8 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { zipSync } from 'fflate'
-import { fileUrl, getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
-import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob, rememberEncryptedFile } from '../lib/e2ee'
+import { fileUrl, getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicPathRawFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
+import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isEncryptedBlob, rememberEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import ActionConfirmDialog from './ActionConfirmDialog.vue'
 import { useNotificationStore } from '../stores/notifications'
@@ -90,7 +90,7 @@ const compactFileNames = ref(window.matchMedia('(max-width: 820px)').matches)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const notificationStore = useNotificationStore()
 const router = useRouter()
-const { refreshPublicSettings } = usePublicSettings()
+const { publicSettings, refreshPublicSettings } = usePublicSettings()
 let hoverToken = 0
 let previewToken = 0
 let compactFileNamesMediaQuery: MediaQueryList | null = null
@@ -242,7 +242,7 @@ async function ensureVisibleMeta() {
   if (!missing.length) return
   const entries = await Promise.all(missing.map(async (fileName) => {
     try {
-      const meta = await getPublicFileMeta(fileName)
+      const meta = await getPublicFileMeta(fileName, true)
       return [fileName, meta] as const
     } catch {
       return null
@@ -565,7 +565,7 @@ async function fetchEncryptedPayload(fileName: string, onProgress?: (percent: nu
   if (!response.body || !Number.isFinite(total) || total <= 0) {
     const payload = await response.blob()
     onProgress?.(100)
-    if (!(await isRustypasteEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
+    if (!(await isEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
     return payload
   }
   const reader = response.body.getReader()
@@ -583,7 +583,7 @@ async function fetchEncryptedPayload(fileName: string, onProgress?: (percent: nu
   }
   onProgress?.(100)
   const payload = new Blob(chunks, { type: response.headers.get('content-type') ?? 'application/octet-stream' })
-  if (!(await isRustypasteEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
+  if (!(await isEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
   return payload
 }
 
@@ -966,13 +966,26 @@ async function buildPreview(f: PasteFile, x = 0, y = 0, signal?: AbortSignal): P
   if (cached) return previewStateFromCache(f, cached, x, y)
   const stored = getStoredEncryptedFile(f.file_name)
   const kind = previewKind(f)
+  const fetchPreviewPayload = async (): Promise<Response> => {
+    const apiUrl = fileUrl(f.file_name)
+    try {
+      const response = await fetch(apiUrl, {
+        cache: 'no-store',
+        headers: { Authorization: getAuthToken() },
+        signal,
+      })
+      if (response.ok) return response
+    } catch (error) {
+      if ((error as DOMException | null)?.name === 'AbortError') throw error
+    }
+    const fallbackUrl = publicPathRawFileUrl(f.file_name)
+    if (fallbackUrl === apiUrl) throw new Error('Preview download failed')
+    const fallback = await fetch(fallbackUrl, { cache: 'no-store', signal })
+    if (!fallback.ok) throw new Error('Preview download failed')
+    return fallback
+  }
   if (!stored || stored.key.startsWith('pw:')) {
-    const response = await fetch(fileUrl(f.file_name), {
-      cache: 'no-store',
-      headers: { Authorization: getAuthToken() },
-      signal,
-    })
-    if (!response.ok) throw new Error('Preview download failed')
+    const response = await fetchPreviewPayload()
     const payload = await response.blob()
     const textContent = kind === 'text' ? await readPreviewText(payload) : undefined
     const cachedPreviewResult: CachedPreview = {
@@ -986,12 +999,7 @@ async function buildPreview(f: PasteFile, x = 0, y = 0, signal?: AbortSignal): P
     return previewStateFromCache(f, cachedPreviewResult, x, y)
   }
 
-  const response = await fetch(fileUrl(f.file_name), {
-    cache: 'no-store',
-    headers: { Authorization: getAuthToken() },
-    signal,
-  })
-  if (!response.ok) throw new Error('Preview download failed')
+  const response = await fetchPreviewPayload()
   const decrypted = await decryptEncryptedBlob(await response.blob(), stored.key)
   const textContent = kind === 'text' ? await readPreviewText(decrypted.blob) : undefined
   const cachedPreviewResult: CachedPreview = {
@@ -1437,6 +1445,7 @@ onBeforeUnmount(() => {
         <strong>History needs an account</strong>
         <p>Public uploads are available to everyone, but your history stays private to your account.</p>
         <button class="btn-primary empty-action" type="button" @click="router.push('/login')">Log in to view history</button>
+        <button v-if="publicSettings.registration_enabled" class="btn-ghost empty-action history-register-action" type="button" @click="router.push('/register')">Create account</button>
       </div>
 
       <div v-else-if="loading" class="skeleton-table" aria-label="Loading history">
@@ -1462,7 +1471,7 @@ onBeforeUnmount(() => {
         <template v-else>
           <strong>You haven’t uploaded any files yet.</strong>
           <p>Want to upload your first?</p>
-          <button class="btn-ghost empty-action" type="button" @click.stop.prevent="router.push({ path: '/files', query: {} })">
+          <button class="btn-ghost empty-action" type="button" @click.stop.prevent="router.push('/files')">
             Upload
           </button>
         </template>
@@ -1789,6 +1798,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: var(--space-4);
   padding-bottom: 24px;
+}
+.history-register-action { display: none; }
+@media (max-width: 600px) {
+  .history-register-action { display: inline-flex; }
 }
 
 .history-hero,

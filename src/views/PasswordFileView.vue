@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { browserFileUrl, decodeFileToken, displayUploaderName, downloadFileUrl, fileUrl, formatBytes, publicSiteOrigin, resolveFileName } from '../lib/api'
-import { decryptBlobWithPassword, isRustypasteEncryptedBlob, rememberEncryptedFile, type EncryptedMetadata } from '../lib/e2ee'
+import { decryptBlobWithPassword, isEncryptedBlob, rememberEncryptedFile, type EncryptedMetadata } from '../lib/e2ee'
 import { usePublicSettings } from '../lib/publicSettings'
 
 const route = useRoute()
@@ -63,7 +63,7 @@ async function downloadPayload(): Promise<Blob> {
     if (contentType.includes('text/html') || contentType.includes('application/json')) continue
 
     const payload = await response.blob()
-    if (await isRustypasteEncryptedBlob(payload)) return payload
+    if (await isEncryptedBlob(payload)) return payload
   }
   if (sawNotFound) throw new Error('File not found or expired')
   throw new Error('Could not load encrypted payload. Please try again.')

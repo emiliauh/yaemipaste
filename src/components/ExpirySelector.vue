@@ -29,6 +29,8 @@ function collapseMobile() {
   mobileCollapsed.value = true
 }
 
+defineExpose({ collapse: collapseMobile })
+
 function onTriggerClick(event: MouseEvent) {
   if (event.shiftKey) {
     revealNever.value = true
@@ -352,8 +354,10 @@ onUnmounted(() => {
     max-height: 0;
     padding-top: 0;
     padding-bottom: 0;
+    border-width: 0;
     border-color: transparent;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
   }
   .expiry-panel-top {
@@ -371,6 +375,7 @@ onUnmounted(() => {
     padding: var(--space-2);
   }
   .expiry-options {
+    top: calc(100% + 4px);
     left: 0;
     right: 0;
     width: auto;

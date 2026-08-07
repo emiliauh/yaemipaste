@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { decodeFileToken, displayUploaderName, effectivePublicMimeType, formatBytes, getPublicFileMeta, preferredPublicFileName, publicDownloadFileUrl, publicRawFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
+import { decodeFileToken, displayUploaderName, effectivePublicMimeType, formatBytes, getPublicFileMeta, preferredPublicFileName, publicDownloadFileUrl, publicDownloadUrl, publicFileUrl, publicPathRawFileUrl, publicRawFileUrl, resolveFileLookup, type PublicFileMeta } from '../lib/api'
 import { rawFileNameFromPublicPath } from '../lib/e2ee'
 import { usePublicSettings } from '../lib/publicSettings'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
@@ -77,25 +77,29 @@ const shouldPreferAppOpen = computed(() => {
 const shouldShowSecondaryAction = computed(() => shouldPreferAppOpen.value || canPreviewInline.value)
 
 const openActionHref = computed(() => {
-  if (shouldPreferAppOpen.value) return downloadUrl.value
+  if (shouldPreferAppOpen.value) return resolvedFileName.value ? publicDownloadUrl(resolvedFileName.value) : ''
   return rawUrl.value
 })
 
 async function loadTextPreview() {
   textPreview.value = ''
   if (!isText.value || !rawUrl.value) return
-  const response = await fetch(rawUrl.value, { cache: 'no-store' })
-  if (!response.ok) {
-    console.error('Text preview fetch failed', {
-      fileName: resolvedFileName.value,
-      url: rawUrl.value,
-      status: response.status,
-      statusText: response.statusText,
-    })
-    throw new Error('Could not load text preview')
+  const candidates = [rawUrl.value, publicPathRawFileUrl(resolvedFileName.value), publicFileUrl(resolvedFileName.value)]
+  for (const url of candidates.filter((candidate, index, all) => all.indexOf(candidate) === index)) {
+    try {
+      const response = await fetch(url, { cache: 'no-store' })
+      if (!response.ok) continue
+      const payload = await response.text()
+      // Vite's SPA fallback is not file content. Try the public path before
+      // showing it as a text preview when the API proxy is unavailable.
+      if (url !== candidates.at(-1) && /^\s*<!doctype html/i.test(payload)) continue
+      textPreview.value = payload.length > 32_000 ? `${payload.slice(0, 32_000)}\n\n…` : payload
+      return
+    } catch {
+      // Try the next compatible public endpoint.
+    }
   }
-  const payload = await response.text()
-  textPreview.value = payload.length > 32_000 ? `${payload.slice(0, 32_000)}\n\n…` : payload
+  throw new Error('Could not load text preview')
 }
 
 async function load() {

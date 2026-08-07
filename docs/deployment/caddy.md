@@ -17,7 +17,7 @@ The bundled UI Nginx owns API/auth/raw routing. Validate with
 ## Split Host
 
 Serve the built UI on `paste.example.com`; proxy the API origin to the
-loopback-published Rust service:
+loopback-published NestJS service:
 
 ```caddyfile
 api.example.com {

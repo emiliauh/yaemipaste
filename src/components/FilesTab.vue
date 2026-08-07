@@ -18,6 +18,7 @@ const dragging = ref(false)
 const textPaste = ref('')
 const loading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const expirySelector = ref<{ collapse: () => void } | null>(null)
 const longPressing = ref(false)
 interface ShareLinkItem {
   id: number
@@ -140,6 +141,7 @@ async function handleFiles(files: FileList | File[]) {
   }
   loading.value = false
   uploadProgress.value = null
+  expirySelector.value?.collapse()
   if (fileInput.value) fileInput.value.value = ''
 }
 
@@ -193,6 +195,7 @@ async function submitText() {
   } finally {
     loading.value = false
     uploadProgress.value = null
+    expirySelector.value?.collapse()
   }
 }
 
@@ -237,7 +240,7 @@ function onPasteAreaLongPressCancel() {
 
 <template>
   <div class="files-tab">
-    <ExpirySelector :model-value="expiry" @update:model-value="setExpiry" />
+    <ExpirySelector ref="expirySelector" :model-value="expiry" @update:model-value="setExpiry" />
 
     <section class="upload-panel" aria-label="Upload controls">
       <div class="upload-panel-head">

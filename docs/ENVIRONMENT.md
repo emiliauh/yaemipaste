@@ -47,8 +47,8 @@ docker compose --profile with-resolver up --build -d
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `PASTE_URL` | Required public UI origin used for file links | empty |
-| `DB_PATH` | Auth DB path inside the backend container | `/var/lib/rustypaste-auth/users.db` |
-| `JWT_SECRET` | Required random session-signing secret | empty |
+| `DB_PATH` | Auth DB path inside the backend container | `/var/lib/yaemipaste-auth/users.db` |
+| `JWT_SECRET` | Required session-signing secret; production requires `openssl rand -hex 32` format (64 lowercase hex characters) | empty |
 | `TURNSTILE_SECRET_KEY` | Server-side Turnstile secret. If set without a matching `VITE_TURNSTILE_SITE_KEY`, the login page shows an explicit "Security check is misconfigured on the server" message rather than blocking silently. Keep both empty to disable Turnstile, or set both together. | empty |
 | `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key. Despite the `VITE_` prefix (kept for `.env` naming continuity), this is read by the **backend** at runtime, not baked into the frontend build - the UI fetches the live value from `/auth/admin/public-settings` on every page load. Change it via `.env` + `docker compose up -d`; no rebuild needed. | empty |
 | `PASTE_PUBLIC_API` | Public API upload URL written into ShareX configs | empty |
@@ -69,7 +69,7 @@ docker compose --profile with-resolver up --build -d
 | `SPLIT_ROLE` | `ui` or `api` on split hosts | empty |
 | `COMPOSE_PROFILES` | Services started by Compose | `ui,api` |
 | `DEPLOYMENT_IMAGE_MODE` | `pull` prebuilt images, or `build` from local source | `pull` |
-| `YAEMIPASTE_IMAGE_TAG` | UI/API image tag; pin a SHA tag for production | `main` |
+| `YAEMIPASTE_IMAGE_TAG` | Required immutable UI/API image tag | empty |
 | `YAEMIPASTE_UI_IMAGE` | UI image repository or mirror | `ghcr.io/emiliauh/yaemipaste-ui` |
 | `YAEMIPASTE_API_IMAGE` | API image repository or mirror | `ghcr.io/emiliauh/yaemipaste-api` |
 | `UI_BIND_ADDRESS` | UI host bind address | `127.0.0.1` |
@@ -80,6 +80,8 @@ docker compose --profile with-resolver up --build -d
 | `CSP_CONNECT_SRC` | Extra exact browser connection origins; `self` is automatic | empty |
 | `CSP_TURNSTILE_SRC` | Turnstile CSP origin when enabled | empty |
 | `API_UPSTREAM` | UI container API/raw upstream | `http://paste-api:8000` |
+| `MAX_CONCURRENT_UPLOADS_PER_CLIENT` | Maximum in-flight multipart uploads per trusted client IP | `4` |
+| `MAX_UPLOAD_DIR_SIZE` | Total upload-directory quota; use `0` only with an external quota | `10GiB` |
 | `RESOLVER_ENABLED` | Enable legacy Node resolver workflow in installer | `0` |
 | `RESOLVER_PORT` | Legacy resolver loopback port | `3101` |
 | `RESOLVER_PUBLIC_ORIGIN` | Public site origin used by legacy resolver redirects | `http://localhost:8080` |
@@ -95,7 +97,7 @@ docker compose --profile with-resolver up --build -d
 | `AUTH_TOKEN_REVOKE_PATH` | Token revoke path template | `/tokens/%s` |
 | `AUTH_ADMIN_CLAIM_INIT_PATH` | One-time admin claim token initialization path | `/claim/init` |
 | `AUTH_REGISTER_URL` | Public register endpoint used when token-based registration is chosen | `http://localhost:8080/auth/register` |
-| `AUTH_ADMIN_BEARER` | Admin bearer used by installer lifecycle commands | empty |
+| `AUTH_ADMIN_BEARER` | Admin bearer used by installer lifecycle commands; production requires `openssl rand -hex 32` format (64 lowercase hex characters) | empty |
 
 ## Recommended Public Configuration
 
@@ -106,7 +108,7 @@ For a new deployment:
 - use `VITE_TOKEN_OWNER_PATH=/api/token-owner`
 - keep `RESOLVER_ENABLED=0`
 - keep `PASTE_URL` aligned with the frontend origin
-- set a strong `JWT_SECRET`
+- set `JWT_SECRET` and `AUTH_ADMIN_BEARER` with `openssl rand -hex 32`
 - set upload policy flags explicitly before upgrading an existing deployment
 
 ## When To Enable The Legacy Resolver

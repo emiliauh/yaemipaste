@@ -52,7 +52,7 @@ Revocation should be treated as immediate credential invalidation. Rotate any st
 
 ## Backend Contract
 
-These commands assume the Rust backend exposes compatible auth administration endpoints.
+These commands assume the NestJS backend exposes compatible auth administration endpoints.
 If your backend does not provide those routes, the installer cannot create the first user or manage tokens for you.
 
 ## Anonymous Mode
@@ -65,7 +65,7 @@ If `VITE_ENABLE_AUTH=0`:
 ## Admin Panel
 
 yaemipaste ships a full self-hosted admin panel at `/admin` (Vue) backed by
-`/auth/admin/*` (Rust/Actix). It is separate from the installer's legacy
+`/auth/admin/*` (NestJS). It is separate from the installer's legacy
 bootstrap/token flow above; the admin panel manages users, uploads, settings,
 webhooks, and an audit log through the web UI, with every route enforced
 server-side by a signed account JWT plus `users.is_admin=1`.

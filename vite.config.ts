@@ -14,5 +14,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    minify: 'oxc',
+    cssMinify: 'lightningcss',
+    sourcemap: false,
+    reportCompressedSize: false,
   },
 })

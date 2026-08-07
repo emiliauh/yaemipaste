@@ -45,12 +45,6 @@ function setTab(next: 'files' | 'history') {
 }
 
 function syncTabFromRoute() {
-  // Normalize the former query-string history URL without keeping it in
-  // navigation or shared links.
-  if (route.path === '/files' && route.query.tab === 'history') {
-    void router.replace('/history')
-    return
-  }
   const nextTab = authEnabled && route.path === '/history' ? 'history' : 'files'
   if (tab.value !== nextTab) {
     tab.value = nextTab

@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const PORT = Number.parseInt(process.env.RESOLVER_PORT ?? '3101', 10)
-const UPLOAD_DIR = process.env.RESOLVER_UPLOAD_DIR?.trim() || '/var/lib/rustypaste/upload'
-const USERS_DB_PATH = process.env.RESOLVER_USERS_DB_PATH?.trim() || '/var/lib/rustypaste/users.db'
+const UPLOAD_DIR = process.env.RESOLVER_UPLOAD_DIR?.trim() || '/var/lib/yaemipaste/upload'
+const USERS_DB_PATH = process.env.RESOLVER_USERS_DB_PATH?.trim() || '/var/lib/yaemipaste-auth/users.db'
 const PUBLIC_ORIGIN = (process.env.RESOLVER_PUBLIC_ORIGIN?.trim() || 'http://localhost:8080').replace(/\/$/, '')
 const CACHE_TTL_MS = Number.parseInt(process.env.RESOLVER_CACHE_TTL_MS ?? '30000', 10)
 const execFileAsync = promisify(execFile)
@@ -172,7 +172,7 @@ async function resolveFileRecord(token) {
     }
   }
 
-  // Rustypaste can expose the same file under several names:
+  // The upload store can expose the same file under several names:
   // - root and token-scoped mirrors/symlinks
   // - generated timestamp suffixes (e.g. .mp4.1777...)
   // Collapse to one canonical filename, preferring owner-scoped and clean names.

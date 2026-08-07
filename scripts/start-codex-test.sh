@@ -25,7 +25,7 @@ if [[ ! -f "$env_file" ]]; then
     "$env_file"
 fi
 
-docker compose --env-file "$env_file" -f "$root_dir/docker-compose.yml" -f "$override_file" up --build -d
+docker compose --env-file "$env_file" -f "$root_dir/docker-compose.yml" -f "$root_dir/docker-compose.build.yml" -f "$override_file" up --build -d
 
 for _ in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:18080/auth/admin/public-settings >/dev/null; then

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEV_DIR="${1:-../Rustypaste-ui-dev}"
+DEV_DIR="${1:-../yaemipaste-ui-dev}"
 PROD_BRANCH="production"
 DEV_BRANCH="development"
 

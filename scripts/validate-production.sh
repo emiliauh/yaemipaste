@@ -28,13 +28,9 @@ done
 
 npm ci
 npm run build
-PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 PLAYWRIGHT_BROWSERS_PATH=0 PLAYWRIGHT_CONTAINER=1 npx playwright test tests/e2e/rustypaste.spec.ts --workers=1
-
-if command -v cargo >/dev/null 2>&1; then
-  cargo test --locked --manifest-path backend/rustypaste/Cargo.toml
-else
-  printf 'cargo is unavailable; backend compilation is validated by docker compose build.\n'
-  docker compose --env-file tests/fixtures/deployment-same.env -f docker-compose.yml build paste-api
-fi
+npm --prefix backend/nestjs ci
+npm run api:build
+npm run api:test
+PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 PLAYWRIGHT_BROWSERS_PATH=0 PLAYWRIGHT_CONTAINER=1 npx playwright test tests/e2e/yaemipaste.spec.ts --workers=1
 
 printf 'Production validation passed.\n'

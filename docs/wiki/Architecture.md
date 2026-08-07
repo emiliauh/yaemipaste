@@ -5,7 +5,7 @@
 New deployments should use two runtime pieces:
 
 1. static frontend generated from this repository
-2. one Rust backend that provides the routes you enable
+2. one NestJS backend that provides the routes you enable
 
 That is the intended public architecture.
 If you deploy with Docker, the bundled nginx image is only a static file host for the built frontend assets. It is not a separate product-layer service with its own business logic.
@@ -40,13 +40,13 @@ The frontend keeps share links on the public origin. The backend remains respons
 
 ## Legacy Compatibility Resolver
 
-`resolver-server/` exists for deployments that have not moved token resolution into the Rust backend. Treat it as a migration aid, not the preferred architecture for new installs.
+`resolver-server/` exists for deployments that have not moved token resolution into the NestJS backend. Treat it as a migration aid, not the preferred architecture for new installs.
 
 ## What Is Optional vs Required
 
 Required:
 - frontend static assets from this repository
-- a Rust backend that supports the file APIs you enable in the UI
+- the NestJS API in `backend/nestjs`, with SQLite auth state and filesystem uploads
 
 Optional:
 - `/auth/*` routes for account mode
@@ -58,5 +58,5 @@ Compatibility-only:
 - `resolver-server/`
 
 Not part of the intended architecture:
-- extra app servers beyond the frontend static host and Rust backend
+- extra app servers beyond the frontend static host and NestJS backend
 - undocumented sidecar services required just to make the default install function

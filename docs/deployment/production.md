@@ -38,7 +38,7 @@ On the **UI host**, set `SPLIT_ROLE=ui`, `COMPOSE_PROFILES=ui`, and
 `SPLIT_ROLE=api` and `COMPOSE_PROFILES=api`. Both hosts need the same
 `PASTE_URL`, `PASTE_PUBLIC_API`, `JWT_SECRET`, and `AUTH_ADMIN_BEARER`; only
 the API host needs the persistent upload/auth volumes. The UI host does not
-start a local Rust backend.
+start a local NestJS backend.
 
 Keep public file links on `PASTE_URL`. The UI host must proxy public raw paths
 (`/<id>/file` and `/<id>/file.ext`) to the API host for `raw`/`download`

@@ -231,7 +231,7 @@ async function decryptBlobWithKey(blob: Blob, key: CryptoKey): Promise<Decryptio
   requireBrowserEncryption()
   const payload = new Uint8Array(await blob.arrayBuffer())
   if (!hasMagicBytes(payload)) {
-    throw new Error('This file is not a rustypaste encrypted file')
+    throw new Error('This file is not a supported encrypted file')
   }
   if (payload.byteLength < MAGIC_BYTES.byteLength + 4) {
     throw new Error('Encrypted file header is incomplete')
@@ -342,7 +342,7 @@ export async function decryptBlobWithPassword(blob: Blob, password: string, salt
   return decryptBlobWithKey(blob, key)
 }
 
-export async function isRustypasteEncryptedBlob(blob: Blob): Promise<boolean> {
+export async function isEncryptedBlob(blob: Blob): Promise<boolean> {
   const prefix = new Uint8Array(await blob.slice(0, MAGIC_BYTES.byteLength).arrayBuffer())
   return hasMagicBytes(prefix)
 }

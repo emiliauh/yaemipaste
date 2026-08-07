@@ -10,7 +10,7 @@ npm run build
 ```
 
 2. Publish `dist/` to your static host.
-3. Route frontend-relative API paths to the Rust backend.
+3. Route frontend-relative API paths to the NestJS backend.
 4. Validate upload, history, preview, and download flows.
 
 For a remote static-host deployment, the pattern is:
@@ -44,7 +44,7 @@ Recommended security headers for the frontend host:
 
 The bundled `docker-compose.yml` is for local or self-hosted deployments that want:
 - a static frontend container
-- a Rust backend container
+- a NestJS backend container
 
 Use:
 
@@ -58,7 +58,7 @@ Enable the legacy resolver only if needed:
 docker compose --profile ui --profile api --profile with-resolver up --build -d
 ```
 
-Use that resolver profile only for older deployments whose Rust backend still lacks a native resolve route.
+Use that resolver profile only for older deployments whose backend still lacks a native resolve route.
 
 ## Remote Validation Checklist
 

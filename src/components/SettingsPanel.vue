@@ -302,7 +302,7 @@ async function submitPasswordChange() {
     </div>
 
     <div style="margin-top:var(--space-2); color:var(--text2); font-size:var(--fs-xs); text-align:center">
-      {{ appName }} + rustypaste
+      {{ appName }}
     </div>
   </div>
 

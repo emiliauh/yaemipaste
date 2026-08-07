@@ -16,8 +16,8 @@ jobs:
       matrix:
         include:
           - image: yaemipaste-api
-            context: backend/rustypaste
-            file: backend/rustypaste/Dockerfile
+            context: backend/nestjs
+            file: backend/nestjs/Dockerfile
           - image: yaemipaste-ui
             context: .
             file: Dockerfile

@@ -12,8 +12,6 @@ dist
 dist-ssr
 test-results
 playwright-report
-backend/rustypaste/target
-tools/install-tui/target
 *.local
 .env
 .env.*

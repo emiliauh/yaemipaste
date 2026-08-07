@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getAuthJwt, type PasteFile, fileUrl, formatBytes, shareUrl } from '../lib/api'
-import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isRustypasteEncryptedBlob, passwordEncryptedShareUrl } from '../lib/e2ee'
+import { getAuthJwt, type PasteFile, fileUrl, formatBytes, publicFileUrl, shareUrl } from '../lib/api'
+import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isEncryptedBlob, passwordEncryptedShareUrl } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 
@@ -51,7 +51,12 @@ const hasEncryptedSuffix = computed(() =>
 )
 const isEncrypted = computed(() => !!storedEncrypted.value || hasEncryptedSuffix.value || detectedEncrypted.value)
 const isDecryptedBlobSource = computed(() => url.value.startsWith('blob:'))
-const encryptedPreviewLocked = computed(() => isEncrypted.value && !isDecryptedBlobSource.value)
+// A locally stored key is enough to expose the normal file-details modal and
+// its copy actions. Password-encrypted files still require an explicit
+// password entry because the stored value is only a salt.
+const encryptedPreviewLocked = computed(() => isEncrypted.value
+  && !isDecryptedBlobSource.value
+  && (!storedEncrypted.value || storedEncrypted.value.key.startsWith('pw:')))
 const previewPageUrl = computed(() => {
   const origin = storedEncrypted.value?.origin || window.location.origin
   if (passwordSalt.value) return passwordEncryptedShareUrl(props.file.file_name, passwordSalt.value, origin)
@@ -61,6 +66,7 @@ const previewPageUrl = computed(() => {
 const rawFileUrl = computed(() => {
   // Track the live server setting so copied raw links update from /api to its configured API origin.
   void publicSettings.value.base_api_url
+  if (isAdminContentUrl.value) return publicFileUrl(props.file.file_name)
   return new URL(fileUrl(props.file.file_name), window.location.origin).toString()
 })
 const copyUrl = computed(() => previewPageUrl.value)
@@ -118,7 +124,7 @@ async function decryptPreview() {
       if (!response.ok) throw new Error('Could not download encrypted payload')
       payload = await response.blob()
     }
-    if (!(await isRustypasteEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
+    if (!(await isEncryptedBlob(payload))) throw new Error('File payload is not encrypted')
     const decrypted = passwordSalt.value
       ? await decryptBlobWithPassword(payload, key, passwordSalt.value)
       : await decryptEncryptedBlob(payload, key)
@@ -205,7 +211,7 @@ async function loadTextPreview() {
     })
     if (!response.ok) throw new Error('Could not load text preview')
     const payload = await response.clone().blob()
-    if (await isRustypasteEncryptedBlob(payload)) {
+    if (await isEncryptedBlob(payload)) {
       encryptedPayload.value = payload
       detectedEncrypted.value = true
       return
@@ -241,7 +247,7 @@ async function loadMediaPreview() {
     })
     if (!response.ok) throw new Error('Could not load media preview')
     const payload = await response.blob()
-    if (await isRustypasteEncryptedBlob(payload)) {
+    if (await isEncryptedBlob(payload)) {
       encryptedPayload.value = payload
       detectedEncrypted.value = true
       return

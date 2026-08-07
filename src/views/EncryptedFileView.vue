@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   decryptEncryptedBlob,
-  isRustypasteEncryptedBlob,
+  isEncryptedBlob,
   rememberEncryptedFile,
   rawFileNameFromPublicPath,
   type EncryptedMetadata,
@@ -82,7 +82,7 @@ async function downloadEncryptedPayload(name: string): Promise<Blob | null> {
       continue
     }
     const payload = await response.blob()
-    if (await isRustypasteEncryptedBlob(payload)) return payload
+    if (await isEncryptedBlob(payload)) return payload
     const contentType = response.headers.get('content-type') ?? payload.type
     if (contentType.includes('text/html')) {
       sawHtmlPayload = true

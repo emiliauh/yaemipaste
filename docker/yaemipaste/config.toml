@@ -6,7 +6,8 @@ address = "0.0.0.0:8000"
 
 url = "http://localhost:8080"
 max_content_length = "51200MB"
-upload_path = "/var/lib/rustypaste/upload"
+max_upload_dir_size = "10GiB"
+upload_path = "/var/lib/yaemipaste/upload"
 timeout = "30s"
 expose_version = true
 expose_list = true

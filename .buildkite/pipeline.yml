@@ -2,6 +2,13 @@ env:
   CI: "true"
 
 steps:
+  - label: ":node: NestJS API compatibility + security"
+    key: "api"
+    command:
+      - "npm --prefix backend/nestjs ci"
+      - "npm run api:build"
+      - "npm run api:test"
+
   - label: ":node: Frontend build + E2E"
     key: "frontend"
     command:

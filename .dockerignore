@@ -1,6 +1,13 @@
 node_modules
 dist
-backend/rustypaste/target
+backend/
+tests/
+docs/
+tools/
+scripts/
+resolver-server/
+patches/
+docker-compose*.yml
 test-results
 .git
 .gitignore

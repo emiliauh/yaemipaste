@@ -2,7 +2,7 @@
   "name": "yaemipaste",
   "private": true,
   "version": "0.1.0",
-  "description": "Frontend for a compatible Rustypaste backend with auth, history, previews, encryption, and ShareX support.",
+  "description": "YaemiPaste frontend and NestJS API with auth, history, previews, encryption, and ShareX support.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -18,10 +18,12 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test",
+    "api:build": "npm --prefix backend/nestjs run build",
+    "api:test": "npm --prefix backend/nestjs test",
     "test:installer-smoke": "bash ./tests/installer-smoke.sh",
     "test:e2e:preview": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 PLAYWRIGHT_SERVER_COMMAND='npm run preview -- --host 127.0.0.1 --port 4173' playwright test",
     "audit:deps": "npm audit --audit-level=moderate",
-    "validate:release": "npm run build && npm run test:e2e:preview",
+    "validate:release": "npm run build && npm run api:build && npm run api:test && npm run test:e2e:preview",
     "promote:production": "bash ./scripts/promote-production.sh"
   },
   "dependencies": {

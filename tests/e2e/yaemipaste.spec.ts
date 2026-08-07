@@ -323,6 +323,8 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
         file_size_limit_bytes: 2147483648,
         file_size_limit_unlimited: false,
         upload_access_mode: 'public',
+        turnstile_enabled: false,
+        turnstile_site_key: '',
       })
       await route.fulfill({
         status: 200,
@@ -398,10 +400,18 @@ test('public upload mode opens Files without a login', async ({ page }) => {
   }
   await expect(page.getByRole('button', { name: 'Create account' })).toHaveCount(0)
 
-  await page.goto('/files?tab=history')
+  await page.goto('/history')
   await expect(page.getByText('History needs an account')).toBeVisible()
   await page.getByRole('button', { name: 'Log in to view history' }).click()
   await expect(page).toHaveURL(/\/login$/)
+})
+
+test('legacy history tab query canonicalizes to the history path', async ({ page }) => {
+  await signInWithToken(page)
+  await page.goto('/files/?tab=history')
+
+  await expect(page).toHaveURL(/\/history$/)
+  await expect(page.getByRole('heading', { name: 'History' })).toBeVisible()
 })
 
 test('guest mobile settings offers a full-width login and shows the configured API base', async ({ page }) => {
@@ -457,7 +467,7 @@ test('public registration setting offers account creation to guests', async ({ p
     })
   })
 
-  await page.goto('/files?tab=history')
+  await page.goto('/history')
 
   await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
 })
@@ -485,7 +495,7 @@ test('plain preview ignores a stale decryption fragment', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
   await expect(page.getByText('plain preview content')).toBeVisible()
-  await expect(page.getByText('This file is not a rustypaste encrypted file')).toHaveCount(0)
+  await expect(page.getByText('This file is not a supported encrypted file')).toHaveCount(0)
 })
 
 test('raw actions use the configured server API base by default', async ({ page }) => {
@@ -674,10 +684,10 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
     })
   })
 
-  await page.goto('/files?tab=history')
+  await page.goto('/history')
   await page.locator('tr.file-row .filename').first().click()
   const modal = page.locator('.modal')
-  await modal.getByRole('button', { name: 'Copy' }).click()
+  await modal.getByRole('button', { name: 'More copy options' }).click()
   await modal.getByRole('menuitem', { name: /Copy raw URL/ }).click()
 
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://papi.example.test/history-server-api.txt?raw=1')
@@ -782,7 +792,7 @@ test('uses selected expiry and reflects server-side deletion after simulated tim
   await expect(page.locator('h1')).toHaveText('Encrypted paste')
   await expect(page.getByText(/expiry-check\.txt/)).toBeVisible()
   await expect(page.getByText('expires soon')).toBeVisible()
-  await expect(page.getByText('This file is not a rustypaste encrypted file')).toHaveCount(0)
+  await expect(page.getByText('This file is not a supported encrypted file')).toHaveCount(0)
   await expect(page.locator('.decrypt-toast')).toHaveCount(0)
   await expect(page.getByTestId('notification-list')).toContainText('Success')
   await expect(page.getByTestId('notification-list')).toContainText(/Decrypted in \d+\.\d seconds/)
@@ -911,7 +921,7 @@ test('upload shows a clear error when API returns JSON instead of a file URL', a
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ status: 'ok', message: 'rustypaste api root' }),
+      body: JSON.stringify({ status: 'ok', message: 'legacy api root' }),
     })
   })
 
@@ -1990,7 +2000,7 @@ test('upload keeps a user API override after an upload failure', async ({ page }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ status: 'ok', message: 'rustypaste api root' }),
+      body: JSON.stringify({ status: 'ok', message: 'legacy api root' }),
     })
   })
 
@@ -2127,7 +2137,7 @@ test('history encrypted modal copy includes key and hides raw media URL action',
   const modal = page.locator('.modal')
   await expect(modal).toBeVisible()
   await expect(modal.getByText('Size: 345 B', { exact: true })).toBeVisible()
-  await modal.getByRole('button', { name: 'Copy' }).click()
+  await modal.getByRole('button', { name: 'More copy options' }).click()
   await modal.getByRole('menuitem', { name: /Copy preview URL/ }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toContain(`/preview#${decryptKey}`)
 })
@@ -2716,13 +2726,13 @@ test('preview action groups keep Copy aligned with Open', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Preview ShareX screenshot.png' })
   await page.waitForTimeout(400)
   const openButton = dialog.getByRole('button', { name: 'Open file preview or raw content' })
-  const copyButton = dialog.getByRole('button', { name: 'Copy file content or URL' })
+  const primaryCopyButton = dialog.getByRole('button', { name: 'Copy file content or URL' })
   const copyMenuButton = dialog.getByRole('button', { name: 'More copy options' })
   const openChevron = openButton.locator('.copy-chevron')
   const copyChevron = copyMenuButton.locator('.copy-chevron')
   const copyActions = dialog.locator('.copy-actions')
   const openBox = await openButton.boundingBox()
-  const copyBox = await copyButton.boundingBox()
+  const copyBox = await primaryCopyButton.boundingBox()
   const copyMenuBox = await copyMenuButton.boundingBox()
   const copyActionsBox = await copyActions.boundingBox()
 
@@ -3060,7 +3070,7 @@ test('history preview modal provides copy action that copies preview URL', async
   await expect(modal).toBeVisible()
   await expect(modal.getByText('Size: 68 B')).toBeVisible()
 
-  await modal.getByRole('button', { name: 'Copy' }).click()
+  await modal.getByRole('button', { name: 'More copy options' }).click()
   await modal.getByRole('menuitem', { name: /Copy preview URL/ }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(
     /\/file\/[A-Za-z0-9_-]+\/preview$/,
@@ -3418,7 +3428,7 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'Preferences' }).click()
-  await expect(page.getByText('yaemipaste + rustypaste')).toBeVisible()
+  await expect(page.getByTestId('settings-layer').getByText('yaemipaste')).toBeVisible()
   await expect(page.getByTestId('open-passkey-modal')).toBeVisible()
   await expect(page.getByTestId('open-change-password')).toBeVisible()
   await page.getByTestId('open-passkey-modal').click()
@@ -4043,6 +4053,7 @@ test('admin users cannot take actions against their own account', async ({ page 
   await page.getByRole('group', { name: 'User actions' }).getByRole('button', { name: 'Purge uploads' }).click()
   const purgeDialog = page.getByRole('dialog', { name: 'Purge user uploads?' })
   await expect(purgeDialog).toBeVisible()
+  await purgeDialog.getByRole('checkbox').check()
   await purgeDialog.getByRole('button', { name: 'Purge uploads' }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Uploads purged')
 })
@@ -4183,7 +4194,7 @@ test('admin destructive actions send explicit confirmations', async ({ page }) =
   await page.goto('/admin')
   await page.locator('.admin-tabs').getByRole('button', { name: 'Uploads', exact: true }).click()
   await page.getByLabel('Select files/upload-1.txt').check()
-  await page.getByRole('button', { name: 'Actions', exact: true }).click()
+  await page.locator('.upload-actions-trigger:not(:disabled)').click()
   await page.getByRole('menuitem', { name: 'Delete selected', exact: true }).click()
   let confirmation = page.getByRole('dialog', { name: 'Delete selected uploads?' })
   await expect(confirmation).toBeVisible()
@@ -4191,7 +4202,7 @@ test('admin destructive actions send explicit confirmations', async ({ page }) =
   await confirmation.getByRole('button', { name: 'Delete uploads', exact: true }).click()
   await expect(page.getByTestId('notification-list')).toContainText('Selected uploads deleted')
 
-  await page.getByRole('button', { name: 'Actions', exact: true }).click()
+  await page.locator('.upload-actions-trigger:not(:disabled)').click()
   await page.getByRole('menuitem', { name: 'Purge expired', exact: true }).click()
   confirmation = page.getByRole('dialog', { name: 'Purge expired uploads?' })
   await expect(confirmation).toBeVisible()
@@ -4395,17 +4406,21 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('.modal-body')).toBeVisible()
   const openButton = dialog.getByRole('button', { name: 'Open file preview or raw content' })
-  const copyMenuButton = dialog.getByRole('button', { name: 'Copy file content or URL' })
+  const primaryCopyButton = dialog.getByRole('button', { name: 'Copy file content or URL' })
+  const copyMenuButton = dialog.getByRole('button', { name: 'More copy options' })
   await expect(openButton).toBeVisible()
+  await expect(primaryCopyButton).toBeVisible()
   await expect(copyMenuButton).toBeVisible()
-  await copyMenuButton.hover()
-  await expect(copyMenuButton).toHaveCSS('transform', 'none')
+  await primaryCopyButton.hover()
+  await expect(primaryCopyButton).toHaveCSS('transform', 'none')
   await openButton.click()
   const openMenu = dialog.getByRole('menu', { name: 'Open options' })
   await expect(openMenu).toBeVisible()
   await expect(openMenu.getByRole('menuitem', { name: /Open preview/ })).toHaveAttribute('href', /\/file\/upload-1\/preview$/)
   await expect(openMenu.getByRole('menuitem', { name: /Open raw/ })).toHaveAttribute('href', /\/upload-1\/file\.txt$/)
   const openMenuBox = await openMenu.boundingBox()
+  await openButton.click()
+  await expect(openMenu).toHaveCount(0)
   await copyMenuButton.click()
   const copyMenu = dialog.getByRole('menu', { name: 'Copy options' })
   await expect(copyMenu).toBeVisible()
@@ -4416,7 +4431,7 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
     expect(copyMenuBox.x + copyMenuBox.width).toBeLessThanOrEqual(viewport.width)
   }
   const openButtonBox = await openButton.boundingBox()
-  const copyButtonBox = await copyMenuButton.boundingBox()
+  const copyButtonBox = await primaryCopyButton.boundingBox()
   expect(openButtonBox?.width).toBe(copyButtonBox?.width)
   expect(openButtonBox?.height).toBe(copyButtonBox?.height)
   await page.keyboard.press('Escape')

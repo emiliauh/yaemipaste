@@ -173,7 +173,7 @@ test('production: password encryption upload + preview + history thumbnail', asy
   for (const url of uploadRequestUrls) {
     expect([`${liveApiBaseUrl}/`, `${liveBrowserApiBaseUrl}/`]).toContain(url)
   }
-  expect(uploadResponseBodies.some((body) => body.toLowerCase().includes('rustypaste api root'))).toBeFalsy()
+  expect(uploadResponseBodies.some((body) => body.toLowerCase().includes('legacy api root'))).toBeFalsy()
   expect(browserRawRequestUrls.some((url) => url.includes(encodeURIComponent(imageFileName)))).toBeTruthy()
 
   await request.delete(`${liveApiBaseUrl}/${encodeURIComponent(imageFileName)}`, {

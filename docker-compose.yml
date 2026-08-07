@@ -1,11 +1,11 @@
 services:
   paste-api:
     profiles: ["api"]
-    image: ${YAEMIPASTE_API_IMAGE:-ghcr.io/emiliauh/yaemipaste-api}:${YAEMIPASTE_IMAGE_TAG:-main}
+    image: ${YAEMIPASTE_API_IMAGE:-ghcr.io/emiliauh/yaemipaste-api}:${YAEMIPASTE_IMAGE_TAG:?YAEMIPASTE_IMAGE_TAG must be set to an immutable release tag}
     restart: unless-stopped
     environment:
-      CONFIG: /etc/rustypaste/config.toml
-      DB_PATH: ${DB_PATH:-/var/lib/rustypaste-auth/users.db}
+      CONFIG: /etc/yaemipaste/config.toml
+      DB_PATH: ${DB_PATH:-/var/lib/yaemipaste-auth/users.db}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be a non-empty random secret}
       VITE_ENABLE_SHAREX: ${VITE_ENABLE_SHAREX:-1}
       AUTH_ADMIN_BEARER: ${AUTH_ADMIN_BEARER:?AUTH_ADMIN_BEARER must be a non-empty random secret}
@@ -20,13 +20,20 @@ services:
       PASSKEY_ALLOW_ANY_PORT: ${PASSKEY_ALLOW_ANY_PORT:-0}
       PASSKEY_ALLOW_SUBDOMAINS: ${PASSKEY_ALLOW_SUBDOMAINS:-0}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
-      REMOTE_UPLOADS_ENABLED: ${REMOTE_UPLOADS_ENABLED:-1}
-      ALLOW_ANONYMOUS_UPLOADS: ${ALLOW_ANONYMOUS_UPLOADS:-1}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      MAX_CONCURRENT_UPLOADS_PER_CLIENT: ${MAX_CONCURRENT_UPLOADS_PER_CLIENT:-4}
+      REMOTE_UPLOADS_ENABLED: ${REMOTE_UPLOADS_ENABLED:-0}
+      ALLOW_ANONYMOUS_UPLOADS: ${ALLOW_ANONYMOUS_UPLOADS:-0}
       SERVER__URL: ${PASTE_URL:-http://localhost:8080}
       SERVER__ADDRESS: 0.0.0.0:8000
-      SERVER__UPLOAD_PATH: /var/lib/rustypaste/upload
+      SERVER__UPLOAD_PATH: /var/lib/yaemipaste/upload
+      MAX_UPLOAD_DIR_SIZE: ${MAX_UPLOAD_DIR_SIZE:-10GiB}
     volumes:
-      - ./docker/rustypaste/config.toml:/etc/rustypaste/config.toml:ro
+      - ./docker/yaemipaste/config.toml:/etc/yaemipaste/config.toml:ro
+      - yaemipaste-upload:/var/lib/yaemipaste/upload
+      - yaemipaste-auth:/var/lib/yaemipaste-auth
+      # Keep the legacy container paths as aliases so an existing DB_PATH or
+      # upload-path override cannot silently point at an empty filesystem.
       - yaemipaste-upload:/var/lib/rustypaste/upload
       - yaemipaste-auth:/var/lib/rustypaste-auth
     networks:
@@ -43,12 +50,14 @@ services:
     working_dir: /app
     environment:
       RESOLVER_PORT: ${RESOLVER_PORT:-3101}
-      RESOLVER_UPLOAD_DIR: /var/lib/rustypaste/upload
-      RESOLVER_USERS_DB_PATH: ${DB_PATH:-/var/lib/rustypaste-auth/users.db}
+      RESOLVER_UPLOAD_DIR: /var/lib/yaemipaste/upload
+      RESOLVER_USERS_DB_PATH: ${DB_PATH:-/var/lib/yaemipaste-auth/users.db}
       RESOLVER_PUBLIC_ORIGIN: ${RESOLVER_PUBLIC_ORIGIN:-http://localhost:8080}
       RESOLVER_CACHE_TTL_MS: ${RESOLVER_CACHE_TTL_MS:-30000}
     volumes:
       - ./resolver-server:/app/resolver-server:ro
+      - yaemipaste-upload:/var/lib/yaemipaste/upload:ro
+      - yaemipaste-auth:/var/lib/yaemipaste-auth:ro
       - yaemipaste-upload:/var/lib/rustypaste/upload:ro
       - yaemipaste-auth:/var/lib/rustypaste-auth:ro
     ports:
@@ -58,7 +67,7 @@ services:
 
   ui:
     profiles: ["ui"]
-    image: ${YAEMIPASTE_UI_IMAGE:-ghcr.io/emiliauh/yaemipaste-ui}:${YAEMIPASTE_IMAGE_TAG:-main}
+    image: ${YAEMIPASTE_UI_IMAGE:-ghcr.io/emiliauh/yaemipaste-ui}:${YAEMIPASTE_IMAGE_TAG:?YAEMIPASTE_IMAGE_TAG must be set to an immutable release tag}
     restart: unless-stopped
     environment:
       CSP_CONNECT_SRC: "${CSP_CONNECT_SRC:-}"

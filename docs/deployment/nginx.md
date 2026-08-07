@@ -16,7 +16,7 @@ Validate with `nginx -t` before reload.
 
 ## Split Host
 
-Expose the Rust API through a separate TLS server block at
+Expose the NestJS API through a separate TLS server block at
 `api.example.com`, proxying to `127.0.0.1:8000`. The UI server must proxy raw
 public file byte requests to that API host and apply SPA fallback only after
 API/auth/raw route matching. Configure exact CORS and CSP values from

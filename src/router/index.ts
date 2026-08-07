@@ -20,10 +20,10 @@ const router = createRouter({
           const k = params.get('k')
           if (f) rememberResolvedFileName(f)
           if (f && k) {
-            if (k.startsWith('pw:')) return `/file/${encodeFileToken(f)}+${k}/preview`
-            return `/file/${encodeFileToken(f)}/preview#${encodeURIComponent(k)}`
+            if (k.startsWith('pw:')) return { path: `/file/${encodeFileToken(f)}+${k}/preview`, hash: '' }
+            return { path: `/file/${encodeFileToken(f)}/preview`, hash: `#${encodeURIComponent(k)}` }
           }
-          if (f) return `/file/${encodeFileToken(f)}/preview`
+          if (f) return { path: `/file/${encodeFileToken(f)}/preview`, hash: '' }
         }
         // backward compat: old hash-based public preview links (#/preview?p=...&f=...)
         if (hash.startsWith('#/preview?')) {
@@ -33,7 +33,7 @@ const router = createRouter({
           const filename = rawFileNameFromPublicPath(p || f)
           if (filename) {
             rememberResolvedFileName(filename)
-            return `/file/${encodeFileToken(filename)}/preview`
+            return { path: `/file/${encodeFileToken(filename)}/preview`, hash: '' }
           }
         }
         return '/files'
@@ -71,7 +71,7 @@ const router = createRouter({
     {
       path: '/history',
       component: () => import('../views/DashboardView.vue'),
-      meta: { requiresAuth: isAuthEnabled(), workspace: true },
+      meta: { workspace: true },
     },
     // backward compat: old /{id}/file.ext style direct URLs
     {
@@ -103,6 +103,10 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  // Keep legacy tab links usable while making page state path-based.
+  const normalizedPath = to.path.replace(/\/+$/, '') || '/'
+  if (normalizedPath === '/files' && to.query.tab === 'history') return '/history'
+  if (!isAuthEnabled() && to.path === '/history') return '/files'
   if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register' || to.path.startsWith('/admin'))) return '/files'
   if (to.path === '/files' && to.meta.requiresAuth && !isLoggedIn()) {
     const settings = await refreshPublicSettings()

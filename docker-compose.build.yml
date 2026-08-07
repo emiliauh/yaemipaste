@@ -1,7 +1,7 @@
 services:
   paste-api:
     build:
-      context: ./backend/rustypaste
+      context: ./backend/nestjs
 
   ui:
     build:

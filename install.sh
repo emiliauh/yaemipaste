@@ -17,7 +17,6 @@ ACTION="menu"
 YES=0
 ACTION_SET=0
 INTERACTIVE_REQUESTED=0
-TUI_REQUESTED=0
 DRY_RUN=0
 PUBLIC_URL_OVERRIDE=""
 DEPLOYMENT_MODE_OVERRIDE=""
@@ -788,7 +787,7 @@ configure_env() {
     if [[ -z "$resolve_base" ]]; then
       resolve_base="/api/resolve"
     fi
-    log "Resolver disabled: expecting compatible Rust backend routes at ${resolve_base}."
+    log "Resolver disabled: expecting compatible NestJS backend routes at ${resolve_base}."
   elif [[ -z "$resolve_base" ]]; then
     resolve_base="/resolve"
   fi
@@ -916,7 +915,7 @@ stack_install_or_update() {
   local image_mode
   image_mode="$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
   if [[ "$image_mode" == "build" ]]; then
-    warn "Local image builds are enabled; npm and Cargo compilation may take several minutes."
+    warn "Local image builds are enabled; dependency installation and compilation may take several minutes."
     ensure_internet_access "build Docker images and download build dependencies"
     STACK_STARTED_THIS_RUN=1
     compose up -d --build
@@ -1194,41 +1193,6 @@ print_menu() {
 EOF
 }
 
-run_tui_action_picker() {
-  local script_dir tui_dir picked
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  tui_dir="${script_dir}/tools/install-tui"
-  if [[ ! -f "${tui_dir}/Cargo.toml" ]]; then
-    warn "Ratatui action picker is not present; falling back to the shell menu."
-    ACTION="menu"
-    return 0
-  fi
-  if ! command_exists cargo; then
-    warn "cargo is not installed, so the Ratatui action picker cannot be built; falling back to the shell menu."
-    ACTION="menu"
-    return 0
-  fi
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "[DRY-RUN] would launch optional Ratatui action picker from ${tui_dir}."
-    ACTION="menu"
-    return 0
-  fi
-  picked="$(cargo run --quiet --manifest-path "${tui_dir}/Cargo.toml" 2>/dev/tty || true)"
-  case "$picked" in
-    install|init-user|create-token|revoke-token|admin-claim|reset-admin-claim|start|stop|restart|status|uninstall)
-      ACTION="$picked"
-      ACTION_SET=1
-      ;;
-    menu|"")
-      ACTION="menu"
-      ;;
-    *)
-      warn "Ratatui picker returned an unknown action (${picked}); falling back to the shell menu."
-      ACTION="menu"
-      ;;
-  esac
-}
-
 run_action() {
   case "$1" in
     install) stack_install_or_update ;;
@@ -1282,7 +1246,6 @@ Usage: $0 [options]
 Options:
   --action <install|init-user|create-token|revoke-token|admin-claim|reset-admin-claim|start|stop|restart|status|uninstall|menu>
   --interactive          Launch the guided shell menu (default when no action is supplied)
-  --tui                  Launch optional Ratatui action picker, falling back to shell menu
   --install-dir <path>   Default: ${DEFAULT_INSTALL_DIR}
   --repo-url <url>       Default: ${DEFAULT_REPO_URL}
   --branch <name>        Default: ${DEFAULT_BRANCH}
@@ -1295,11 +1258,7 @@ Options:
   --dry-run              Print actions without changing system state
   -h, --help             Show this help
 
-Interactive mode:
-  The shell menu remains the stable installer path because it works before Rust
-  tooling is available. If cargo is installed, --tui runs the companion Ratatui
-  action picker in tools/install-tui and then dispatches the selected install.sh
-  action; otherwise it falls back cleanly to the shell menu.
+Interactive mode launches the guided shell menu.
 EOF
 }
 
@@ -1358,13 +1317,6 @@ parse_args() {
         INTERACTIVE_REQUESTED=1
         shift
         ;;
-      --tui)
-        ACTION="menu"
-        ACTION_SET=1
-        INTERACTIVE_REQUESTED=1
-        TUI_REQUESTED=1
-        shift
-        ;;
       --yes)
         YES=1
         shift
@@ -1392,15 +1344,6 @@ parse_args() {
 main() {
   setup_ui
   parse_args "$@"
-  if [[ "$YES" -eq 1 && "$TUI_REQUESTED" -eq 1 ]]; then
-    die "--yes cannot run the Ratatui picker. Pass --action <name> for non-interactive use."
-  fi
-  if [[ "$TUI_REQUESTED" -eq 1 ]]; then
-    run_tui_action_picker
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      return 0
-    fi
-  fi
   if [[ "$YES" -eq 1 && "$ACTION" == "menu" ]]; then
     die "--yes cannot run the interactive menu. Pass --action install (or another non-menu action), or use --interactive without --yes."
   fi

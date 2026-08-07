@@ -473,7 +473,7 @@ async function loginWithPasskey() {
 .link:hover { color: var(--text); }
 
 @media (max-width: 900px) {
-  .page { align-items: flex-start; padding-top: clamp(var(--space-6), 12vh, var(--space-8)); }
+  .page { align-items: center; }
   .login-layout { grid-template-columns: minmax(0, 420px); justify-content: center; gap: var(--space-5); }
   .login-intro { max-width: 420px; }
   .login-brand { margin-bottom: var(--space-5); }

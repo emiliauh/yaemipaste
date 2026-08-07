@@ -1788,11 +1788,12 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   position: relative;
   display: flex;
   align-self: stretch;
+  min-height: 48px;
 }
 .upload-search input {
   width: min(450px, 48vw);
   height: 100%;
-  min-height: 0;
+  min-height: 48px;
   padding-right: 38px;
 }
 .upload-search svg {
