@@ -231,7 +231,7 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     throw apiError(404, 'file is not found or expired :(')
   }
 
-  resolveToken(token: string): { fileName: string; rawPath: string; uploader?: string } {
+  resolveToken(token: string): { fileName: string; rawPath: string; uploader?: string; located: LocatedFile } {
     const clean = decodeURIComponent(token).replace(/^\/+/, '')
     if (!clean || clean.includes('/')) throw apiError(404, 'file is not found or expired :(')
     const matches: Array<{ located: LocatedFile; owner?: string }> = []
@@ -249,7 +249,7 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     }
     if (matches.length !== 1) throw apiError(404, 'file is not found or expired :(')
     const fileName = stripExpiry(matches[0].located.name)
-    return { fileName, rawPath: this.publicPath(fileName), uploader: matches[0].owner }
+    return { fileName, rawPath: this.publicPath(fileName), uploader: matches[0].owner, located: matches[0].located }
   }
 
   publicPath(fileName: string) {

@@ -268,11 +268,26 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
     status: 'available',
     used_by: null,
     used_at: null,
+  }, {
+    token_ref: 'registration-used-ref',
+    label: 'old invite',
+    created_at: 1_774_800_000,
+    expires_at: null,
+    revoked_at: null,
+    status: 'used',
+    used_by: 'old-user',
+    used_at: 1_774_900_000,
   }]
   await page.route('**/auth/admin/registration-tokens**', async (route) => {
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     if (route.request().method() === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(registrationTokenList) })
+      return
+    }
+    if (route.request().method() === 'DELETE') {
+      expect(new URL(route.request().url()).pathname).toMatch(/\/registration-tokens\/history$/)
+      registrationTokenList = registrationTokenList.filter((token) => token.status === 'available')
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ detail: 'cleared', removed: 1 }) })
       return
     }
     expect(route.request().method()).toBe('POST')
@@ -4082,6 +4097,12 @@ test('admin generates a single-use registration token with expiration', async ({
   await expect(page.getByRole('heading', { name: 'Registration tokens' }).last()).toBeVisible()
   await expect(page.getByText('Active', { exact: true }).last()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Revoke contractor invite token' }).last()).toBeVisible()
+  await page.getByRole('button', { name: 'Clear history' }).last().click()
+  const clearDialog = page.getByRole('dialog', { name: 'Clear token history?' })
+  await expect(clearDialog).toBeVisible()
+  await clearDialog.getByRole('checkbox').check()
+  await clearDialog.getByRole('button', { name: 'Clear history', exact: true }).click()
+  await expect(page.getByText('old invite', { exact: true })).toHaveCount(0)
 })
 
 test('admin paginates recent webhook deliveries', async ({ page }) => {

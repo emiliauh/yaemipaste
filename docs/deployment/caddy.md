@@ -45,6 +45,28 @@ The direct-static example is intentionally incomplete for public raw-file and
 native API resolution routes. Prefer proxying the entire host to the bundled UI
 unless those routes are also reproduced from `docker/nginx/default.conf`.
 
+For direct-static deployments, route crawler requests for modern preview links
+to the NestJS API before the SPA fallback. The API returns a small Open Graph
+document for crawlers while normal browsers continue to receive the Vue preview:
+
+```caddyfile
+@embedPreview {
+  path_regexp embed_preview ^/file/[^/]+/preview$
+  header_regexp User-Agent (?i)(Discordbot|Slackbot|Twitterbot|facebookexternalhit|WhatsApp|TelegramBot|LinkedInBot|Pinterest|SkypeUriPreview|Googlebot|bingbot)
+}
+handle @embedPreview {
+  header Cache-Control no-store
+  header CDN-Cache-Control no-store
+  header Vary "Accept, User-Agent"
+  reverse_proxy 127.0.0.1:8000 {
+    header_up X-Preview-Embed 1
+  }
+}
+```
+
+Place this handler before `handle /file/*` and keep the existing raw/download
+handlers below it.
+
 Validate before reload with `caddy validate --config /etc/caddy/Caddyfile`.
 
 ## Cloudflare Troubleshooting

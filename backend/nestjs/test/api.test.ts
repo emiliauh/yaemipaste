@@ -120,6 +120,13 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     const preview = await request('/file/hello/preview')
     assert.equal(preview.response.status, 302)
     assert.equal(preview.response.headers.get('location'), '/hello/file.txt')
+
+    const embed = await request('/file/hello/preview', { headers: { Accept: '*/*', 'X-Preview-Embed': '1' } })
+    assert.equal(embed.response.status, 200)
+    assert.match(embed.response.headers.get('content-type') ?? '', /^text\/html/)
+    assert.equal(embed.response.headers.get('cache-control'), 'no-store')
+    assert.match(embed.text, /property="og:title" content="hello\.txt"/)
+    assert.doesNotMatch(embed.text, /property="og:image"/)
   })
 
   test('admin claim, JWT auth, settings, and admin listing work', async () => {
@@ -146,6 +153,14 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     const dashboard = await request('/auth/admin/dashboard', { headers: { Authorization: `Bearer ${jwt}` } })
     assert.equal(dashboard.response.status, 200)
     assert.equal(dashboard.json.upload_count, 1)
+
+    const imageForm = new FormData()
+    imageForm.append('file', new Blob(['preview image']), 'preview.png')
+    const imageUpload = await request('/', { method: 'POST', body: imageForm })
+    assert.equal(imageUpload.response.status, 200)
+    const imageEmbed = await request('/file/preview/preview', { headers: { Accept: '*/*', 'X-Preview-Embed': '1' } })
+    assert.equal(imageEmbed.response.status, 200)
+    assert.match(imageEmbed.text, /property="og:image" content="http:\/\/localhost:8080\/api\/preview\.png\?raw=1"/)
 
     const expiringForm = new FormData()
     expiringForm.append('meta', JSON.stringify({ keepFileName: true, originalName: 'expiring-original.txt', uploader: 'admin', source: 'WebUI' }))
@@ -214,6 +229,11 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.equal((await request('/auth/token/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: revocableRegistration.json.token }) })).json.status, 'invalid')
     await new Promise(resolve => setTimeout(resolve, 1_100))
     assert.equal((await request('/auth/token/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: expiringToken }) })).json.status, 'invalid')
+    const clearedHistory = await request('/auth/admin/registration-tokens/history', { method: 'DELETE', headers: { Authorization: `Bearer ${adminJwt}` } })
+    assert.equal(clearedHistory.response.status, 200, clearedHistory.text)
+    assert.ok(clearedHistory.json.removed >= 3)
+    const afterClear = await request('/auth/admin/registration-tokens', { headers: { Authorization: `Bearer ${adminJwt}` } })
+    assert.equal(afterClear.json.some((row: any) => ['integration-user', 'one-second-registration', 'revocable-registration'].includes(row.label)), false)
     const aliceLogin = await request('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'alice', password: 'secret123' }) })
     assert.equal(aliceLogin.response.status, 200)
     const aliceJwt = aliceLogin.json.access_token

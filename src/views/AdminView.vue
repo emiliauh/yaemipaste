@@ -5,6 +5,7 @@ import {
   adminBulkDeleteUploads,
   adminUploadContentUrl,
   adminCreateRegistrationToken,
+  adminClearRegistrationTokenHistory,
   adminCreateUser,
   adminListRegistrationTokens,
   adminRevokeRegistrationToken,
@@ -94,6 +95,7 @@ const selectedRegistrationExpiry = computed(() => (
   ?? registrationTokenExpiryOptions[0]
 ))
 const activeRegistrationTokenCount = computed(() => registrationTokens.value.filter((token) => token.status === 'available').length)
+const hasRegistrationTokenHistory = computed(() => registrationTokens.value.some((token) => token.status !== 'available'))
 const initialAdminData = peekAdminData()
 const loading = ref(!initialAdminData)
 const error = ref('')
@@ -503,6 +505,20 @@ function requestRegistrationTokenRevoke(token: AdminRegistrationToken) {
     confirmLabel: 'Revoke token',
     success: 'Registration token revoked',
     work: () => adminRevokeRegistrationToken(token.token_ref),
+  })
+}
+
+function requestRegistrationTokenHistoryClear() {
+  if (!hasRegistrationTokenHistory.value) return
+  requestConfirmation({
+    title: 'Clear token history?',
+    message: 'Used, expired, and revoked registration tokens will be removed from this list. Active tokens will stay available.',
+    confirmLabel: 'Clear history',
+    success: 'Registration token history cleared',
+    work: async () => {
+      await adminClearRegistrationTokenHistory()
+      await loadRegistrationTokens()
+    },
   })
 }
 
@@ -1021,19 +1037,22 @@ onBeforeUnmount(() => {
             <h2>Registration tokens</h2>
             <p class="subtle">Single-use invitations for creating accounts.</p>
           </div>
-          <span class="registration-token-count">{{ activeRegistrationTokenCount }} active</span>
+          <div class="registration-token-heading-actions">
+            <span class="registration-token-count"><strong>{{ activeRegistrationTokenCount }}</strong> active</span>
+            <button v-if="hasRegistrationTokenHistory" class="btn-ghost btn-sm" type="button" @click="requestRegistrationTokenHistoryClear">Clear history</button>
+          </div>
         </div>
         <div v-if="registrationTokensLoading" class="empty-state registration-token-empty">Loading tokens…</div>
         <div v-else-if="registrationTokens.length" class="registration-token-list">
           <article v-for="token in registrationTokens" :key="token.token_ref" class="registration-token-row" :class="`status-${token.status}`">
             <div class="registration-token-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8.5 14.5 14 9a3.5 3.5 0 1 1 5 5l-4 4a3.5 3.5 0 0 1-5-5l1.5-1.5"/><path d="m5 19 4-4"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M17 13v7M13.5 16.5h7"/></svg>
             </div>
             <div class="registration-token-main">
               <strong>{{ token.label }}</strong>
               <span>{{ registrationTokenSummary(token) }}</span>
             </div>
-            <span class="registration-token-status" :class="token.status"><i aria-hidden="true"></i>{{ registrationTokenStatusLabel(token) }}</span>
+            <span class="registration-token-status" :class="token.status">{{ registrationTokenStatusLabel(token) }}</span>
             <button v-if="token.status === 'available'" class="btn-ghost btn-sm" type="button" :aria-label="`Revoke ${token.label} token`" @click="requestRegistrationTokenRevoke(token)">Revoke</button>
           </article>
         </div>
@@ -1774,16 +1793,19 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .registration-expiry-menu button span { color: var(--accent-h); }
 .registration-token-list-card { display: grid; gap: var(--space-3); }
+.registration-token-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
 .registration-token-count {
   align-self: center;
-  padding: 4px 9px;
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface2));
-  color: var(--accent-h);
+  color: var(--text2);
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: 500;
+  white-space: nowrap;
 }
+.registration-token-count strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .registration-token-list { display: grid; gap: var(--space-2); }
 .registration-token-row {
   display: grid;
@@ -1796,32 +1818,26 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   background: color-mix(in srgb, var(--surface2) 55%, transparent);
 }
 .registration-token-mark {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 15%, var(--surface2));
-  color: var(--accent-h);
+  color: var(--text3);
   font-size: 19px;
 }
-.registration-token-mark svg { width: 17px; height: 17px; }
+.registration-token-mark svg { width: 19px; height: 19px; }
 .registration-token-main { min-width: 0; display: grid; gap: 3px; }
 .registration-token-main strong { overflow: hidden; color: var(--text); font-size: var(--fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 .registration-token-main span { overflow: hidden; color: var(--text2); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .registration-token-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   color: var(--green);
   font-size: var(--fs-xs);
-  font-weight: 600;
-  text-transform: capitalize;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.registration-token-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .registration-token-status.expired,
-.registration-token-status.revoked { color: var(--text3); }
-.registration-token-status.used { color: var(--accent-h); }
+.registration-token-status.revoked,
+.registration-token-status.used { color: var(--text3); }
 .registration-token-row.status-expired,
 .registration-token-row.status-revoked { opacity: .78; }
 .registration-token-empty {
@@ -2579,6 +2595,11 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
   .registration-token-row {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+  .registration-token-heading-actions {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: var(--space-2);
   }
   .registration-token-status {
     grid-column: 2;

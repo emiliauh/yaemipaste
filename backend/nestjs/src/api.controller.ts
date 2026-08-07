@@ -20,6 +20,10 @@ function jsonBody(value: unknown): Record<string, any> {
   try { const parsed = JSON.parse(value); return parsed && typeof parsed === 'object' ? parsed : {} } catch { return {} }
 }
 
+function html(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character))
+}
+
 async function readRemoteBody(response: IncomingMessage, maximumBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = []
   let total = 0
@@ -132,7 +136,7 @@ export class ApiController {
   }
 
   @Get('file/:token/:mode')
-  fileRoute(@Req() _request: Request, @Res() response: Response) {
+  fileRoute(@Req() _request: Request, @Res() response: Response, @Headers('x-preview-embed') previewEmbed?: string, @Query('embed') embed?: string) {
     const token = String(_request.params.token).split('+')[0]
     const mode = String(_request.params.mode)
     if (!['preview', 'raw', 'download'].includes(mode)) throw apiError(404, 'file is not found or expired :(')
@@ -140,7 +144,31 @@ export class ApiController {
     if ((mode === 'raw' || mode === 'download') && resolved.fileName.endsWith('.rpenc')) {
       return response.redirect(302, `/file/${_request.params.token}/preview`)
     }
+    if (mode === 'preview' && (flag(previewEmbed) || flag(embed) || String(_request.headers.accept ?? '').includes('text/html'))) {
+      return this.previewEmbed(response, token, resolved.fileName, resolved.uploader, resolved.located)
+    }
     return response.redirect(302, this.storage.publicPath(resolved.fileName))
+  }
+
+  private previewEmbed(response: Response, token: string, fileName: string, uploader: string | undefined, located: ReturnType<StorageService['locate']>) {
+    const metadata = this.storage.metadataFor(located)
+    const stat = this.storage.fileStat(located)
+    const displayName = metadata?.display_name ?? fileName
+    const contentType = this.storage.contentType(displayName)
+    const origin = this.config.value.publicUrl
+    const previewUrl = `${origin}/file/${encodeURIComponent(token)}/preview`
+    const rawUrl = `${origin}/api/${encodeURIComponent(fileName)}?raw=1`
+    const description = `${contentType} · ${stat.size.toLocaleString('en-US')} bytes${uploader ? ` · ${uploader}` : ''}`
+    const imageMeta = contentType.startsWith('image/')
+      ? `<meta property="og:image" content="${html(rawUrl)}"><meta property="og:image:type" content="${html(contentType)}"><meta property="og:image:alt" content="${html(displayName)}">`
+      : ''
+    const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${html(displayName)} · yaemipaste</title><meta name="description" content="${html(description)}"><link rel="canonical" href="${html(previewUrl)}"><meta property="og:type" content="website"><meta property="og:title" content="${html(displayName)}"><meta property="og:description" content="${html(description)}"><meta property="og:url" content="${html(previewUrl)}">${imageMeta}<meta name="twitter:card" content="${contentType.startsWith('image/') ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${html(displayName)}"><meta name="twitter:description" content="${html(description)}"></head><body><main><h1>${html(displayName)}</h1><p>${html(description)}</p><p><a href="${html(previewUrl)}">Open preview</a></p></main></body></html>`
+    return response.status(200).set({
+      'Cache-Control': 'no-store',
+      'CDN-Cache-Control': 'no-store',
+      'Content-Type': 'text/html; charset=utf-8',
+      Vary: 'Accept, User-Agent',
+    }).send(body)
   }
 
   @Get(':id/:name')

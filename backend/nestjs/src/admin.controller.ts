@@ -154,6 +154,15 @@ export class AdminController {
     return tokens
   }
 
+  @Delete('registration-tokens/history')
+  clearRegistrationTokenHistory(@Req() request: Request) {
+    const actor = this.actor(request)
+    const result = this.db.run('DELETE FROM registration_tokens WHERE revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at <= ?) OR EXISTS (SELECT 1 FROM users WHERE users.token = registration_tokens.token)', [nowSeconds()])
+    const removed = Number(result.changes ?? 0)
+    this.auth.audit(actor.username, 'admin.registration_token.history.clear', String(removed), 'success')
+    return { detail: 'Registration token history cleared', removed }
+  }
+
   @Delete('registration-tokens/:tokenRef')
   revokeRegistrationToken(@Req() request: Request, @Param('tokenRef') tokenRef: string) {
     const actor = this.actor(request)

@@ -1354,6 +1354,12 @@ export function adminRevokeRegistrationToken(tokenRef: string) {
   }, 'Could not revoke registration token')
 }
 
+export function adminClearRegistrationTokenHistory() {
+  return adminRequest<{ detail: string; removed: number }>('/registration-tokens/history', {
+    method: 'DELETE',
+  }, 'Could not clear registration token history')
+}
+
 export function adminUpdateUser(username: string, payload: { suspended?: boolean; suspension_reason?: string; is_admin?: boolean }) {
   return adminRequest<{ detail: string }>(`/users/${encodeURIComponent(username)}`, {
     method: 'PATCH',
