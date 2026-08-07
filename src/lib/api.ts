@@ -957,10 +957,12 @@ export function effectivePublicMimeType(meta: PublicFileMeta | null | undefined,
 
 export async function getPublicFileMeta(fileName: string, includeAuth = false): Promise<PublicFileMeta> {
   const encodedName = encodeURIComponent(fileName)
-  const cacheBust = Date.now().toString(36)
+  const cacheBust = import.meta.env.VITE_PUBLIC_META_CACHE_BUST === '1'
+    ? `?cb=${Date.now().toString(36)}`
+    : ''
   const urls = [
-    `${getPasteApiBase()}/meta/${encodedName}?cb=${cacheBust}`,
-    `${publicSiteOrigin()}/api/meta/${encodedName}?cb=${cacheBust}`,
+    `${getPasteApiBase()}/meta/${encodedName}${cacheBust}`,
+    `${publicSiteOrigin()}/api/meta/${encodedName}${cacheBust}`,
   ].filter((url, index, all) => all.indexOf(url) === index)
   let notFound = false
   let lastError = 'Could not load file metadata'
