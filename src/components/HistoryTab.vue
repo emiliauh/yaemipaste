@@ -351,6 +351,8 @@ async function deleteAll() {
 function previewName(f: PasteFile) {
   const stored = getStoredEncryptedFile(f.file_name)
   if (stored?.name) return stored.name
+  const metadataName = fileMetaMap.value[f.file_name]?.display_name?.trim()
+  if (metadataName) return metadataName
   if (f.file_name.toLowerCase().endsWith('.rpenc')) return f.file_name.slice(0, -6)
   return f.file_name
 }
