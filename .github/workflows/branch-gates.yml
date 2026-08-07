@@ -2,9 +2,9 @@ name: Branch gates
 
 on:
   pull_request:
-    branches: [development, production]
+    branches: [development, production, nestjs-rewrite]
   push:
-    branches: [development, production]
+    branches: [development, production, nestjs-rewrite]
 
 jobs:
   production-pr-source:
@@ -43,6 +43,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm --prefix backend/nestjs ci
+      - run: npm run test:installer-smoke
       - run: npm run api:build
       - run: npm run api:test
       - run: PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium

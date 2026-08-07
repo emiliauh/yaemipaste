@@ -38,6 +38,7 @@ administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
 | `VITE_TOKEN_OWNER_PATH` | Optional token-owner lookup path | `/api/token-owner` |
 | `VITE_ENABLE_SHAREX` | Enable ShareX settings UI and `/auth/sharex` config generation | `1` |
 | `VITE_ENABLE_AUTH` | Enable login/register/account UI | `1` |
+| `VITE_PUBLIC_META_CACHE_BUST` | Add a query cache key to public metadata requests in production UI builds | `1` for deployed images, `0` for local test builds |
 | `VITE_REPOSITORY_URL` | Footer repository link | `https://github.com/emiliauh/yaemipaste` |
 | `VITE_MAX_EXPIRY_DAYS` | Max expiry day option shown in UI | `14` |
 
@@ -68,7 +69,7 @@ administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
 | `SPLIT_ROLE` | `ui` or `api` on split hosts | empty |
 | `COMPOSE_PROFILES` | Services started by Compose | `ui,api` |
 | `DEPLOYMENT_IMAGE_MODE` | `pull` prebuilt images, or `build` from local source | `pull` |
-| `YAEMIPASTE_IMAGE_TAG` | Required immutable UI/API image tag | empty |
+| `YAEMIPASTE_IMAGE_TAG` | UI/API image tag; the installer defaults to the branch tag, while production should use a SHA tag | `nestjs-rewrite` |
 | `YAEMIPASTE_UI_IMAGE` | UI image repository or mirror | `ghcr.io/emiliauh/yaemipaste-ui` |
 | `YAEMIPASTE_API_IMAGE` | API image repository or mirror | `ghcr.io/emiliauh/yaemipaste-api` |
 | `UI_BIND_ADDRESS` | UI host bind address | `127.0.0.1` |

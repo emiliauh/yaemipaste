@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 APP_NAME="yaemipaste"
 DEFAULT_REPO_URL="https://github.com/emiliauh/yaemipaste.git"
-DEFAULT_BRANCH="main"
+DEFAULT_BRANCH="nestjs-rewrite"
 DEFAULT_INSTALL_DIR="/opt/yaemipaste"
 DEFAULT_UI_PORT="8080"
 COMPOSE_FILE="docker-compose.yml"
@@ -837,6 +837,7 @@ configure_env() {
   upsert_env CSP_CONNECT_SRC "$csp_connect"
   upsert_env VITE_ENABLE_SHAREX "$sharex_enabled"
   upsert_env VITE_ENABLE_AUTH "$auth_enabled"
+  upsert_env VITE_PUBLIC_META_CACHE_BUST "$(env_get_nonempty VITE_PUBLIC_META_CACHE_BUST "1")"
   upsert_env VITE_TURNSTILE_SITE_KEY "$turnstile_key"
   upsert_env TURNSTILE_SECRET_KEY "$turnstile_secret"
   local csp_turnstile_src=""
@@ -855,6 +856,7 @@ configure_env() {
   else
     upsert_env DEPLOYMENT_IMAGE_MODE "$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
   fi
+  upsert_env YAEMIPASTE_IMAGE_TAG "$(env_get_nonempty YAEMIPASTE_IMAGE_TAG "$BRANCH")"
   upsert_env AUTH_ADMIN_BASE_URL "$admin_base"
   upsert_env AUTH_BOOTSTRAP_PATH "$bootstrap_path"
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"
@@ -935,6 +937,9 @@ stack_install_or_update() {
     wait_for_http "http://${probe_host}:${api_port}/auth/admin/public-settings" "API auth endpoint" '^200$' 60 2 || die "API endpoint failed readiness check."
   else
     wait_for_http "http://${probe_host}:${ui_port}/" "UI endpoint" '^200$' 60 2 || die "UI endpoint failed readiness check."
+    for route in /files /history /login /register /admin; do
+      wait_for_http "http://${probe_host}:${ui_port}${route}" "UI route ${route}" '^200$' 30 2 || die "UI route ${route} failed readiness check."
+    done
     wait_for_http "http://${probe_host}:${ui_port}/auth/sharex" "Auth endpoint" '^(200|400|401)$' 30 2 || die "Auth endpoint failed readiness check."
     wait_for_http "http://${probe_host}:${ui_port}/api/" "Paste endpoint" '^(200|400|401|405)$' 30 2 || die "Paste endpoint failed readiness check."
   fi
@@ -1248,7 +1253,7 @@ Options:
   --interactive          Launch the guided shell menu (default when no action is supplied)
   --install-dir <path>   Default: ${DEFAULT_INSTALL_DIR}
   --repo-url <url>       Default: ${DEFAULT_REPO_URL}
-  --branch <name>        Default: ${DEFAULT_BRANCH}
+  --branch <name>        Default: ${DEFAULT_BRANCH} (custom NestJS backend branch)
   --public-url <url>     Public UI origin; HTTPS DNS is preferred, HTTP/IP is supported
   --ui-bind <address>    UI bind address; use 0.0.0.0 for direct IP access
   --deployment <mode>    same (default) or split

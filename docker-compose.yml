@@ -32,10 +32,6 @@ services:
       - ./docker/yaemipaste/config.toml:/etc/yaemipaste/config.toml:ro
       - yaemipaste-upload:/var/lib/yaemipaste/upload
       - yaemipaste-auth:/var/lib/yaemipaste-auth
-      # Keep the legacy container paths as aliases so an existing DB_PATH or
-      # upload-path override cannot silently point at an empty filesystem.
-      - yaemipaste-upload:/var/lib/rustypaste/upload
-      - yaemipaste-auth:/var/lib/rustypaste-auth
     networks:
       - yaemipaste
     ports:
@@ -58,8 +54,6 @@ services:
       - ./resolver-server:/app/resolver-server:ro
       - yaemipaste-upload:/var/lib/yaemipaste/upload:ro
       - yaemipaste-auth:/var/lib/yaemipaste-auth:ro
-      - yaemipaste-upload:/var/lib/rustypaste/upload:ro
-      - yaemipaste-auth:/var/lib/rustypaste-auth:ro
     ports:
       - "127.0.0.1:${RESOLVER_PORT:-3101}:${RESOLVER_PORT:-3101}"
     networks:

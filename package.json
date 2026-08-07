@@ -23,7 +23,7 @@
     "test:installer-smoke": "bash ./tests/installer-smoke.sh",
     "test:e2e:preview": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 PLAYWRIGHT_SERVER_COMMAND='npm run preview -- --host 127.0.0.1 --port 4173' playwright test",
     "audit:deps": "npm audit --audit-level=moderate",
-    "validate:release": "npm run build && npm run api:build && npm run api:test && npm run test:e2e:preview",
+    "validate:release": "npm run build && npm run api:build && npm run api:test && npm run test:installer-smoke && npm run test:e2e:preview",
     "promote:production": "bash ./scripts/promote-production.sh"
   },
   "dependencies": {

@@ -11,7 +11,7 @@ npm run test:e2e:preview
 ```
 
 `npm run validate:release` runs the frontend build, backend build and tests,
-and preview end-to-end suite as one release check.
+installer smoke test, and preview end-to-end suite as one release check.
 
 ## Container Deployment
 

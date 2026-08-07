@@ -30,7 +30,7 @@ curl -fsSL https://paste.yaemi.one/install.sh | sudo bash
 Or clone the repository:
 
 ```bash
-git clone https://github.com/emiliauh/yaemipaste.git
+git clone --branch nestjs-rewrite https://github.com/emiliauh/yaemipaste.git
 cd yaemipaste
 sudo ./install.sh
 ```
@@ -81,6 +81,24 @@ npm --prefix backend/nestjs start
 
 The backend reads `CONFIG` when set, uses `DB_PATH` for its SQLite database,
 and uses `SERVER__UPLOAD_PATH` for uploaded files.
+
+## CI And Images
+
+GitHub Actions validates pushes and pull requests for `nestjs-rewrite`,
+including the installer smoke test, NestJS API build/security tests, frontend
+build, and Playwright suite. The image workflow publishes branch and immutable
+SHA tags to GHCR:
+
+```text
+ghcr.io/emiliauh/yaemipaste-api:nestjs-rewrite
+ghcr.io/emiliauh/yaemipaste-ui:nestjs-rewrite
+ghcr.io/emiliauh/yaemipaste-api:sha-<commit>
+ghcr.io/emiliauh/yaemipaste-ui:sha-<commit>
+```
+
+The installer defaults to the `nestjs-rewrite` source branch and matching
+image tag. Pin `YAEMIPASTE_IMAGE_TAG` to a SHA tag for a fully immutable
+production deployment.
 
 ## First Administrator
 
