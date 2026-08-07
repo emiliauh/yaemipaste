@@ -147,6 +147,11 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     for (const candidate of candidates) {
       try { return JSON.parse(readFileSync(this.metadataPath(root, candidate), 'utf8')) } catch { /* try the next compatible sidecar name */ }
     }
+    try {
+      const prefix = `${stripExpiry(name)}.`
+      const sidecar = readdirSync(join(root, '.rpmeta')).find(entry => entry.startsWith(prefix) && entry.endsWith('.json'))
+      if (sidecar) return JSON.parse(readFileSync(join(root, '.rpmeta', sidecar), 'utf8'))
+    } catch { /* metadata is optional */ }
     return undefined
   }
 
@@ -211,7 +216,10 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     for (const [directory, kind] of locations) {
       if (!existsSync(directory)) continue
       const matches = this.candidateNames(directory, clean)
-      if (matches.length === 1) return { path: join(directory, matches[0]), root: roots.find(root => directory === root || directory.startsWith(`${root}/`)) ?? this.root, name: matches[0], kind }
+      if (matches.length === 1) {
+        const root = roots.filter(candidate => directory === candidate || directory.startsWith(`${candidate}/`)).sort((a, b) => b.length - a.length)[0] ?? this.root
+        return { path: join(directory, matches[0]), root, name: matches[0], kind }
+      }
     }
     throw apiError(404, 'file is not found or expired :(')
   }

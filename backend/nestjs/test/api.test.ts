@@ -143,6 +143,16 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     const dashboard = await request('/auth/admin/dashboard', { headers: { Authorization: `Bearer ${jwt}` } })
     assert.equal(dashboard.response.status, 200)
     assert.equal(dashboard.json.upload_count, 1)
+
+    const expiringForm = new FormData()
+    expiringForm.append('meta', JSON.stringify({ keepFileName: true, originalName: 'expiring-original.txt', uploader: 'admin', source: 'WebUI' }))
+    expiringForm.append('file', new Blob(['expiring metadata']), 'expiring-original.txt')
+    const expiringUpload = await request('/', { method: 'POST', headers: { Authorization: pasteToken, Expire: '1d' }, body: expiringForm })
+    assert.equal(expiringUpload.response.status, 200)
+    const expiringMeta = await request('/meta/expiring-original.txt')
+    assert.equal(expiringMeta.response.status, 200)
+    assert.equal(expiringMeta.json.display_name, 'expiring-original.txt')
+
     const duplicateClaim = await request('/auth/admin/claim/init', { method: 'POST', headers: { Authorization: 'Bearer installer-test-bearer', 'Content-Type': 'application/json' }, body: '{}' })
     assert.equal(duplicateClaim.response.status, 409)
     const claimStatus = await request('/auth/admin/claim/status')
