@@ -20,6 +20,7 @@ import {
   displayUploaderName,
   formatBytes,
   formatGigabytes,
+  formatTimestamp,
   getAuthUsername,
   fileUrl,
   publicDownloadUrl,
@@ -151,8 +152,8 @@ const previewUploadFile = computed<PasteFile | null>(() => {
   return {
     file_name: uploadFileName(upload),
     file_size: upload.size_bytes,
-    created_at: upload.created_at ? new Date(upload.created_at).toISOString() : null,
-    expires_at: upload.expires_at ? new Date(upload.expires_at).toISOString() : null,
+    created_at: upload.created_at ? new Date(upload.created_at * 1000).toISOString() : null,
+    expires_at: upload.expires_at ? new Date(upload.expires_at * 1000).toISOString() : null,
   }
 })
 const pageByTab = ref<Record<string, number>>({
@@ -358,9 +359,8 @@ function downloadPreviewUpload() {
   window.open(uploadDownloadUrl(previewUpload.value), '_blank', 'noopener')
 }
 
-function ts(value: number | null | undefined): string {
-  if (!value) return 'N/A'
-  return new Date(value * 1000).toLocaleString()
+function ts(value: number | string | null | undefined): string {
+  return formatTimestamp(value)
 }
 
 function openSettings() {

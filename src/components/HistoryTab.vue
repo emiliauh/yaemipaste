@@ -2,7 +2,7 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { zipSync } from 'fflate'
-import { fileUrl, getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicPathRawFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
+import { fileUrl, formatTimestamp, getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicPathRawFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
 import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isEncryptedBlob, rememberEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import ActionConfirmDialog from './ActionConfirmDialog.vue'
@@ -1553,7 +1553,7 @@ onBeforeUnmount(() => {
                 </span>
               </td>
               <td class="size">{{ formatBytes(f.file_size) }}</td>
-              <td class="expiry">{{ f.expires_at ?? 'Never' }}</td>
+              <td class="expiry">{{ f.expires_at ? formatTimestamp(f.expires_at) : 'Never' }}</td>
               <td class="actions">
                 <div class="action-row">
                   <button

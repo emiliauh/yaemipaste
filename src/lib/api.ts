@@ -1441,9 +1441,16 @@ export function formatGigabytes(bytes: number): string {
   return `${Number.isInteger(gigabytes) ? gigabytes : gigabytes.toFixed(1)} GB`
 }
 
-export function formatTimestamp(value: number | null | undefined): string {
-  if (!value) return 'N/A'
-  return new Date(value * 1000).toLocaleString()
+export function formatTimestamp(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '' || value === 0 || value === '0') return 'N/A'
+  const numericValue = typeof value === 'string' && /^[+-]?\d+(?:\.\d+)?$/.test(value.trim())
+    ? Number(value)
+    : value
+  const date = typeof numericValue === 'number'
+    ? new Date(numericValue * 1000)
+    : new Date(numericValue)
+  if (Number.isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleString()
 }
 
 export function isLoggedIn(): boolean {

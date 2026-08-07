@@ -1942,6 +1942,8 @@ test('history actions and settings buttons work', async ({ page }) => {
   await page.getByRole('button', { name: 'History' }).click()
   const historyRow = page.locator('tr.file-row', { hasText: 'history-check.txt' }).first()
   await expect(historyRow).toBeVisible()
+  const expectedExpiry = await page.evaluate(() => new Date('2026-04-18T01:00:00Z').toLocaleString())
+  await expect(historyRow.locator('.expiry')).toHaveText(expectedExpiry)
   await historyRow.getByRole('button', { name: 'Download', exact: true }).click()
   await expect.poll(() => downloadRequested).toBeTruthy()
   await historyRow.getByRole('button', { name: 'Copy' }).click()
