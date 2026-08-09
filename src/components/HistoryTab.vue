@@ -90,7 +90,7 @@ const compactFileNames = ref(window.matchMedia('(max-width: 820px)').matches)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const notificationStore = useNotificationStore()
 const router = useRouter()
-const { publicSettings, refreshPublicSettings } = usePublicSettings()
+const { refreshPublicSettings } = usePublicSettings()
 let hoverToken = 0
 let previewToken = 0
 let compactFileNamesMediaQuery: MediaQueryList | null = null
@@ -1321,11 +1321,13 @@ onBeforeUnmount(() => {
       <div class="history-hero-copy">
         <span class="eyebrow">Management surface</span>
         <h2 id="history-title">History</h2>
-        <p>Review stored uploads, manage encrypted files, and take action without leaving the vault.</p>
+        <p>Review your active uploads, manage encrypted files, and take action without leaving the vault.</p>
       </div>
-      <div class="history-summary" aria-label="History summary">
+      <!-- Zeroed totals read as "you have no files" rather than "sign in", so
+           the summary is withheld until there is an account behind it. -->
+      <div v-if="!accountRequired" class="history-summary" aria-label="History summary">
         <div class="summary-card">
-          <span class="summary-label">Files</span>
+          <span class="summary-label">Active files</span>
           <strong>{{ files.length }}</strong>
         </div>
         <div class="summary-card">
@@ -1443,11 +1445,16 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="accountRequired" class="state-card account-state">
+      <div v-if="accountRequired" class="state-card account-state" data-testid="history-account-state">
+        <span class="state-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="4" y="10.5" width="16" height="10" rx="2.5" />
+            <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+          </svg>
+        </span>
         <strong>History needs an account</strong>
         <p>Public uploads are available to everyone, but your history stays private to your account.</p>
-        <button class="btn-primary empty-action" type="button" @click="router.push('/login')">Log in to view history</button>
-        <button v-if="publicSettings.registration_enabled" class="btn-ghost empty-action history-register-action" type="button" @click="router.push('/register')">Create account</button>
+        <button class="btn-primary account-action" type="button" @click="router.push('/login')">Log in to view history</button>
       </div>
 
       <div v-else-if="loading" class="skeleton-table" aria-label="Loading history">
@@ -1801,11 +1808,6 @@ onBeforeUnmount(() => {
   gap: var(--space-4);
   padding-bottom: 24px;
 }
-.history-register-action { display: none; }
-@media (max-width: 600px) {
-  .history-register-action { display: inline-flex; }
-}
-
 .history-hero,
 .history-panel {
   border: 1px solid var(--border);
@@ -2202,7 +2204,43 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--text);
 }
-.account-state { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.account-state {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+
+.state-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* The sole action on an otherwise empty page, so it carries the same accent
+   fill as the sidebar's guest login rather than the muted .btn-primary base. */
+.account-action {
+  margin-top: var(--space-4);
+  min-height: 40px;
+  padding-inline: var(--space-5);
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.account-action:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--accent-h);
+}
 
 .error-state {
   border-color: var(--error-border);
@@ -2605,6 +2643,14 @@ onBeforeUnmount(() => {
   .history-summary,
   .skeleton-row {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .state-card {
+    padding: var(--space-5) var(--space-3);
+  }
+
+  .account-action {
+    width: 100%;
   }
 
   .toolbar {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { compareSync, hashSync } from 'bcryptjs'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import jwt, { type JwtPayload } from 'jsonwebtoken'
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server'
@@ -10,6 +10,7 @@ import { DatabaseService, nowSeconds } from './database.service.js'
 import { requestPinnedHttp } from './safe-http.js'
 
 const PASSKEY_CEREMONY_TTL_SECONDS = 5 * 60
+const BCRYPT_COST = 12
 
 export type AuthUser = {
   id: number
@@ -32,6 +33,9 @@ export class AuthService {
   readonly jwtSecret: string
   readonly jwtTtlSeconds: number
   private readonly rateLimits = new Map<string, { count: number; resetAt: number }>()
+  // Compared against in login() when no user row exists, so a missing username takes the
+  // same bcrypt-compare time as a real one instead of short-circuiting (timing side channel).
+  private readonly dummyPasswordHash = hashSync(randomBytes(32).toString('hex'), BCRYPT_COST)
 
   constructor(private readonly db: DatabaseService, private readonly config: ConfigService) {
     this.jwtSecret = process.env.JWT_SECRET || 'change-me-in-production'
@@ -41,6 +45,7 @@ export class AuthService {
       if (!adminBearers.length || adminBearers.some(value => !isInstallerSecret(value))) throw new Error('every AUTH_ADMIN_BEARER value must be a non-degenerate 64-character lowercase hex secret in production')
     }
     this.jwtTtlSeconds = Math.max(1, Number(process.env.JWT_TTL_SECONDS || 60 * 60 * 24 * 30))
+    setInterval(() => this.sweepRateLimits(), 10 * 60_000).unref()
   }
 
   rateLimit(key: string, maximum: number, windowMs: number): boolean {
@@ -53,6 +58,11 @@ export class AuthService {
     if (previous.count >= maximum) return false
     previous.count++
     return true
+  }
+
+  private sweepRateLimits() {
+    const now = Date.now()
+    for (const [key, entry] of this.rateLimits) if (entry.resetAt <= now) this.rateLimits.delete(key)
   }
 
   private configuredTokens(kind: 'auth' | 'delete' = 'auth'): Set<string> {
@@ -159,7 +169,9 @@ export class AuthService {
     try { payload = jwt.verify(token, this.jwtSecret, { algorithms: ['HS256'] }) as JwtPayload } catch (error: any) { throw apiError(401, error?.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token') }
     const username = typeof payload.sub === 'string' ? payload.sub : ''
     const user = this.userByName(username)
-    if (!user) throw apiError(404, 'User not found')
+    // 401, not 404: a JWT for a since-deleted account is just as dead as an invalid one, and
+    // the frontend only clears its stored session on a confirmed 401.
+    if (!user) throw apiError(401, 'Invalid token')
     if (user.suspended_at) throw apiError(403, 'Account is suspended')
     if (Number(payload.session_version ?? 0) !== user.session_version) throw apiError(401, 'Session revoked')
     return user
@@ -170,7 +182,12 @@ export class AuthService {
     if (!allowed.length) throw apiError(403, 'Admin operations are disabled')
     const token = this.bearerForRequest(request)
     if (!token) throw apiError(401, 'Missing admin token')
-    if (!allowed.includes(token)) throw apiError(401, 'Invalid admin token')
+    const tokenBuffer = Buffer.from(token)
+    const matches = allowed.some(candidate => {
+      const candidateBuffer = Buffer.from(candidate)
+      return candidateBuffer.length === tokenBuffer.length && timingSafeEqual(candidateBuffer, tokenBuffer)
+    })
+    if (!matches) throw apiError(401, 'Invalid admin token')
   }
 
   requireJwtAdmin(request: { headers: Record<string, any> }): AuthUser {
@@ -216,7 +233,7 @@ export class AuthService {
     if (!this.registrationEnabled()) throw apiError(403, 'Registration is disabled')
     if (this.tokenStatus(token.trim()) !== 'available') throw apiError(400, 'Invalid or unrecognised token')
     try {
-      this.db.run('INSERT INTO users (username,password,token,created_at) VALUES (?,?,?,?)', [username, hashSync(password, 10), token.trim(), nowSeconds()])
+      this.db.run('INSERT INTO users (username,password,token,created_at) VALUES (?,?,?,?)', [username, hashSync(password, BCRYPT_COST), token.trim(), nowSeconds()])
     } catch (error: any) {
       const message = String(error?.message ?? '')
       if (message.includes('username')) throw apiError(400, 'Username already taken')
@@ -233,7 +250,10 @@ export class AuthService {
     if (turnstileEnabled && (!turnstileSecret || !(await this.verifyTurnstile(turnstileSecret, turnstileToken)))) throw apiError(400, 'Security check failed')
     const username = normalized(usernameValue)
     const row = this.db.get('SELECT username,password,token,is_admin,suspended_at FROM users WHERE username=?', [username])
-    if (!row || !compareSync(password, row.password)) throw apiError(401, 'Invalid credentials')
+    // Always run a bcrypt compare, even for a nonexistent user, so response time doesn't
+    // reveal whether the username exists (compareSync is ~tens of ms; the lookup above isn't).
+    const passwordMatches = compareSync(password, row?.password ?? this.dummyPasswordHash)
+    if (!row || !passwordMatches) throw apiError(401, 'Invalid credentials')
     if (row.suspended_at != null) throw apiError(403, 'Account is suspended')
     if (!this.isValidPasteToken(row.token)) throw apiError(401, 'Invalid credentials')
     if (Number(row.is_admin) === 1) this.audit(row.username, 'admin.login', null, 'success')
@@ -290,7 +310,7 @@ export class AuthService {
     let token = requestedToken.trim()
     if (!token) token = this.createRegistrationToken('user')
     if (this.tokenStatus(token) !== 'available') throw apiError(400, 'Upload token is not available')
-    try { this.db.run('INSERT INTO users (username,password,token,created_at,is_admin) VALUES (?,?,?,?,?)', [username, hashSync(password, 10), token, nowSeconds(), isAdmin ? 1 : 0]) } catch (error: any) {
+    try { this.db.run('INSERT INTO users (username,password,token,created_at,is_admin) VALUES (?,?,?,?,?)', [username, hashSync(password, BCRYPT_COST), token, nowSeconds(), isAdmin ? 1 : 0]) } catch (error: any) {
       const message = String(error?.message ?? '')
       if (message.includes('username')) throw apiError(400, 'Username already taken')
       if (message.includes('token')) throw apiError(400, 'Token already used')
@@ -331,7 +351,7 @@ export class AuthService {
     const user = this.currentUser(request)
     const row = this.db.get<{ password: string }>('SELECT password FROM users WHERE id=?', [user.id])
     if (!row || !compareSync(oldPassword, row.password)) throw apiError(400, 'Current password is incorrect')
-    this.db.run('UPDATE users SET password=? WHERE id=?', [hashSync(newPassword, 10), user.id])
+    this.db.run('UPDATE users SET password=? WHERE id=?', [hashSync(newPassword, BCRYPT_COST), user.id])
     this.db.run('UPDATE users SET session_revoked_at=?,session_version=session_version+1 WHERE id=?', [nowSeconds(), user.id])
     this.audit(user.username, 'account.password_changed', user.username, 'success')
     return { detail: 'Password changed' }

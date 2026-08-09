@@ -64,6 +64,9 @@
   --space-7: 48px;
   --space-8: 64px;
   --mobile-bar-space: calc(82px + env(safe-area-inset-bottom, 0px));
+  /* Fixed mobile chrome (tab bar, settings sheet) shares the workspace gutter. */
+  --mobile-chrome-left: 12px;
+  --mobile-chrome-right: 12px;
   --sidebar-w: 228px;
   --sidebar-w-tablet: 208px;
   --sidebar-w-collapsed: 72px;
@@ -417,12 +420,7 @@ button:active:not(:disabled),
 .file-table td.name { color: var(--text); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Misc ──────────────────────────────────────────────────────────────── */
-.text-muted { color: var(--text2); }
-.text-sm { font-size: 12px; }
-.gap-2 { gap: 8px; }
 .flex { display: flex; }
-.flex-center { display: flex; align-items: center; justify-content: center; }
-.flex-between { display: flex; align-items: center; justify-content: space-between; }
 
 /* ── Notifications ─────────────────────────────────────────────────────── */
 .toast {

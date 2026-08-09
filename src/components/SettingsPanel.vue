@@ -23,6 +23,7 @@ import { useNotificationStore } from '../stores/notifications'
 import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
 import { useTheme, type ThemeMode } from '../lib/theme'
+import RepositoryLink from './RepositoryLink.vue'
 
 const emit = defineEmits<{ close: [], login: [], register: [], logout: [] }>()
 const notificationStore = useNotificationStore()
@@ -230,7 +231,9 @@ async function submitPasswordChange() {
 </script>
 
 <template>
-  <div class="settings-panel">
+  <!-- id lives here: this component has multiple roots, so an id passed by a
+       parent cannot be inherited and the sidebar's aria-controls would dangle. -->
+  <div id="settings-panel" class="settings-panel">
     <div class="settings-header">
       <div style="font-size:var(--fs-h2); font-weight:600; color:var(--text)">Settings</div>
       <div class="row">
@@ -302,8 +305,9 @@ async function submitPasswordChange() {
       <button v-if="publicSettings.registration_enabled" class="btn-ghost register-btn" type="button" @click="emit('register')">Create account</button>
     </div>
 
-    <div style="margin-top:var(--space-2); color:var(--text2); font-size:var(--fs-xs); text-align:center">
-      {{ appName }}
+    <div class="settings-footer">
+      <RepositoryLink class="settings-github-link" data-testid="settings-github-link" />
+      <span>{{ appName }}</span>
     </div>
   </div>
 
@@ -412,6 +416,29 @@ async function submitPasswordChange() {
 }
 .row { display: flex; gap: var(--space-2); justify-content: flex-end; }
 .settings-divider { height: 1px; background: var(--border); margin: var(--space-3) 0; }
+.settings-footer {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: var(--space-2);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+.settings-github-link {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  color: var(--accent);
+}
+.settings-github-link:hover { color: var(--accent-h); }
+.settings-github-link :deep(svg) { width: 14px; height: 14px; }
 .account-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .account-action-row.single-action { grid-template-columns: 1fr; }
 .login-btn, .register-btn { width: 100%; min-height: 40px; font-size: var(--fs-xs); }

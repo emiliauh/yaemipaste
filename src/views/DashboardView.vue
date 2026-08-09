@@ -75,6 +75,7 @@ watch(() => route.path, syncTabFromRoute)
       :show-history="authEnabled"
       :show-admin="adminEnabled"
       :show-settings="authEnabled"
+      :settings-open="showSettings"
       :show-guest-access="showGuestAccess"
       :collapsed="sidebarCollapsed"
       @update:collapsed="sidebarCollapsed = $event"
@@ -200,7 +201,7 @@ watch(() => route.path, syncTabFromRoute)
 .settings-layer-enter-from :deep(.settings-panel),
 .settings-layer-leave-to :deep(.settings-panel) {
   opacity: 0;
-  transform: translate3d(-10px, 14px, 0) scale(0.98);
+  transform: translate3d(0, 14px, 0);
 }
 
 .settings-layer :deep(.settings-panel) {
@@ -223,12 +224,15 @@ watch(() => route.path, syncTabFromRoute)
   }
 
   .workspace {
+    /* Mobile scrollbars are overlaid, so a reserved gutter only pushes the
+       content off-centre against the fixed tab bar. */
+    scrollbar-gutter: auto;
     padding: 18px 12px calc(var(--mobile-bar-space) + 42px);
   }
 
   .settings-layer {
-    --settings-panel-left: 12px;
-    --settings-panel-right: 12px;
+    --settings-panel-left: var(--mobile-chrome-left);
+    --settings-panel-right: var(--mobile-chrome-right);
     --settings-panel-top: auto;
     --settings-panel-bottom: calc(var(--mobile-bar-space) + 14px);
     --settings-panel-width: auto;

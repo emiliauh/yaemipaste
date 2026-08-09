@@ -68,7 +68,10 @@ function blockedIpv6(bytes: number[]): boolean {
   return inPrefix(bytes, [0x20, 0x01, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 23) ||
     inPrefix(bytes, [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 32) ||
     inPrefix(bytes, [0x20, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 16) ||
-    inPrefix(bytes, [0x3f, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 20)
+    inPrefix(bytes, [0x3f, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 20) ||
+    // NAT64 well-known prefix - some networks synthesize these from IPv4 addresses,
+    // including private ones, so treat it as untrusted regardless of the embedded address.
+    inPrefix(bytes, [0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 96)
 }
 
 export function blockedAddress(address: string): boolean {

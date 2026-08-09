@@ -1,14 +1,15 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req, Res } from '@nestjs/common'
 import { compareSync, hashSync } from 'bcryptjs'
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, statSync, unlinkSync } from 'node:fs'
 import { basename, relative } from 'node:path'
 import type { Request, Response } from 'express'
-import { AuthService, type AuthUser } from './auth.service.js'
+import { AuthService } from './auth.service.js'
 import { DatabaseService, nowSeconds } from './database.service.js'
 import { ConfigService } from './config.service.js'
 import { apiError } from './errors.js'
 import { StorageService } from './storage.service.js'
+import { assertPublicHttpUrl } from './safe-http.js'
 
 const CONFIRM_DELETE_USER = 'DELETE USER'
 const CONFIRM_PURGE_UPLOADS = 'PURGE UPLOADS'
@@ -20,8 +21,9 @@ function preview(value: string) { return value.length <= 8 ? `${value.slice(0, 3
 function webhookUrl(value: string) {
   let parsed: URL
   try { parsed = new URL(value) } catch { throw apiError(400, 'Invalid webhook URL') }
-  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/^::ffff:/, '')
-  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || ['localhost', 'localhost.localdomain'].includes(host) || host === '0.0.0.0' || host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('169.254.') || host === '::1' || host.startsWith('fc') || host.startsWith('fd') || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host.startsWith('fe80:') || host.startsWith('::ffff:')) throw apiError(400, 'Webhook URL must use a public HTTP(S) host')
+  // Delegate to the same blocklist that guards actual delivery (requestPinnedHttp) so this
+  // upfront check can never drift out of sync with the real enforcement point.
+  try { assertPublicHttpUrl(parsed) } catch { throw apiError(400, 'Webhook URL must use a public HTTP(S) host') }
   return parsed.toString()
 }
 
@@ -47,7 +49,7 @@ export class AdminController {
     const token = randomBytes(64).toString('base64url')
     const expires = nowSeconds() + Math.max(1, Number(body.ttl_seconds || 86_400))
     this.db.run('UPDATE admin_claims SET used_at=? WHERE used_at IS NULL', [nowSeconds()])
-    this.db.run('INSERT INTO admin_claims (token_hash,created_at,expires_at) VALUES (?,?,?)', [hashSync(token, 10), nowSeconds(), expires])
+    this.db.run('INSERT INTO admin_claims (token_hash,created_at,expires_at) VALUES (?,?,?)', [hashSync(token, 12), nowSeconds(), expires])
     this.auth.audit('installer', 'admin.claim.init', null, 'success')
     return { token, expires_at: expires, detail: 'Admin claim token generated; it will not be shown again' }
   }
@@ -220,8 +222,8 @@ export class AdminController {
   @Get('webhooks') listWebhooks(@Req() request: Request) { this.actor(request); return this.db.query('SELECT id,url,events,enabled,secret_preview,created_at,updated_at,updated_by FROM webhooks ORDER BY id').map(row => ({ ...row, events: String(row.events).split(',').filter(Boolean), enabled: Number(row.enabled) === 1, secret_configured: !!row.secret_preview })) }
   @Post('webhooks')
   @HttpCode(200)
-  createWebhook(@Req() request: Request, @Body() body: { url?: string; events?: string[]; secret?: string; enabled?: boolean }) { const actor = this.actor(request); const url = webhookUrl(body.url ?? ''); const list = events(body.events); if (!list.length) throw apiError(400, 'At least one webhook event is required'); const now = nowSeconds(); const result: any = this.db.run('INSERT INTO webhooks (url,events,secret_hash,secret_preview,enabled,created_at,updated_at,updated_by) VALUES (?,?,?,?,?,?,?,?)', [url, list.join(','), body.secret?.trim() ? hashSync(body.secret.trim(), 10) : null, body.secret?.trim() ? preview(body.secret.trim()) : null, body.enabled === false ? 0 : 1, now, now, actor.username]); this.auth.audit(actor.username, 'admin.webhook.create', url, 'success'); return { detail: 'Webhook created', id: Number(result.lastInsertRowid) } }
-  @Patch('webhooks/:id') updateWebhook(@Req() request: Request, @Param('id') id: string, @Body() body: { url?: string; events?: string[]; secret?: string; enabled?: boolean }) { const actor = this.actor(request); const current = this.db.get('SELECT * FROM webhooks WHERE id=?', [Number(id)]); if (!current) throw apiError(404, 'Webhook not found'); if (body.url !== undefined) this.db.run('UPDATE webhooks SET url=? WHERE id=?', [webhookUrl(body.url), Number(id)]); if (body.events !== undefined) this.db.run('UPDATE webhooks SET events=? WHERE id=?', [events(body.events).join(','), Number(id)]); if (body.enabled !== undefined) this.db.run('UPDATE webhooks SET enabled=? WHERE id=?', [body.enabled ? 1 : 0, Number(id)]); if (body.secret !== undefined) this.db.run('UPDATE webhooks SET secret_hash=?,secret_preview=? WHERE id=?', [body.secret.trim() ? hashSync(body.secret.trim(), 10) : null, body.secret.trim() ? preview(body.secret.trim()) : null, Number(id)]); this.db.run('UPDATE webhooks SET updated_at=?,updated_by=? WHERE id=?', [nowSeconds(), actor.username, Number(id)]); return { detail: 'Webhook updated' } }
+  createWebhook(@Req() request: Request, @Body() body: { url?: string; events?: string[]; secret?: string; enabled?: boolean }) { const actor = this.actor(request); const url = webhookUrl(body.url ?? ''); const list = events(body.events); if (!list.length) throw apiError(400, 'At least one webhook event is required'); const now = nowSeconds(); const result: any = this.db.run('INSERT INTO webhooks (url,events,secret_hash,secret_preview,enabled,created_at,updated_at,updated_by) VALUES (?,?,?,?,?,?,?,?)', [url, list.join(','), body.secret?.trim() ? hashSync(body.secret.trim(), 12) : null, body.secret?.trim() ? preview(body.secret.trim()) : null, body.enabled === false ? 0 : 1, now, now, actor.username]); this.auth.audit(actor.username, 'admin.webhook.create', url, 'success'); return { detail: 'Webhook created', id: Number(result.lastInsertRowid) } }
+  @Patch('webhooks/:id') updateWebhook(@Req() request: Request, @Param('id') id: string, @Body() body: { url?: string; events?: string[]; secret?: string; enabled?: boolean }) { const actor = this.actor(request); const current = this.db.get('SELECT * FROM webhooks WHERE id=?', [Number(id)]); if (!current) throw apiError(404, 'Webhook not found'); if (body.url !== undefined) this.db.run('UPDATE webhooks SET url=? WHERE id=?', [webhookUrl(body.url), Number(id)]); if (body.events !== undefined) this.db.run('UPDATE webhooks SET events=? WHERE id=?', [events(body.events).join(','), Number(id)]); if (body.enabled !== undefined) this.db.run('UPDATE webhooks SET enabled=? WHERE id=?', [body.enabled ? 1 : 0, Number(id)]); if (body.secret !== undefined) this.db.run('UPDATE webhooks SET secret_hash=?,secret_preview=? WHERE id=?', [body.secret.trim() ? hashSync(body.secret.trim(), 12) : null, body.secret.trim() ? preview(body.secret.trim()) : null, Number(id)]); this.db.run('UPDATE webhooks SET updated_at=?,updated_by=? WHERE id=?', [nowSeconds(), actor.username, Number(id)]); return { detail: 'Webhook updated' } }
   @Delete('webhooks/:id') deleteWebhook(@Req() request: Request, @Param('id') id: string) { const actor = this.actor(request); const result: any = this.db.run('DELETE FROM webhooks WHERE id=?', [Number(id)]); if (!result.changes) throw apiError(404, 'Webhook not found'); this.auth.audit(actor.username, 'admin.webhook.delete', id, 'success'); return { detail: 'Webhook deleted' } }
   @Post('webhooks/:id/test')
   @HttpCode(200)

@@ -398,10 +398,6 @@ export function passwordEncryptedShareUrl(fileName: string, salt: string, origin
   return `${origin}/file/${encodeFileTokenFromName(fileName)}+pw:${salt}/preview`
 }
 
-export function encryptedDownloadUrl(fileName: string, origin = window.location.origin): string {
-  return `${origin}/${publicPathFromFileName(fileName)}?raw=1`
-}
-
 export function originFromUrl(value: string): string {
   try {
     return new URL(value).origin

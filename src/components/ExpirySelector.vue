@@ -351,6 +351,7 @@ onUnmounted(() => {
     transition: max-height 220ms var(--ease-out), opacity 180ms var(--ease-out), padding 220ms var(--ease-out), border-color 220ms var(--ease-out);
   }
   .expiry-menu.mobile-collapsed .expiry-panel {
+    display: none;
     max-height: 0;
     padding-top: 0;
     padding-bottom: 0;

@@ -40,10 +40,6 @@ export function setThemeMode(mode: ThemeMode) {
   applyTheme(resolveTheme(mode))
 }
 
-export function toggleTheme() {
-  setThemeMode(appliedTheme.value === 'dark' ? 'light' : 'dark')
-}
-
 export function initTheme() {
   if (initialized || typeof window === 'undefined') return
   initialized = true
@@ -63,6 +59,5 @@ export function useTheme() {
     themeMode,
     appliedTheme,
     setThemeMode,
-    toggleTheme,
   }
 }

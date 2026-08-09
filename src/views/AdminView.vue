@@ -404,6 +404,11 @@ function closeSettings() {
   void nextTick(() => settingsTrigger.value?.focus())
 }
 
+function toggleSettings() {
+  if (showSettings.value) closeSettings()
+  else openSettings()
+}
+
 function handleSettingsKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     event.preventDefault()
@@ -769,6 +774,9 @@ function requestUserDelete(username: string) {
   })
 }
 
+let lastVisibilityRefresh = 0
+const VISIBILITY_REFRESH_COOLDOWN_MS = 30_000
+
 function refreshAdminWhenVisible() {
   // Do not replace unsaved settings, or the Turnstile widget and secret lose
   // their backing form state when the administrator returns to this tab.
@@ -779,6 +787,12 @@ function refreshAdminWhenVisible() {
     hideUploadHover()
     return
   }
+  // Alt-tabbing back and forth should not force a full refetch every time -
+  // once the panel is reasonably fresh, leave it alone until the cooldown
+  // passes.
+  const now = Date.now()
+  if (now - lastVisibilityRefresh < VISIBILITY_REFRESH_COOLDOWN_MS) return
+  lastVisibilityRefresh = now
   if (tab.value !== 'Settings') void refreshAll(false)
 }
 
@@ -843,8 +857,15 @@ watch(pagedUsers, (nextUsers) => {
 onMounted(() => {
   void refreshPublicSettings()
   if (!initialAdminData) void refreshAll()
+  // refreshAll() is the only other place that loads registration tokens, and
+  // it's skipped above whenever prefetched data is already warm. Landing
+  // directly on /admin/users (a fresh route, e.g. browser back/forward) never
+  // fires the tab watcher below either, since tab starts at 'Users' rather
+  // than transitioning into it - so tokens would silently never load.
+  else if (tab.value === 'Users') void loadRegistrationTokens()
+  // visibilitychange alone is enough to catch "the admin returned to this
+  // tab"; also listening on window focus made every alt-tab fire this twice.
   document.addEventListener('visibilitychange', refreshAdminWhenVisible)
-  window.addEventListener('focus', refreshAdminWhenVisible)
   document.addEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   document.addEventListener('pointerdown', closeRegistrationExpiryOnOutsidePointer)
   window.addEventListener('blur', hideUploadHover)
@@ -855,7 +876,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', refreshAdminWhenVisible)
-  window.removeEventListener('focus', refreshAdminWhenVisible)
   document.removeEventListener('pointerdown', closeUploadMenusOnOutsidePointer)
   document.removeEventListener('pointerdown', closeRegistrationExpiryOnOutsidePointer)
   window.removeEventListener('blur', hideUploadHover)
@@ -872,12 +892,13 @@ onBeforeUnmount(() => {
       show-history
       show-admin
       show-settings
+      :settings-open="showSettings"
       :collapsed="sidebarCollapsed"
       @update:collapsed="sidebarCollapsed = $event"
       @select-files="router.push('/files')"
       @select-history="router.push('/history')"
       @select-admin="router.push('/admin')"
-      @toggle-settings="openSettings"
+      @toggle-settings="toggleSettings"
     />
 
     <main class="workspace">
@@ -2502,7 +2523,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .settings-layer-enter-from :deep(.settings-panel),
 .settings-layer-leave-to :deep(.settings-panel) {
   opacity: 0;
-  transform: translate3d(-10px, 14px, 0) scale(0.98);
+  transform: translate3d(0, 14px, 0);
 }
 .overlay {
   position: absolute;
@@ -2640,6 +2661,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     grid-template-columns: 1fr;
   }
   .workspace {
+    /* Mobile scrollbars are overlaid, so a reserved gutter only pushes the
+       content off-centre against the fixed tab bar. */
+    scrollbar-gutter: auto;
     padding: 18px var(--space-3) calc(var(--mobile-bar-space) + 42px);
   }
   .admin-header {
@@ -2852,8 +2876,8 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     background: transparent;
   }
   .settings-layer {
-    --settings-panel-left: 12px;
-    --settings-panel-right: 12px;
+    --settings-panel-left: var(--mobile-chrome-left);
+    --settings-panel-right: var(--mobile-chrome-right);
     --settings-panel-top: auto;
     --settings-panel-bottom: calc(var(--mobile-bar-space) + 14px);
     --settings-panel-width: auto;

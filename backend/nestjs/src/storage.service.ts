@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
-import { basename, extname, join, normalize, relative, resolve } from 'node:path'
+import { basename, extname, join, relative, resolve } from 'node:path'
 import { ConfigService, type RandomUrlConfig } from './config.service.js'
 import { apiError } from './errors.js'
 import { AuthService } from './auth.service.js'
@@ -107,7 +107,7 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     return duration && duration > 0 ? Date.now() + duration : undefined
   }
 
-  private applyNameRules(original: string, content: Buffer): string {
+  private applyNameRules(original: string): string {
     let name = basename(original || 'file')
     if (name === '-') name = 'stdin'
     if (name === '.' || !name) name = 'file'
@@ -123,9 +123,7 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
       else stem = value
     }
     if (random?.no_extension) extension = ''
-    const candidate = extension ? `${stem}.${extension}` : stem
-    void content
-    return candidate
+    return extension ? `${stem}.${extension}` : stem
   }
 
   private metadataPath(root: string, fileName: string) { return join(root, '.rpmeta', `${fileName.replaceAll('/', '_')}.json`) }
@@ -179,7 +177,7 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
       if (existing) return { fileName: stripExpiry(existing.name), storedName: existing.name, root: existing.root, size: statSync(existing.path).size }
     }
     if (this.config.value.maxUploadDirSize != null && this.directorySize(this.root) + data.length > this.config.value.maxUploadDirSize) throw apiError(507, 'upload directory size limit exceeded')
-    let name = type === 'url' || type === 'oneshot_url' ? (headerName || (this.config.value.randomUrl ? randomName(this.config.value.randomUrl) : type)) : this.applyNameRules(headerName || originalName, data)
+    let name = type === 'url' || type === 'oneshot_url' ? (headerName || (this.config.value.randomUrl ? randomName(this.config.value.randomUrl) : type)) : this.applyNameRules(headerName || originalName)
     if (headerName) name = basename(headerName)
     const path = safeChild(directory, name)
     if (existsSync(path) && !expiry) throw apiError(409, 'file already exists')

@@ -18,7 +18,6 @@ const DEFAULT_PASTE_API = normalizeApiBase(import.meta.env.VITE_PASTE_API ?? '/a
 const AUTH_API = (import.meta.env.VITE_AUTH_API ?? '/auth').replace(/\/$/, '')
 const SHAREX_ENABLED = (import.meta.env.VITE_ENABLE_SHAREX ?? '1').trim() === '1'
 const PUBLIC_SITE_ORIGIN = (import.meta.env.VITE_PUBLIC_SITE_ORIGIN ?? '').trim().replace(/\/$/, '')
-const TOKEN_OWNER_PATH = (import.meta.env.VITE_TOKEN_OWNER_PATH ?? '/api/token-owner').trim()
 const FILE_RESOLVE_BASE = (() => {
   const configured = import.meta.env.VITE_FILE_RESOLVE_BASE
   if (typeof configured !== 'string') return '/resolve'
@@ -29,6 +28,21 @@ const REMEMBER_ME_KEY = 'rp_remember_me'
 const AUTH_KEYS = ['rp_jwt', 'rp_token', 'rp_username', 'rp_is_admin'] as const
 const FILE_TOKEN_MAP_KEY = 'rp_file_token_map'
 let runtimePublicSettings: PublicAdminSettings | null = null
+
+/**
+ * Fired when the server has confirmed - via a 401 on a JWT/paste-token-guarded
+ * endpoint - that a locally stored session is no longer valid (expired,
+ * revoked, or the token itself is invalid). A 403 (suspended account,
+ * insufficient role) is a permission problem, not a dead session, and must
+ * never reach this path: clearing tokens there would log out a suspended or
+ * non-admin user for no reason.
+ */
+export const SESSION_INVALIDATED_EVENT = 'rp:session-invalidated'
+
+// Several requests can 401 in the same instant (e.g. the admin dashboard's
+// parallel fetches all sharing one dead JWT). Notify and redirect once per
+// dead session rather than once per failed request.
+let sessionInvalidationDispatched = false
 
 export interface UploadProgress {
   phase: 'encrypting' | 'uploading' | 'complete'
@@ -137,11 +151,6 @@ export function setPasteApiBase(value: string) {
   else localStorage.setItem(API_BASE_KEY, normalizeApiBase(value))
 }
 
-export function resetPasteApiBase() {
-  if (typeof localStorage === 'undefined') return
-  localStorage.removeItem(API_BASE_KEY)
-}
-
 interface AuthSessionResponse {
   access_token: string
   paste_token: string
@@ -194,6 +203,19 @@ function clearAuthTokens() {
     localStorage.removeItem(key)
     sessionStorage.removeItem(key)
   }
+}
+
+/**
+ * A 401 only means the session is truly dead when the caller actually had
+ * credentials to begin with - an anonymous request rejected because a
+ * deployment requires login is not a session that needs invalidating.
+ */
+function handleConfirmedSessionInvalid(hadCredentials: boolean) {
+  if (!hadCredentials) return
+  clearAuthTokens()
+  if (sessionInvalidationDispatched) return
+  sessionInvalidationDispatched = true
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SESSION_INVALIDATED_EVENT))
 }
 
 function writeAuthUsername(username: string) {
@@ -249,19 +271,12 @@ function forgetResolvedFileName(fileName: string) {
 
 function saveAuthSession(data: AuthSessionResponse, rememberMe = true) {
   clearAuthTokens()
+  sessionInvalidationDispatched = false
   const storage = rememberMe ? localStorage : sessionStorage
   storage.setItem('rp_jwt', data.access_token)
   storage.setItem('rp_token', data.paste_token)
   storage.setItem('rp_username', data.username)
   storage.setItem('rp_is_admin', data.is_admin ? '1' : '0')
-  localStorage.setItem(REMEMBER_ME_KEY, rememberMe ? '1' : '0')
-}
-
-function saveTokenSession(token: string, rememberMe = true) {
-  clearAuthTokens()
-  const storage = rememberMe ? localStorage : sessionStorage
-  storage.setItem('rp_token', token)
-  storage.setItem('rp_username', 'token-user')
   localStorage.setItem(REMEMBER_ME_KEY, rememberMe ? '1' : '0')
 }
 
@@ -326,11 +341,39 @@ export async function authLogin(
 
 export async function authMe() {
   requireAuthEnabled()
+  const hadJwt = !!getJwt().trim()
   const r = await fetch(`${AUTH_API}/me`, {
     headers: jwtBearerHeader(),
   })
-  if (!r.ok) throw new Error(await responseDetail(r, 'Unauthorized'))
+  if (!r.ok) {
+    if (r.status === 401) handleConfirmedSessionInvalid(hadJwt)
+    throw new Error(await responseDetail(r, 'Unauthorized'))
+  }
   return readJson(r, 'Could not load account details')
+}
+
+/**
+ * Confirms a locally stored account session is still accepted by the
+ * server. Meant to run unconditionally as soon as the page loads: a dead
+ * JWT would otherwise only surface reactively, whenever some unrelated
+ * feature happened to call an authenticated endpoint - or, for uploads in a
+ * deployment that allows anonymous uploads, never at all, since an invalid
+ * token there is silently accepted as an anonymous upload rather than
+ * rejected. Errors other than a confirmed 401 (network hiccups, a
+ * deployment with auth disabled, etc.) are swallowed - this only ever acts
+ * on a definitive "the server says this token is dead" answer.
+ *
+ * Every account always has both a JWT and a paste token together (see
+ * saveAuthSession) - there is no current way to hold a paste token without
+ * one, so this only needs to check hasAccountAuth().
+ */
+export async function verifyStoredSession(): Promise<void> {
+  if (!isAuthEnabled() || !hasAccountAuth()) return
+  try {
+    await authMe()
+  } catch {
+    // authMe() already cleared the session and notified on a real 401.
+  }
 }
 
 /** Refresh the cached role so admin changes are reflected without a relogin. */
@@ -346,53 +389,25 @@ export async function refreshAuthAdmin(): Promise<boolean> {
   }
 }
 
-function tokenOwnerUrl(origin = publicSiteOrigin()): string {
-  const base = TOKEN_OWNER_PATH.trim()
-  if (!base) throw new Error('Token owner lookup is disabled for this deployment')
-  const cacheBuster = `cb=${Date.now().toString(36)}`
-  if (/^https?:\/\//i.test(base)) {
-    return `${base}${base.includes('?') ? '&' : '?'}${cacheBuster}`
-  }
-  const normalizedPath = base.startsWith('/') ? base : `/${base}`
-  return `${publicSiteOrigin(origin)}${normalizedPath}?${cacheBuster}`
-}
-
 export async function hydrateSessionIdentity(): Promise<string> {
   if (!isAuthEnabled()) return ''
   const current = getAuthUsername().trim()
-  if (current && current !== 'token-user') return current
+  if (current) return current
 
   const jwt = getJwt().trim()
-  if (jwt) {
-    try {
-      const me = await authMe() as { username?: unknown }
-      const username = typeof me.username === 'string' ? me.username.trim() : ''
-      if (username) {
-        writeAuthUsername(username)
-        return username
-      }
-    } catch {
-      // fall through to token lookup when JWT bootstrap fails
-    }
-  }
-
-  const token = getToken().trim()
-  if (!token) return current
+  if (!jwt) return current
 
   try {
-    const r = await fetch(tokenOwnerUrl(), {
-      cache: 'no-store',
-      headers: { Authorization: token },
-    })
-    if (!r.ok) return current
-    const data = await readJson<{ username?: unknown }>(r, 'Could not resolve token owner')
-    const username = typeof data.username === 'string' ? data.username.trim() : ''
-    if (!username) return current
-    writeAuthUsername(username)
-    return username
+    const me = await authMe() as { username?: unknown }
+    const username = typeof me.username === 'string' ? me.username.trim() : ''
+    if (username) {
+      writeAuthUsername(username)
+      return username
+    }
   } catch {
-    return current
+    // authMe() already handles a confirmed-dead session; nothing further to do here.
   }
+  return current
 }
 
 export function authLogout() {
@@ -515,27 +530,9 @@ export async function authPasskeyLoginFinish(username: string, credential: unkno
 
 async function uploaderIdentity(): Promise<string> {
   const username = (await hydrateSessionIdentity()).trim() || getAuthUsername().trim()
-  if (username && username !== 'token-user') return username
-  return getToken().trim() ? 'Unknown (token user)' : 'Anonymous'
+  return username || 'Anonymous'
 }
 
-export function loginWithToken(token: string, rememberMe = true) {
-  requireAuthEnabled()
-  saveTokenSession(token, rememberMe)
-}
-
-export async function authTokenStatus(token: string): Promise<'available' | 'used' | 'invalid'> {
-  requireAuthEnabled()
-  const r = await fetch(`${AUTH_API}/token/status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  })
-  if (!r.ok) throw new Error(await responseDetail(r, 'Could not verify token'))
-  const data = await readJson<{ status?: 'available' | 'used' | 'invalid' }>(r, 'Could not verify token')
-  if (!data.status) throw new Error('Could not verify token')
-  return data.status
-}
 
 export async function getShareXConfig(): Promise<Blob> {
   requireAuthEnabled()
@@ -630,6 +627,7 @@ export async function listFiles(): Promise<PasteFile[]> {
   // Authenticated list responses must never be reused after an admin purge.
   // The request cache mode protects the browser; the nonce also prevents an
   // intermediary from replaying an older authenticated response.
+  const hadToken = !!getToken().trim()
   const configuredBase = getPasteApiBase()
   const sameOriginBase = `${publicSiteOrigin()}/api`
   const request = (base: string) => fetch(`${base}/list?cb=${Date.now().toString(36)}`, {
@@ -643,7 +641,10 @@ export async function listFiles(): Promise<PasteFile[]> {
     if (configuredBase === sameOriginBase) throw error
     r = await request(sameOriginBase)
   }
-  if (!r.ok) throw new Error(await responseDetail(r, 'Failed to list files'))
+  if (!r.ok) {
+    if (r.status === 401) handleConfirmedSessionInvalid(hadToken)
+    throw new Error(await responseDetail(r, 'Failed to list files'))
+  }
   const data = await readJson<RawPasteFile[]>(r, 'Failed to list files')
   return data.map((f) => {
     rememberResolvedFileName(f.file_name)
@@ -820,8 +821,15 @@ function uploadForm(
       onProgress?.({ phase: 'uploading', percent: Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100))) })
     }
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText)
-      else reject(new Error(xhr.responseText || 'Upload failed'))
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.responseText)
+        return
+      }
+      // A private-mode deployment rejects an invalid token outright; a
+      // public-mode one instead silently accepts the upload as anonymous
+      // (verifyStoredSession() at boot is what catches that case instead).
+      if (xhr.status === 401) handleConfirmedSessionInvalid(!!headers.Authorization)
+      reject(new Error(xhr.responseText || 'Upload failed'))
     }
     xhr.onerror = () => reject(new Error('Upload failed'))
     xhr.onabort = () => reject(new Error('Upload cancelled'))
@@ -992,10 +1000,6 @@ export function publicSiteOrigin(origin = window.location.origin): string {
   return publicOriginFromApiOrigin(origin)
 }
 
-export function publicShortFileUrl(fileName: string, origin = publicSiteOrigin()): string {
-  return `${origin}/${encodeURIComponent(fileName)}`
-}
-
 export function publicFileUrl(fileName: string, origin = publicSiteOrigin()): string {
   return `${origin}/${publicPathFromFileName(fileName)}`
 }
@@ -1016,16 +1020,8 @@ export function publicDownloadUrl(fileName: string, origin = publicSiteOrigin())
   return `${origin}/file/${encodeFileToken(fileName)}/download`
 }
 
-export function publicApiFileUrl(fileName: string): string {
-  return `${getPasteApiBase()}/${encodeURIComponent(fileName)}`
-}
-
 export function publicPathRawFileUrl(fileName: string): string {
   return `${publicFileUrl(fileName)}?raw=1`
-}
-
-export function publicPathDownloadFileUrl(fileName: string): string {
-  return `${publicFileUrl(fileName)}?download=true`
 }
 
 export function publicRawFileUrl(fileName: string): string {
@@ -1284,6 +1280,7 @@ export interface AdminClaimInitResponse {
 
 async function adminRequest<T>(path: string, options: RequestInit = {}, fallback = 'Admin request failed'): Promise<T> {
   requireAuthEnabled()
+  const hadJwt = !!getJwt().trim()
   const headers = new Headers(options.headers)
   if (!headers.has('Content-Type') && options.body) headers.set('Content-Type', 'application/json')
   for (const [key, value] of Object.entries(jwtBearerHeader())) headers.set(key, value)
@@ -1292,7 +1289,14 @@ async function adminRequest<T>(path: string, options: RequestInit = {}, fallback
     ? `${path}${path.includes('?') ? '&' : '?'}cb=${Date.now().toString(36)}`
     : path
   const response = await fetch(`${AUTH_API}/admin${requestPath}`, { cache: 'no-store', ...options, headers })
-  if (!response.ok) throw new Error(await responseDetail(response, fallback))
+  if (!response.ok) {
+    // 401 means the JWT itself is dead (expired/invalid/revoked) - safe to
+    // clear. 403 means a valid session lacks permission (suspended, not an
+    // admin) and must be left alone; clearing there would log out someone
+    // whose credentials are perfectly fine.
+    if (response.status === 401) handleConfirmedSessionInvalid(hadJwt)
+    throw new Error(await responseDetail(response, fallback))
+  }
   return readJson<T>(response, fallback)
 }
 
@@ -1386,10 +1390,6 @@ export function adminPurgeUserUploads(username: string, confirmation: string) {
     method: 'POST',
     body: JSON.stringify({ confirmation }),
   }, 'Could not purge user uploads')
-}
-
-export function adminUserUploads(username: string) {
-  return adminRequest<AdminUpload[]>(`/users/${encodeURIComponent(username)}/uploads`, {}, 'Could not load user uploads')
 }
 
 export function adminUploads() {

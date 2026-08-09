@@ -10,12 +10,14 @@ const props = withDefaults(defineProps<{
   showHistory?: boolean
   showAdmin?: boolean
   showSettings?: boolean
+  settingsOpen?: boolean
   showGuestAccess?: boolean
   collapsed: boolean
 }>(), {
   showHistory: false,
   showAdmin: false,
   showSettings: false,
+  settingsOpen: false,
   showGuestAccess: false,
 })
 
@@ -176,6 +178,8 @@ function toggleCompactTheme() {
           type="button"
           class="preferences-btn"
           aria-label="Preferences"
+          aria-controls="settings-panel"
+          :aria-expanded="settingsOpen"
           data-testid="desktop-preferences"
           @click="emit('toggle-settings')"
         >
@@ -217,6 +221,8 @@ function toggleCompactTheme() {
           type="button"
           class="compact-icon-btn"
           aria-label="Preferences"
+          aria-controls="settings-panel"
+          :aria-expanded="settingsOpen"
           data-testid="collapsed-preferences"
           @click="emit('toggle-settings')"
         >
@@ -284,8 +290,11 @@ function toggleCompactTheme() {
     <button
       v-if="showSettings"
       class="mobile-tabbar-settings"
+      :class="{ active: settingsOpen }"
       type="button"
       aria-label="Preferences"
+      aria-controls="settings-panel"
+      :aria-expanded="settingsOpen"
       data-testid="mobile-nav-preferences"
       @click="emit('toggle-settings')"
     >
@@ -716,8 +725,8 @@ function toggleCompactTheme() {
 
   .mobile-tabbar {
     position: fixed;
-    left: 12px;
-    right: 12px;
+    left: var(--mobile-chrome-left);
+    right: var(--mobile-chrome-right);
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     z-index: 110;
     display: flex;
@@ -733,7 +742,7 @@ function toggleCompactTheme() {
     gap: 6px;
     padding: 6px;
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-radius: 13px;
     background: var(--surface);
     box-shadow: 0 10px 24px var(--shadow);
   }
@@ -744,15 +753,18 @@ function toggleCompactTheme() {
 
   .mobile-tabbar-main button,
   .mobile-tabbar-settings {
-    min-height: 46px;
+    min-height: 44px;
     display: inline-flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 3px;
+    padding: 2px;
     border: 1px solid transparent;
     background: transparent;
     color: var(--text2);
     font-weight: 600;
+    font-size: 11px;
     touch-action: manipulation;
   }
 
@@ -786,6 +798,11 @@ function toggleCompactTheme() {
     border-radius: 14px;
     background: var(--surface);
     box-shadow: 0 10px 24px var(--shadow);
+  }
+  .mobile-tabbar-settings.active {
+    border-color: var(--border2);
+    background: var(--surface2, var(--bg2));
+    color: var(--text);
   }
 }
 </style>

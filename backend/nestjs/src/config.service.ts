@@ -15,7 +15,6 @@ export type RandomUrlConfig = {
 }
 
 export type AppConfig = {
-  address: string
   host: string
   port: number
   publicUrl: string
@@ -34,7 +33,6 @@ export type AppConfig = {
   defaultExpiryMs?: number
   randomUrl?: RandomUrlConfig
   remoteUploadsEnabled: boolean
-  allowAnonymousUploads: boolean
   passkeysEnabled: boolean
   passkeyRpName: string
   passkeyRpId?: string
@@ -123,7 +121,6 @@ export class ConfigService {
     const cleanup = paste.delete_expired_files ?? {}
     const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean)
     this.value = {
-      address,
       host,
       port,
       publicUrl: envOr(server.url, 'PASTE_URL', 'http://localhost:8080').replace(/\/$/, ''),
@@ -144,7 +141,6 @@ export class ConfigService {
       defaultExpiryMs: durationMs(paste.default_expiry),
       randomUrl,
       remoteUploadsEnabled: truthy(process.env.REMOTE_UPLOADS_ENABLED, false),
-      allowAnonymousUploads: truthy(process.env.ALLOW_ANONYMOUS_UPLOADS, false),
       passkeysEnabled: truthy(process.env.PASSKEYS_ENABLED, false),
       passkeyRpName: process.env.PASSKEY_RP_NAME || 'yaemipaste',
       passkeyRpId: process.env.PASSKEY_RP_ID || undefined,

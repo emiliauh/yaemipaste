@@ -102,13 +102,18 @@ const router = createRouter({
   ],
 })
 
+// Workspace routes a signed-out visitor may still reach while uploads are
+// public. History renders its own "needs an account" state instead of ejecting
+// the visitor to the login page.
+const PUBLIC_GUEST_PATHS = new Set(['/files', '/history'])
+
 router.beforeEach(async (to) => {
   // Keep legacy tab links usable while making page state path-based.
   const normalizedPath = to.path.replace(/\/+$/, '') || '/'
   if (normalizedPath === '/files' && to.query.tab === 'history') return '/history'
   if (!isAuthEnabled() && to.path === '/history') return '/files'
   if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register' || to.path.startsWith('/admin'))) return '/files'
-  if (to.path === '/files' && to.meta.requiresAuth && !isLoggedIn()) {
+  if (PUBLIC_GUEST_PATHS.has(to.path) && to.meta.requiresAuth && !isLoggedIn()) {
     const settings = await refreshPublicSettings()
     if (settings.upload_access_mode === 'public') return
   }

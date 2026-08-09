@@ -31,19 +31,37 @@ test.beforeEach(async ({ page }) => {
       }),
     })
   })
+  // Fake test JWTs are rejected by the real dev-server backend behind the
+  // /auth proxy. Reflect whichever session a test's sign-in helper set up so
+  // refreshAuthAdmin()/authMe() succeed by default instead of hitting a real
+  // 401 and clearing the very tokens the test just set. Tests that want to
+  // exercise a genuine 401/403 register their own '**/auth/me' route, which
+  // Playwright resolves before this one since it is added later.
+  await page.route('**/auth/me', async (route) => {
+    const session = await page.evaluate(() => ({
+      username: localStorage.getItem('rp_username') ?? sessionStorage.getItem('rp_username') ?? 'test-user',
+      isAdmin: (localStorage.getItem('rp_is_admin') ?? sessionStorage.getItem('rp_is_admin')) === '1',
+    }))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ username: session.username, is_admin: session.isAdmin }),
+    })
+  })
+  // verifyStoredSession() validates a paste-token-only session with a GET to
+  // /version as soon as the page loads. A custom base_api_url in some tests
+  // may not even contain the literal path "/api", so this matches on the
+  // "/version" suffix alone regardless of host. Without a default, this hits
+  // the real dev-server backend with a fake test token on every single test.
+  await page.route('**/version**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: '0.0.0-test' })
+  })
 })
 
 async function signInWithToken(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('rp_token', 'test-token')
     localStorage.setItem('rp_username', 'test-user')
-  })
-}
-
-async function signInAsTokenUser(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.setItem('rp_token', 'test-token')
-    localStorage.setItem('rp_username', 'token-user')
   })
 }
 
@@ -518,7 +536,72 @@ test('public registration setting offers account creation to guests', async ({ p
 
   await page.goto('/history')
 
+  // The sidebar carries guest actions on wider screens; on mobile the tab bar
+  // has no room for them, so they live in the Preferences sheet.
+  if ((page.viewportSize()?.width ?? 0) <= 600) {
+    await page.getByTestId('mobile-nav-preferences').click()
+  }
   await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
+})
+
+test('public guests reach the history account state instead of the login page', async ({ page }) => {
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: true,
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'public',
+      }),
+    })
+  })
+
+  await page.goto('/history')
+
+  await expect(page).toHaveURL(/\/history$/)
+  const accountState = page.getByTestId('history-account-state')
+  await expect(accountState).toBeVisible()
+  await expect(accountState).toContainText('History needs an account')
+
+  // A signed-out visitor gets exactly one call to action, and registration is
+  // offered by the sidebar/settings rather than duplicated inside the card.
+  await expect(accountState.getByRole('button')).toHaveCount(1)
+  await expect(accountState.getByRole('button', { name: 'Log in to view history' })).toBeVisible()
+  await expect(accountState.getByRole('button', { name: 'Create account' })).toHaveCount(0)
+
+  // Zeroed totals would read as "you have no files" rather than "sign in".
+  await expect(page.locator('.history-summary')).toHaveCount(0)
+
+  await accountState.getByRole('button', { name: 'Log in to view history' }).click()
+  await expect(page).toHaveURL(/\/login$/)
+})
+
+test('private upload mode still shows the history account state instead of redirecting to login', async ({ page }) => {
+  // /history has no router-level requiresAuth: the History component gates
+  // its own content via accountRequired, independent of upload_access_mode.
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        app_name: 'yaemipaste',
+        public_title: 'yaemipaste',
+        registration_enabled: true,
+        file_size_limit_bytes: 0,
+        file_size_limit_unlimited: false,
+        upload_access_mode: 'private',
+      }),
+    })
+  })
+
+  await page.goto('/history')
+
+  await expect(page).toHaveURL(/\/history$/)
+  await expect(page.getByTestId('history-account-state')).toBeVisible()
 })
 
 test('plain preview ignores a stale decryption fragment', async ({ page }) => {
@@ -1056,6 +1139,154 @@ test('mobile upload feedback stays inside the viewport and away from bottom cont
   await expect(page.getByTestId('expiry-panel')).toBeHidden()
 })
 
+test('mobile expiry options stay reachable below their trigger', async ({ page }) => {
+  await signInWithToken(page)
+  for (const viewport of [
+    { width: 320, height: 640 },
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 412, height: 915 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/files')
+    await expandExpiryIfCollapsed(page)
+    const trigger = page.getByTestId('expiry-trigger')
+    await trigger.click()
+    const options = page.getByTestId('expiry-options')
+    await expect(options).toBeVisible()
+    const triggerBox = await trigger.boundingBox()
+    const optionsBox = await options.boundingBox()
+    expect(triggerBox).not.toBeNull()
+    expect(optionsBox).not.toBeNull()
+    if (triggerBox && optionsBox) {
+      expect(optionsBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height)
+      expect(optionsBox.x).toBeGreaterThanOrEqual(0)
+      expect(optionsBox.x + optionsBox.width).toBeLessThanOrEqual(viewport.width)
+    }
+    await page.getByTestId('expiry-option-7d').focus()
+    await expect(page.getByTestId('expiry-option-7d')).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(options).toBeHidden()
+  }
+})
+
+test('collapsed mobile expiry selector does not paint over upload content', async ({ page }) => {
+  await signInWithToken(page)
+  for (const viewport of [
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 412, height: 915 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/files')
+    const panel = page.getByTestId('expiry-panel')
+    await expect(panel).toBeHidden()
+    await expect(panel.getByText('KEEP FOR', { exact: false })).toBeHidden()
+    await page.getByTestId('expiry-mobile-toggle').click()
+    await expect(panel).toBeVisible()
+    await page.getByTestId('expiry-collapse').click()
+    await expect(panel).toBeHidden()
+  }
+})
+
+test('mobile navigation keeps primary cells and detached settings within bounds', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  for (const viewport of [
+    { width: 320, height: 640 },
+    { width: 360, height: 800 },
+    { width: 390, height: 844 },
+    { width: 412, height: 915 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/#/files')
+    const controls = page.locator('.mobile-tabbar-main [data-testid^="mobile-nav-"]')
+    await expect(controls).toHaveCount(3)
+    const boxes = await controls.evaluateAll((items) => items.map((item) => {
+      const rect = item.getBoundingClientRect()
+      const children = [...item.querySelectorAll<HTMLElement>('span, svg')].map((child) => {
+        const childRect = child.getBoundingClientRect()
+        return { left: childRect.left, right: childRect.right }
+      })
+      return { left: rect.left, right: rect.right, width: rect.width, children }
+    }))
+    expect(new Set(boxes.map((box) => Math.round(box.width))).size).toBe(1)
+    expect(boxes[0].left).toBeGreaterThanOrEqual(0)
+    expect(boxes.at(-1)!.right).toBeLessThanOrEqual(viewport.width)
+    for (const box of boxes) {
+      for (const child of box.children) {
+        expect(child.left).toBeGreaterThanOrEqual(box.left)
+        expect(child.right).toBeLessThanOrEqual(box.right)
+      }
+    }
+    const settingsBox = await page.getByTestId('mobile-nav-preferences').boundingBox()
+    const mainBox = await page.locator('.mobile-tabbar-main').boundingBox()
+    expect(settingsBox).not.toBeNull()
+    expect(mainBox).not.toBeNull()
+    if (settingsBox && mainBox) {
+      expect(settingsBox.x).toBeGreaterThan(boxes.at(-1)!.right)
+      // The tab bar shares the workspace gutter, which is symmetric at 12px:
+      // no scrollbar gutter is reserved at mobile widths.
+      expect(mainBox.x).toBeCloseTo(12, 1)
+      expect(settingsBox.x + settingsBox.width).toBeCloseTo(viewport.width - 12, 1)
+      expect(settingsBox.x - (mainBox.x + mainBox.width)).toBeCloseTo(10, 1)
+      expect(mainBox.width + 10 + settingsBox.width).toBeCloseTo(viewport.width - 24, 1)
+    }
+    const tabbarBox = await page.getByTestId('mobile-tabbar').boundingBox()
+    const uploadPanelBox = await page.locator('.upload-panel').boundingBox()
+    expect(tabbarBox).not.toBeNull()
+    expect(uploadPanelBox).not.toBeNull()
+    if (tabbarBox && uploadPanelBox) {
+      expect(tabbarBox.x).toBeCloseTo(uploadPanelBox.x, 1)
+      expect(tabbarBox.x + tabbarBox.width).toBeCloseTo(uploadPanelBox.x + uploadPanelBox.width, 1)
+    }
+    await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(viewport.width)
+  }
+})
+
+test('mobile repository link appears inside the centered Settings footer', async ({ page }) => {
+  await signInWithToken(page)
+  await page.setViewportSize({ width: 320, height: 640 })
+  await page.goto('/#/files')
+
+  await expect(page.locator('.github-link')).toHaveCount(0)
+  await page.getByTestId('mobile-nav-preferences').click()
+  const panel = page.locator('.settings-panel')
+  const footer = page.locator('.settings-footer')
+  const repository = page.getByTestId('settings-github-link')
+  await expect(footer).toBeVisible()
+  await expect(repository).toBeVisible()
+  await expect.poll(() => panel.evaluate((element) => getComputedStyle(element).transform)).toBe('none')
+  const panelBox = await panel.boundingBox()
+  const uploadPanelBox = await page.locator('.upload-panel').boundingBox()
+  expect(panelBox).not.toBeNull()
+  expect(uploadPanelBox).not.toBeNull()
+  if (panelBox && uploadPanelBox) {
+    expect(panelBox.x).toBeCloseTo(uploadPanelBox.x, 1)
+    expect(panelBox.x + panelBox.width).toBeCloseTo(uploadPanelBox.x + uploadPanelBox.width, 1)
+  }
+  const repositoryBox = await repository.boundingBox()
+  const labelBox = await footer.getByText('yaemipaste').boundingBox()
+  expect(repositoryBox).not.toBeNull()
+  expect(labelBox).not.toBeNull()
+  if (repositoryBox && labelBox) {
+    expect(repositoryBox.x + repositoryBox.width).toBeLessThan(labelBox.x)
+    expect(Math.abs((repositoryBox.y + repositoryBox.height / 2) - (labelBox.y + labelBox.height / 2))).toBeLessThanOrEqual(1)
+  }
+})
+
+test('audit records are readable cards on mobile', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Audit', exact: true }).click()
+  const auditTable = page.locator('.admin-table').filter({ hasText: 'settings.update' })
+  await expect(auditTable).toBeVisible()
+  await expect(auditTable).toContainText('settings.update')
+  await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
+})
+
 for (const viewport of [
   { name: 'desktop', width: 1280, height: 720 },
   { name: 'tablet', width: 768, height: 1024 },
@@ -1401,41 +1632,6 @@ test('public preview labels an unknown token uploader as Anonymous', async ({ pa
   await page.goto('/#/preview?p=/owner-fallback/file.txt')
   await expect(page.getByText('Anonymous', { exact: true })).toBeVisible()
   await expect(page.getByText('test-user', { exact: true })).toHaveCount(0)
-})
-
-test('token-auth upload hydrates owner name before sending metadata', async ({ page }) => {
-  await signInAsTokenUser(page)
-  await mockClipboard(page)
-
-  let uploadedMeta: Record<string, unknown> | null = null
-  await page.route('**/token-owner**', async (route) => {
-    expect(route.request().headers().authorization).toBe('test-token')
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ username: 'resolved-owner' }),
-    })
-  })
-  await page.route('**/api/', async (route) => {
-    const body = route.request().postDataBuffer()
-    if (!body) throw new Error('Missing upload body')
-    uploadedMeta = JSON.parse(extractMultipartField(body, route.request().headers()['content-type'] ?? '', 'meta').toString('utf8'))
-    await route.fulfill({
-      status: 200,
-      contentType: 'text/plain',
-      body: `${APP_ORIGIN}/resolved-owner-check.txt`,
-    })
-  })
-
-  await page.goto('/#/files')
-  await page.locator('input[type="file"]').setInputFiles({
-    name: 'resolved-owner-check.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('resolved owner upload'),
-  })
-
-  await expect.poll(() => uploadedMeta?.uploader).toBe('resolved-owner')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_username'))).toBe('resolved-owner')
 })
 
 test('upload preview download and delete work as one public-file flow', async ({ page }) => {
@@ -3544,6 +3740,7 @@ test('admin Preferences control opens and fades closed on desktop and mobile', a
   const layer = page.getByTestId('settings-layer')
   await expect(layer).toBeVisible()
   await expect(layer.locator('.settings-panel')).toBeVisible()
+  await expect(preferences).toHaveAttribute('aria-expanded', 'true')
   await expect.poll(() => layer.evaluate((element) => getComputedStyle(element).transitionProperty)).toContain('opacity')
 
   const leaveTransition = page.waitForFunction(() =>
@@ -3552,6 +3749,40 @@ test('admin Preferences control opens and fades closed on desktop and mobile', a
   await layer.locator('.overlay').click({ position: { x: 8, y: 8 } })
   await leaveTransition
   await expect(layer).toBeHidden()
+  await expect(preferences).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('mobile Preferences toggles the detached settings panel closed', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/admin')
+
+  const preferences = page.getByTestId('mobile-nav-preferences')
+  await preferences.click()
+  await expect(page.getByTestId('settings-layer')).toBeVisible()
+  await expect(preferences).toHaveAttribute('aria-expanded', 'true')
+  const panel = page.locator('.settings-panel')
+  const enteringPanelBox = await panel.boundingBox()
+  const enteringTabbarBox = await page.getByTestId('mobile-tabbar').boundingBox()
+  expect(enteringPanelBox).not.toBeNull()
+  expect(enteringTabbarBox).not.toBeNull()
+  if (enteringPanelBox && enteringTabbarBox) {
+    expect(enteringPanelBox.x).toBeCloseTo(enteringTabbarBox.x, 1)
+    expect(enteringPanelBox.x + enteringPanelBox.width).toBeCloseTo(enteringTabbarBox.x + enteringTabbarBox.width, 1)
+  }
+  await expect.poll(() => panel.evaluate((element) => getComputedStyle(element).transform)).toBe('none')
+    const panelBox = await panel.boundingBox()
+    const tabbarBox = await page.getByTestId('mobile-tabbar').boundingBox()
+    expect(panelBox).not.toBeNull()
+    expect(tabbarBox).not.toBeNull()
+    if (panelBox && tabbarBox) {
+      expect(panelBox.x).toBeCloseTo(tabbarBox.x, 1)
+      expect(panelBox.x + panelBox.width).toBeCloseTo(tabbarBox.x + tabbarBox.width, 1)
+    }
+  await preferences.click()
+  await expect(page.getByTestId('settings-layer')).toBeHidden()
+  await expect(preferences).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('admin branding fields are visible and use responsive layout', async ({ page }) => {
@@ -3971,6 +4202,36 @@ test('admin route is guarded and sidebar entry only appears for admins', async (
 test('admin claim submits one-time token and stores admin session', async ({ page }) => {
   let claimPayload: Record<string, unknown> | null = null
 
+  // The claim redirects straight into /admin, whose mount immediately loads
+  // the full admin dashboard with the newly claimed JWT. Without this, those
+  // requests race a real, unmocked backend that rejects the fake
+  // claimed-jwt with a genuine 401, clearing the session this test is
+  // trying to verify. This test only cares about the claim flow itself, so
+  // minimal empty-but-valid data is enough - the specific claim/claim-status
+  // routes registered below take precedence over this catch-all.
+  await page.route('**/auth/admin/**', async (route) => {
+    const path = new URL(route.request().url()).pathname
+    const emptyArrayEndpoints = ['users', 'uploads', 'webhooks', 'audit', 'registration-tokens']
+    if (path.endsWith('/webhooks/deliveries')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+    }
+    if (emptyArrayEndpoints.some((endpoint) => path.endsWith(`/${endpoint}`))) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+    }
+    if (path.endsWith('/dashboard')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total_disk_usage_bytes: 0, upload_count: 0, user_count: 0, suspended_user_count: 0, admin_count: 0,
+          users: [], recent_uploads: [], recent_audit: [], failed_webhook_deliveries: [],
+          config_status: { registration_enabled: true }, warnings: [],
+        }),
+      })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+
   await page.route('**/auth/admin/claim/status', async (route) => {
     await route.fulfill({
       status: 200,
@@ -4073,6 +4334,153 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   )
   await saveSettings.click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('a confirmed-dead session (401) logs out cleanly with a clear message', async ({ page }) => {
+  await signInWithAccount(page)
+  await page.route('**/auth/me', async (route) => {
+    await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ detail: 'Session revoked' }) })
+  })
+
+  await page.goto('/files')
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(page.getByText('Your session has ended. Please log in again.')).toBeVisible()
+
+  const stored = await page.evaluate(() => ({
+    jwt: localStorage.getItem('rp_jwt') ?? sessionStorage.getItem('rp_jwt'),
+    token: localStorage.getItem('rp_token') ?? sessionStorage.getItem('rp_token'),
+  }))
+  expect(stored.jwt).toBeNull()
+  expect(stored.token).toBeNull()
+})
+
+test('a permission error (403) never clears a valid session', async ({ page }) => {
+  // Suspended or non-admin accounts still have a perfectly valid session -
+  // only the dead-session 401 path may clear stored tokens.
+  await signInWithAccount(page)
+  await page.route('**/auth/me', async (route) => {
+    await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ detail: 'Account is suspended' }) })
+  })
+
+  await page.goto('/files')
+  await expect(page).toHaveURL(/\/files$/)
+  await expect(page.getByText('Your session has ended. Please log in again.')).toHaveCount(0)
+
+  const stored = await page.evaluate(() => ({
+    jwt: localStorage.getItem('rp_jwt') ?? sessionStorage.getItem('rp_jwt'),
+    token: localStorage.getItem('rp_token') ?? sessionStorage.getItem('rp_token'),
+  }))
+  expect(stored.jwt).toBe('test-jwt')
+  expect(stored.token).toBe('test-token')
+})
+
+test('an invalid JWT is caught by the boot-time check alone, before any feature calls authMe()', async ({ page }) => {
+  // /login never calls authMe()/refreshAuthAdmin() itself - if a dead
+  // session still gets cleared here, it can only be verifyStoredSession()
+  // running unconditionally at boot, not some incidental admin/history call.
+  await signInWithAccount(page)
+  await page.route('**/auth/me', async (route) => {
+    await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ detail: 'Token expired' }) })
+  })
+
+  await page.goto('/login')
+  await expect(page.getByText('Your session has ended. Please log in again.')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_jwt'))).toBeNull()
+})
+
+test('a paste-token-only session is not validated at boot - every account always has a JWT too', async ({ page }) => {
+  // createUser() requires a password, so every account can always produce a
+  // JWT; a bare paste token with no JWT is not a state any current login
+  // path can create. verifyStoredSession() only checks hasAccountAuth().
+  await signInWithToken(page)
+  let versionChecked = false
+  await page.route('**/api/version**', async (route) => {
+    versionChecked = true
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: '1.0.0' })
+  })
+
+  await page.goto('/login')
+  await page.waitForTimeout(500)
+  expect(versionChecked).toBe(false)
+})
+
+test('an upload rejected as unauthorized clears the session instead of just failing silently', async ({ page }) => {
+  await signInWithToken(page)
+  await page.route('**/api/', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    await route.fulfill({ status: 401, contentType: 'text/plain', body: 'Unauthorized' })
+  })
+
+  await page.goto('/#/files')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'rejected-upload.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('content'),
+  })
+  await expect(page.getByText('Your session has ended. Please log in again.')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('rp_token'))).toBeNull()
+})
+
+test('returning to a visible admin tab does not refetch on every alt-tab', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  let dashboardCalls = 0
+  await page.route('**/auth/admin/dashboard**', async (route) => {
+    dashboardCalls++
+    await route.fallback()
+  })
+
+  await page.goto('/admin')
+  await expect.poll(() => dashboardCalls).toBe(1)
+
+  // Backgrounding the tab must not itself trigger a refetch.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.waitForTimeout(200)
+  expect(dashboardCalls).toBe(1)
+
+  // Returning to the tab refetches once...
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect.poll(() => dashboardCalls).toBe(2)
+
+  // ...but rapid repeats (e.g. flicking between two more alt-tabs) within the
+  // cooldown window must not each force another full refetch.
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.waitForTimeout(300)
+  expect(dashboardCalls).toBe(2)
+})
+
+test('registration tokens still load when returning to a warm Users tab via browser back', async ({ page }) => {
+  // AdminView mounts fresh on every top-level route change (no keep-alive).
+  // With prefetched admin data already warm in module memory, refreshAll()
+  // is skipped on mount, and if the route already points at /admin/users the
+  // reactive tab watcher never fires either - it only reacts to a *change*
+  // into 'Users', not to already starting there. Both paths funnel through
+  // registration tokens only via that watcher or via refreshAll(), so a
+  // fresh mount that skips both would silently show an empty list.
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+
+  await page.goto('/admin')
+  await page.getByRole('button', { name: 'Users', exact: true }).click()
+  await expect(page.getByText('contractor invite', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Files', exact: true }).click()
+  await expect(page).toHaveURL(/\/files$/)
+
+  await page.goBack()
+  await expect(page).toHaveURL(/\/admin\/users$/)
+  await expect(page.getByText('contractor invite', { exact: true })).toBeVisible()
+  await expect(page.getByText('No registration tokens', { exact: false })).toHaveCount(0)
 })
 
 test('admin generates a single-use registration token with expiration', async ({ page }) => {

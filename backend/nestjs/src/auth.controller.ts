@@ -8,7 +8,10 @@ import { apiError } from './errors.js'
 export class AuthController {
   constructor(private readonly auth: AuthService, private readonly config: ConfigService) {}
 
-  @Post('register') @HttpCode(200) register(@Body() body: { username?: string; password?: string; token?: string }) { return this.auth.register(body.username ?? '', body.password ?? '', body.token ?? '') }
+  @Post('register') @HttpCode(200) register(@Req() request: Request, @Body() body: { username?: string; password?: string; token?: string }) {
+    if (!this.auth.rateLimit(`register:${request.ip}`, 10, 60_000)) throw apiError(429, 'Too many registration attempts')
+    return this.auth.register(body.username ?? '', body.password ?? '', body.token ?? '')
+  }
 
   @Post('login') @HttpCode(200) login(@Req() request: Request, @Body() body: { username?: string; password?: string; turnstile_token?: string }) { if (!this.auth.rateLimit(`login:${request.ip}`, 10, 60_000)) throw apiError(429, 'Too many login attempts'); return this.auth.login(body.username ?? '', body.password ?? '', body.turnstile_token ?? '') }
 
@@ -33,6 +36,7 @@ export class AuthController {
   }
 
   @Post('password/change') @HttpCode(200) changePassword(@Req() request: Request, @Body() body: { old_password?: string; new_password?: string }) {
+    if (!this.auth.rateLimit(`password-change:${request.ip}`, 10, 5 * 60_000)) throw apiError(429, 'Too many password change attempts')
     return this.auth.changePassword(request, body.old_password ?? '', body.new_password ?? '')
   }
 
@@ -48,7 +52,12 @@ export class AuthController {
   @Post('passkeys/auth/begin') @HttpCode(200) passkeyAuthBegin(@Body() body: { username?: string }) { return this.auth.passkeyAuthBegin(body.username ?? '') }
   @Post('passkeys/auth/finish') @HttpCode(200) passkeyAuthFinish(@Body() body: { username?: string; credential?: unknown }) { return this.auth.passkeyAuthFinish(body.username ?? '', body.credential) }
 
-  @Post('admin/bootstrap') @HttpCode(200) bootstrap(@Req() request: Request, @Body() body: { username?: string; password?: string; token?: string }) { this.auth.requireAdminBearer(request); return this.auth.bootstrap(body.username ?? '', body.password ?? '', body.token ?? '') }
-  @Post('admin/tokens') @HttpCode(200) createToken(@Req() request: Request, @Body() body: { label?: string; ttl_seconds?: number }) { this.auth.requireAdminBearer(request); return { token: this.auth.createRegistrationToken(body.label ?? 'generated', body.ttl_seconds) } }
-  @Delete('admin/tokens/:token') revokeToken(@Req() request: Request, @Param('token') token: string) { this.auth.requireAdminBearer(request); return this.auth.revokeToken(token) }
+  private requireAdminBearer(request: Request) {
+    if (!this.auth.rateLimit(`admin-bearer:${request.ip}`, 5, 60_000)) throw apiError(429, 'Too many admin authentication attempts')
+    this.auth.requireAdminBearer(request)
+  }
+
+  @Post('admin/bootstrap') @HttpCode(200) bootstrap(@Req() request: Request, @Body() body: { username?: string; password?: string; token?: string }) { this.requireAdminBearer(request); return this.auth.bootstrap(body.username ?? '', body.password ?? '', body.token ?? '') }
+  @Post('admin/tokens') @HttpCode(200) createToken(@Req() request: Request, @Body() body: { label?: string; ttl_seconds?: number }) { this.requireAdminBearer(request); return { token: this.auth.createRegistrationToken(body.label ?? 'generated', body.ttl_seconds) } }
+  @Delete('admin/tokens/:token') revokeToken(@Req() request: Request, @Param('token') token: string) { this.requireAdminBearer(request); return this.auth.revokeToken(token) }
 }
