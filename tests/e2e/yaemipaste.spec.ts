@@ -38,10 +38,17 @@ test.beforeEach(async ({ page }) => {
   // exercise a genuine 401/403 register their own '**/auth/me' route, which
   // Playwright resolves before this one since it is added later.
   await page.route('**/auth/me', async (route) => {
-    const session = await page.evaluate(() => ({
-      username: localStorage.getItem('rp_username') ?? sessionStorage.getItem('rp_username') ?? 'test-user',
-      isAdmin: (localStorage.getItem('rp_is_admin') ?? sessionStorage.getItem('rp_is_admin')) === '1',
-    }))
+    let session = { username: 'test-user', isAdmin: false }
+    try {
+      session = await page.evaluate(() => ({
+        username: localStorage.getItem('rp_username') ?? sessionStorage.getItem('rp_username') ?? 'test-user',
+        isAdmin: (localStorage.getItem('rp_is_admin') ?? sessionStorage.getItem('rp_is_admin')) === '1',
+      }))
+    } catch {
+      // A client-side navigation (e.g. an admin-guard redirect) can destroy this
+      // execution context mid-evaluate. That request is about to be superseded
+      // by the new page anyway, so fall back rather than aborting the test.
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
