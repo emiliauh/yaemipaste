@@ -29,7 +29,6 @@ PASTE_PUBLIC_API=https://api.example.com
 VITE_PASTE_API=https://api.example.com
 VITE_AUTH_API=https://api.example.com/auth
 VITE_FILE_RESOLVE_BASE=https://api.example.com/resolve
-VITE_TOKEN_OWNER_PATH=https://api.example.com/token-owner
 VITE_PUBLIC_SITE_ORIGIN=https://paste.example.com
 CORS_ALLOWED_ORIGINS=https://paste.example.com
 CSP_CONNECT_SRC=https://api.example.com

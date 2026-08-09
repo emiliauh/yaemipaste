@@ -108,6 +108,7 @@ const webhooks = ref<AdminWebhook[]>(initialAdminData?.webhooks ?? [])
 const deliveries = ref<WebhookDelivery[]>(initialAdminData?.deliveries ?? [])
 const audit = ref<AdminAuditEntry[]>(initialAdminData?.audit ?? [])
 let refreshSequence = 0
+let registrationTokensSequence = 0
 
 function tabFromRoute(): AdminTab {
   const section = String(route.params.section ?? '').toLowerCase()
@@ -491,13 +492,21 @@ function registrationTokenSummary(token: AdminRegistrationToken): string {
 }
 
 async function loadRegistrationTokens() {
+  const sequence = ++registrationTokensSequence
   registrationTokensLoading.value = true
   try {
-    registrationTokens.value = await adminListRegistrationTokens()
+    const next = await adminListRegistrationTokens()
+    // A background fetch (e.g. from mounting the Users tab) may still be in
+    // flight when a later one (e.g. after clearing history) resolves first.
+    // Only the newest response may update the visible list, or a stale list
+    // can reappear after the action that was supposed to change it.
+    if (sequence !== registrationTokensSequence) return
+    registrationTokens.value = next
   } catch (e: any) {
+    if (sequence !== registrationTokensSequence) return
     if (tab.value === 'Users') error.value = e.message ?? 'Could not load registration tokens'
   } finally {
-    registrationTokensLoading.value = false
+    if (sequence === registrationTokensSequence) registrationTokensLoading.value = false
   }
 }
 

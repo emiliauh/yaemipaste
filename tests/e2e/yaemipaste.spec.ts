@@ -310,7 +310,11 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
     }
     expect(route.request().method()).toBe('POST')
     expect(route.request().postDataJSON()).toEqual({ label: 'contractor invite', ttl_seconds: 3600 })
-    registrationTokenList = [{ ...registrationTokenList[0], label: 'contractor invite' }, ...registrationTokenList]
+    // Give the newly created token its own token_ref - reusing an existing one
+    // collides with that token's Vue :key and produces flaky, order-dependent
+    // rendering (a stale row can survive a later re-render instead of being
+    // replaced), unlike real token_refs, which are always unique sha256 hashes.
+    registrationTokenList = [{ ...registrationTokenList[0], token_ref: 'registration-ref-new', label: 'contractor invite' }, ...registrationTokenList]
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -318,6 +322,11 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
     })
   })
   await page.route('**/auth/admin/registration-tokens/*', async (route) => {
+    // '.../registration-tokens/history' is a distinct endpoint (clear history), handled by
+    // the broader route above - without this, this route's glob also matches it and always
+    // wins (Playwright resolves later-registered routes first), so the clear-history request
+    // never reaches the handler that actually filters the token list.
+    if (new URL(route.request().url()).pathname.endsWith('/history')) { await route.fallback(); return }
     expect(route.request().headers().authorization).toBe('Bearer admin-jwt')
     expect(route.request().method()).toBe('DELETE')
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ detail: 'revoked' }) })

@@ -35,7 +35,6 @@ administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
 | `VITE_PUBLIC_SITE_ORIGIN` | Explicit public site origin for generated links | empty |
 | `VITE_HISTORY_WS` | Optional history websocket override | empty |
 | `VITE_FILE_RESOLVE_BASE` | Native API resolution base used by public file links | `/api/resolve` |
-| `VITE_TOKEN_OWNER_PATH` | Optional token-owner lookup path | `/api/token-owner` |
 | `VITE_ENABLE_SHAREX` | Enable ShareX settings UI and `/auth/sharex` config generation | `1` |
 | `VITE_ENABLE_AUTH` | Enable login/register/account UI | `1` |
 | `VITE_PUBLIC_META_CACHE_BUST` | Add a query cache key to public metadata requests in production UI builds | `1` for deployed images, `0` for local test builds |
@@ -105,7 +104,6 @@ For a new deployment:
 - keep `VITE_PASTE_API=/api`
 - keep `VITE_AUTH_API=/auth`
 - use `VITE_FILE_RESOLVE_BASE=/api/resolve`
-- use `VITE_TOKEN_OWNER_PATH=/api/token-owner`
 - keep `RESOLVER_ENABLED=0`
 - keep `PASTE_URL` aligned with the frontend origin
 - set `JWT_SECRET` and `AUTH_ADMIN_BEARER` with `openssl rand -hex 32`

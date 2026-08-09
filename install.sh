@@ -829,10 +829,6 @@ configure_env() {
   upsert_env VITE_PASTE_API "$api_base"
   upsert_env VITE_AUTH_API "$auth_base"
   upsert_env VITE_FILE_RESOLVE_BASE "$resolve_base"
-  upsert_env VITE_TOKEN_OWNER_PATH "$(env_get VITE_TOKEN_OWNER_PATH "/api/token-owner")"
-  if [[ "$deployment_mode" == "split" ]]; then
-    upsert_env VITE_TOKEN_OWNER_PATH "$api_origin/token-owner"
-  fi
   upsert_env CORS_ALLOWED_ORIGINS "$cors_origins"
   upsert_env CSP_CONNECT_SRC "$csp_connect"
   upsert_env VITE_ENABLE_SHAREX "$sharex_enabled"
