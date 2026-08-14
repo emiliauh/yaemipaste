@@ -157,6 +157,8 @@ confirm() {
 prompt() { printf 'DELETE'; }
 fake_container_output=""
 fake_removed_containers=""
+fake_volume_output=""
+fake_removed_volumes=""
 docker() {
   case "$1" in
     ps)
@@ -167,7 +169,21 @@ docker() {
       fake_removed_containers="${*:3}"
       ;;
     volume)
-      [[ "$2" == "ls" ]]
+      case "$2" in
+        ls)
+          printf '%s' "$fake_volume_output"
+          ;;
+        inspect)
+          [[ -n "$fake_volume_output" && "$3" == "$fake_volume_output" ]]
+          ;;
+        rm)
+          fake_removed_volumes="${*:3}"
+          fake_volume_output=""
+          ;;
+        *)
+          return 1
+          ;;
+      esac
       ;;
     network)
       [[ "$2" == "ls" ]]
@@ -178,8 +194,11 @@ docker() {
   esac
 }
 
+fake_volume_output="legacy-compose-auth"
+fake_removed_volumes=""
 stack_uninstall
 [[ ! -e "$compose_env_file" ]]
+[[ "$fake_removed_volumes" == "legacy-compose-auth" ]]
 
 INSTALL_DIR="$temp_dir/partial-install"
 mkdir -p "$INSTALL_DIR"
@@ -199,6 +218,14 @@ stack_uninstall
 [[ "$fake_removed_containers" == "stale-container-a stale-container-b" ]]
 [[ ! -e "$INSTALL_DIR" ]]
 fake_container_output=""
+
+INSTALL_DIR="$temp_dir/missing-volume-install"
+fake_volume_output="legacy-auth-volume"
+fake_removed_volumes=""
+YES=1
+stack_uninstall
+[[ "$fake_removed_volumes" == "legacy-auth-volume" ]]
+[[ -z "$fake_volume_output" ]]
 
 INSTALL_DIR="$temp_dir/yes-partial-install"
 mkdir -p "$INSTALL_DIR"

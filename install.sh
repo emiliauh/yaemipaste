@@ -536,17 +536,56 @@ purge_compose_project_volumes() {
     warn "Docker is unavailable while verifying ${APP_NAME} volume cleanup."
     return 1
   }
-  local volume_output project_name
+  local volume_output project_name volume_name candidate mount_output container_output container_id destination
   project_name="$(compose_project_name)"
   if ! volume_output="$(docker volume ls -q --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null)"; then
     warn "Could not inspect Docker volumes for ${project_name}."
     return 1
   fi
-  [[ -n "$volume_output" ]] || return 0
   local -a volume_ids=()
-  mapfile -t volume_ids <<< "$volume_output"
+  add_volume_candidate() {
+    candidate="$1"
+    [[ -n "$candidate" ]] || return 0
+    for volume_name in "${volume_ids[@]}"; do
+      [[ "$volume_name" == "$candidate" ]] && return 0
+    done
+    if docker volume inspect "$candidate" >/dev/null 2>&1; then
+      volume_ids+=("$candidate")
+    fi
+  }
+
+  while IFS= read -r volume_name; do
+    add_volume_candidate "$volume_name"
+  done <<< "$volume_output"
+
+  # Older Compose versions created valid project volumes without the
+  # com.docker.compose.project label. Include the two volumes declared by this
+  # stack using the exact project-scoped names as a compatibility fallback.
+  add_volume_candidate "${project_name}_yaemipaste-auth"
+  add_volume_candidate "${project_name}_yaemipaste-upload"
+
+  # If the project name changed or a legacy volume was renamed, recover the
+  # exact volume names from containers that still carry the project label.
+  if container_output="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null)"; then
+    while IFS= read -r container_id; do
+      [[ -n "$container_id" ]] || continue
+      mount_output="$(docker inspect --format '{{range .Mounts}}{{.Name}}\t{{.Destination}}{{"\\n"}}{{end}}' "$container_id" 2>/dev/null || true)"
+      while IFS=$'\t' read -r volume_name destination; do
+        [[ "$destination" == "/var/lib/yaemipaste-auth" || "$destination" == "/var/lib/yaemipaste/upload" ]] || continue
+        add_volume_candidate "$volume_name"
+      done <<< "$mount_output"
+    done <<< "$container_output"
+  fi
+
+  [[ "${#volume_ids[@]}" -gt 0 ]] || return 0
   warn "Removing ${#volume_ids[@]} persistent ${project_name} volume(s)."
   run docker volume rm "${volume_ids[@]}"
+  for volume_name in "${volume_ids[@]}"; do
+    if docker volume inspect "$volume_name" >/dev/null 2>&1; then
+      warn "Docker volume ${volume_name} still exists after cleanup."
+      return 1
+    fi
+  done
 }
 
 purge_compose_project_networks() {
@@ -1348,6 +1387,9 @@ stack_uninstall() {
     if [[ "$remove_volumes" -eq 1 ]]; then
       if ! compose_for_uninstall --volumes --remove-orphans; then
         die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
+      fi
+      if ! purge_compose_project_volumes; then
+        die "Could not remove ${APP_NAME} Docker volumes. The install directory was kept for recovery."
       fi
     elif ! compose_for_uninstall --remove-orphans; then
       die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
