@@ -94,6 +94,10 @@ AUTH_ADMIN_BEARER_VALUE="  ${rotation_first}, ${rotation_second}"
 compose_env_file=""
 compose_project_directory=""
 run() {
+  if [[ "$1" == "rm" || "$1" == "docker" ]]; then
+    "$@"
+    return 0
+  fi
   [[ "$1" == "mock-compose" ]]
   [[ "$2" == "--env-file" ]]
   compose_env_file="$3"
@@ -125,15 +129,63 @@ normal_compose_project_directory="$compose_project_directory"
 ensure_runtime_prereqs() { COMPOSE_CMD=(mock-compose); }
 confirm_count=0
 confirm() {
+  [[ "$YES" -eq 1 ]] && return 0
   confirm_count=$((confirm_count + 1))
   [[ "$confirm_count" -lt 3 ]]
 }
 prompt() { printf 'DELETE'; }
+fake_container_output=""
+fake_removed_containers=""
 docker() {
-  [[ "$1" == "ps" ]]
+  case "$1" in
+    ps)
+      printf '%s' "$fake_container_output"
+      ;;
+    rm)
+      [[ "$2" == "-f" ]]
+      fake_removed_containers="${*:3}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 stack_uninstall
 [[ ! -e "$compose_env_file" ]]
+
+INSTALL_DIR="$temp_dir/partial-install"
+mkdir -p "$INSTALL_DIR"
+printf 'partial installation\n' > "$INSTALL_DIR/README.partial"
+confirm_count=0
+stack_uninstall
+[[ ! -e "$INSTALL_DIR" ]]
+
+INSTALL_DIR="$temp_dir/partial-with-containers"
+mkdir -p "$INSTALL_DIR"
+printf 'partial installation\n' > "$INSTALL_DIR/README.partial"
+fake_container_output=$'stale-container-a\nstale-container-b'
+fake_removed_containers=""
+confirm_count=0
+stack_uninstall
+[[ "$fake_removed_containers" == "stale-container-a stale-container-b" ]]
+[[ ! -e "$INSTALL_DIR" ]]
+fake_container_output=""
+
+INSTALL_DIR="$temp_dir/yes-partial-install"
+mkdir -p "$INSTALL_DIR"
+printf 'partial installation\n' > "$INSTALL_DIR/README.partial"
+YES=1
+stack_uninstall
+[[ ! -e "$INSTALL_DIR" ]]
+YES=0
+
+INSTALL_DIR="$temp_dir/missing-install"
+fake_container_output="orphaned-container"
+fake_removed_containers=""
+confirm_count=0
+stack_uninstall
+[[ "$fake_removed_containers" == "orphaned-container" ]]
+fake_container_output=""
 
 printf 'installer smoke tests passed\n'

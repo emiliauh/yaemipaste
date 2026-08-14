@@ -1235,16 +1235,35 @@ init_admin_claim() {
 stack_uninstall() {
   section "Uninstall"
   safe_install_path "$INSTALL_DIR" || die "Refusing unsafe uninstall path: ${INSTALL_DIR}"
-  if [[ ! -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
+  local install_path_present=0 compose_file_present=0
+  [[ -e "$INSTALL_DIR" ]] && install_path_present=1
+  [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]] && compose_file_present=1
+  if [[ "$install_path_present" -eq 0 ]]; then
+    local existing_containers=""
+    if command_exists docker && existing_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${APP_NAME}" 2>/dev/null)" && [[ -n "$existing_containers" ]]; then
+      warn "No install directory found, but ${APP_NAME} Docker containers still exist."
+      if ! confirm "Remove the remaining ${APP_NAME} containers?" n; then
+        log "Cancelled."
+        return 0
+      fi
+      if ! purge_compose_project_containers; then
+        die "Could not verify cleanup of ${APP_NAME} containers."
+      fi
+      success "Removed remaining ${APP_NAME} containers."
+      return 0
+    fi
     warn "${APP_NAME} is not installed at ${INSTALL_DIR}; nothing to uninstall."
     return 0
   fi
   ensure_runtime_prereqs
+  if [[ "$compose_file_present" -eq 0 ]]; then
+    warn "No ${COMPOSE_FILE} found at ${INSTALL_DIR}; treating it as a partial installation."
+  fi
   if ! confirm "This will stop ${APP_NAME} services. Continue?" n; then
     log "Cancelled."
     return 0
   fi
-  if [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
+  if [[ "$compose_file_present" -eq 1 ]]; then
     if confirm "Remove Docker volumes too? (destructive)" n; then
       if ! compose_for_uninstall --volumes --remove-orphans; then
         die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
@@ -1254,10 +1273,16 @@ stack_uninstall() {
         die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
       fi
     fi
+  elif ! purge_compose_project_containers; then
+    die "Could not verify cleanup of ${APP_NAME} containers. The partial install directory was kept for recovery."
   fi
   if confirm "Delete install directory ${INSTALL_DIR}?" n; then
     local check
-    check="$(prompt "Type DELETE to confirm directory removal" "")"
+    if [[ "$YES" -eq 1 ]]; then
+      check="DELETE"
+    else
+      check="$(prompt "Type DELETE to confirm directory removal" "")"
+    fi
     if [[ "$check" == "DELETE" ]]; then
       run rm -rf "$INSTALL_DIR"
       success "Removed ${INSTALL_DIR}"
