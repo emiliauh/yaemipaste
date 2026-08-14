@@ -1239,20 +1239,7 @@ stack_uninstall() {
   [[ -e "$INSTALL_DIR" ]] && install_path_present=1
   [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]] && compose_file_present=1
   if [[ "$install_path_present" -eq 0 ]]; then
-    local existing_containers=""
-    if command_exists docker && existing_containers="$(docker ps -aq --filter "label=com.docker.compose.project=${APP_NAME}" 2>/dev/null)" && [[ -n "$existing_containers" ]]; then
-      warn "No install directory found, but ${APP_NAME} Docker containers still exist."
-      if ! confirm "Remove the remaining ${APP_NAME} containers?" n; then
-        log "Cancelled."
-        return 0
-      fi
-      if ! purge_compose_project_containers; then
-        die "Could not verify cleanup of ${APP_NAME} containers."
-      fi
-      success "Removed remaining ${APP_NAME} containers."
-      return 0
-    fi
-    warn "${APP_NAME} is not installed at ${INSTALL_DIR}; nothing to uninstall."
+    warn "${APP_NAME} has no install directory at ${INSTALL_DIR}; no Docker resources were changed."
     return 0
   fi
   ensure_runtime_prereqs

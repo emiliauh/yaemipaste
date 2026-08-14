@@ -180,12 +180,4 @@ stack_uninstall
 [[ ! -e "$INSTALL_DIR" ]]
 YES=0
 
-INSTALL_DIR="$temp_dir/missing-install"
-fake_container_output="orphaned-container"
-fake_removed_containers=""
-confirm_count=0
-stack_uninstall
-[[ "$fake_removed_containers" == "orphaned-container" ]]
-fake_container_output=""
-
 printf 'installer smoke tests passed\n'
