@@ -44,7 +44,7 @@ export class AdminController {
   claimInit(@Req() request: Request, @Body() body: { reset?: boolean; ttl_seconds?: number }) {
     if (!this.auth.rateLimit(`claim-init:${request.ip}`, 6, 60_000)) throw apiError(429, 'Too many claim initialization attempts')
     this.auth.requireAdminBearer(request)
-    if (this.auth.adminExists() && !body.reset) throw apiError(409, 'An administrator already exists')
+    if (this.auth.adminExists()) throw apiError(409, 'An administrator already exists; admin claim tokens are only for the first administrator')
     if (this.auth.pendingClaimExists() && !body.reset) throw apiError(409, 'A claim token is already pending and cannot be shown again; reset it explicitly if needed')
     const token = randomBytes(64).toString('base64url')
     const expires = nowSeconds() + Math.max(1, Number(body.ttl_seconds || 86_400))

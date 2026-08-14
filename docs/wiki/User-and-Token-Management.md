@@ -79,6 +79,11 @@ installer bootstrap and token flow.
 The panel manages users, uploads, settings, webhooks, and audit events. The
 backend checks every route with a signed account JWT and `users.is_admin=1`.
 
+`AUTH_ADMIN_BEARER` is an installer credential. It is not a login token for the
+admin panel. Use it only for installer endpoints such as
+`/auth/admin/claim/init`, `/auth/admin/bootstrap`, and `/auth/admin/tokens`.
+Sign in to the UI to receive the account JWT used by `/admin` routes.
+
 ### Claim the first administrator
 
 `install.sh` generates a one-time admin claim token when it first starts the
@@ -108,8 +113,8 @@ To create a new token, reset the current one:
 ```
 
 This invalidates any unused claim token. After an administrator exists,
-`claim-init` and `claim` return `409`. They issue no new token until you reset
-the claim flow.
+`claim-init` and `claim` return `409`. A reset cannot create a usable claim
+token after the first administrator exists.
 
 ### Admin panel functions
 

@@ -219,6 +219,9 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
 
     const duplicateClaim = await request('/auth/admin/claim/init', { method: 'POST', headers: { Authorization: 'Bearer installer-test-bearer', 'Content-Type': 'application/json' }, body: '{}' })
     assert.equal(duplicateClaim.response.status, 409)
+    const resetAfterAdmin = await request('/auth/admin/claim/init', { method: 'POST', headers: { Authorization: 'Bearer installer-test-bearer', 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true }) })
+    assert.equal(resetAfterAdmin.response.status, 409)
+    assert.match(resetAfterAdmin.text, /administrator already exists/)
     const claimStatus = await request('/auth/admin/claim/status')
     assert.equal(claimStatus.response.status, 200)
   })

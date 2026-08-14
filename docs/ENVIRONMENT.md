@@ -68,7 +68,7 @@ metadata under `SERVER__UPLOAD_PATH`.
 | `SPLIT_ROLE` | `ui` or `api` on split hosts | empty |
 | `COMPOSE_PROFILES` | Services started by Compose | `ui,api` |
 | `DEPLOYMENT_IMAGE_MODE` | `pull` prebuilt images, or `build` from local source | `pull` |
-| `YAEMIPASTE_IMAGE_TAG` | UI/API image tag; the installer defaults to the branch tag, while production should use a SHA tag | `nestjs-rewrite` |
+| `YAEMIPASTE_IMAGE_TAG` | UI/API image tag; the installer defaults to the `main` branch tag, while production should use a SHA tag | `main` |
 | `YAEMIPASTE_UI_IMAGE` | UI image repository or mirror | `ghcr.io/emiliauh/yaemipaste-ui` |
 | `YAEMIPASTE_API_IMAGE` | API image repository or mirror | `ghcr.io/emiliauh/yaemipaste-api` |
 | `UI_BIND_ADDRESS` | UI host bind address | `127.0.0.1` |

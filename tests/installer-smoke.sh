@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Sourcing exposes installer functions without running its interactive entrypoint.
 source "$ROOT/install.sh"
 
+[[ "$DEFAULT_BRANCH" == "main" ]]
+
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
 
@@ -18,9 +20,55 @@ PUBLIC_URL_OVERRIDE="http://example.test:8080"
 configure_env
 fresh_jwt="$(env_get JWT_SECRET "")"
 fresh_bearer="$(env_get AUTH_ADMIN_BEARER "")"
+fresh_image_tag="$(env_get YAEMIPASTE_IMAGE_TAG "")"
 [[ "$fresh_jwt" =~ ^[a-f0-9]{64}$ ]]
 [[ "$fresh_bearer" =~ ^[a-f0-9]{64}$ ]]
+[[ "$fresh_image_tag" == "main" ]]
 [[ "$(stat -c '%a' "$INSTALL_DIR/.env")" == "600" ]]
+
+INSTALL_DIR="$temp_dir/legacy-install"
+mkdir -p "$INSTALL_DIR"
+cp "$ROOT/.env.example" "$INSTALL_DIR/.env.example"
+cat > "$INSTALL_DIR/.env" <<'EOF'
+PASTE_URL=http://example.test:8080
+YAEMIPASTE_IMAGE_TAG=nestjs-rewrite
+JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+AUTH_ADMIN_BEARER=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+EOF
+configure_env
+[[ "$(env_get YAEMIPASTE_IMAGE_TAG "")" == "main" ]]
+
+INSTALL_DIR="$temp_dir/claim-install"
+mkdir -p "$INSTALL_DIR"
+touch "$INSTALL_DIR/$COMPOSE_FILE"
+cat > "$INSTALL_DIR/.env" <<'EOF'
+PASTE_URL=http://127.0.0.1:8080
+UI_PORT=8080
+JWT_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+AUTH_ADMIN_BEARER=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+AUTH_ADMIN_BASE_URL=http://127.0.0.1:8080/auth/admin
+AUTH_ADMIN_CLAIM_INIT_PATH=/claim/init
+EOF
+
+http_json() {
+  [[ "$1" == "POST" ]]
+  [[ "$2" == "http://127.0.0.1:8080/auth/admin/claim/init" ]]
+  [[ "$3" == '{"reset":false}' ]]
+  [[ "$4" == "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789" ]]
+  HTTP_STATUS="200"
+  HTTP_BODY='{"token":"installer-smoke-claim-token","expires_at":9999999999}'
+}
+
+claim_output="$(init_admin_claim 0 2>&1)"
+[[ "$claim_output" == *"installer-smoke-claim-token"* ]]
+
+http_json() {
+  HTTP_STATUS="409"
+  HTTP_BODY='{"detail":"An administrator already exists"}'
+}
+
+existing_admin_output="$(init_admin_claim 0 2>&1)"
+[[ "$existing_admin_output" == *"AUTH_ADMIN_BEARER is for installer requests, not admin-panel login"* ]]
 
 INSTALL_DIR="$temp_dir/install"
 mkdir -p "$INSTALL_DIR"
@@ -60,6 +108,7 @@ run() {
   else
     [[ "$(awk -F= '$1 == "JWT_SECRET" { print $2 }' "$compose_env_file")" == "uninstall-placeholder" ]]
     [[ "$(awk -F= '$1 == "AUTH_ADMIN_BEARER" { print $2 }' "$compose_env_file")" == "uninstall-placeholder" ]]
+    [[ "$(awk -F= '$1 == "YAEMIPASTE_IMAGE_TAG" { print $2 }' "$compose_env_file")" == "uninstall-placeholder" ]]
   fi
 }
 

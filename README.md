@@ -42,7 +42,7 @@ curl -fsSL https://paste.yaemi.one/install.sh | sudo bash
 You can also clone the repository:
 
 ```bash
-git clone --branch nestjs-rewrite https://github.com/emiliauh/yaemipaste.git
+git clone --branch main https://github.com/emiliauh/yaemipaste.git
 cd yaemipaste
 sudo ./install.sh
 ```
@@ -110,21 +110,21 @@ The backend reads `CONFIG` when it is set. It uses `DB_PATH` for SQLite and
 
 ## CI and images
 
-GitHub Actions checks pushes and pull requests for `nestjs-rewrite`. The checks
+GitHub Actions checks pushes and pull requests for `main`. The checks
 include the installer smoke test, NestJS API build and security tests, frontend
 build, and Playwright tests.
 
 The image workflow publishes branch and commit-SHA tags to GHCR:
 
 ```text
-ghcr.io/emiliauh/yaemipaste-api:nestjs-rewrite
-ghcr.io/emiliauh/yaemipaste-ui:nestjs-rewrite
+ghcr.io/emiliauh/yaemipaste-api:main
+ghcr.io/emiliauh/yaemipaste-ui:main
 ghcr.io/emiliauh/yaemipaste-api:sha-<commit>
 ghcr.io/emiliauh/yaemipaste-ui:sha-<commit>
 ```
 
-The installer uses the `nestjs-rewrite` branch and image tag by default. For a
-fixed production version, set `YAEMIPASTE_IMAGE_TAG` to a commit-SHA tag.
+The installer uses the `main` branch and image tag by default. For a fixed
+production version, set `YAEMIPASTE_IMAGE_TAG` to a commit-SHA tag.
 
 ## First administrator
 

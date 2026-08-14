@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 APP_NAME="yaemipaste"
 DEFAULT_REPO_URL="https://github.com/emiliauh/yaemipaste.git"
-DEFAULT_BRANCH="nestjs-rewrite"
+DEFAULT_BRANCH="main"
 DEFAULT_INSTALL_DIR="/opt/yaemipaste"
 DEFAULT_UI_PORT="8080"
 COMPOSE_FILE="docker-compose.yml"
@@ -483,7 +483,9 @@ compose_for_uninstall() {
   # `down` must still work when the installation .env is incomplete or corrupt.
   # Keep production validation in compose(); these placeholders only satisfy
   # Compose interpolation while it removes the existing project resources.
-  printf 'JWT_SECRET=uninstall-placeholder\nAUTH_ADMIN_BEARER=uninstall-placeholder\n' > "$uninstall_env"
+  # Compose still validates required image-tag interpolation during `down`.
+  # Use safe placeholders so cleanup works even when .env is incomplete.
+  printf 'JWT_SECRET=uninstall-placeholder\nAUTH_ADMIN_BEARER=uninstall-placeholder\nYAEMIPASTE_IMAGE_TAG=uninstall-placeholder\n' > "$uninstall_env"
   if ! run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" --project-directory "$INSTALL_DIR" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" down "$@"; then
     rm -f "$uninstall_env"
     return 1
@@ -691,7 +693,7 @@ configure_env() {
     run chmod 0600 "$env_path"
   fi
 
-  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin internal_admin_origin configure_features turnstile_enabled direct_ip_access api_port
+  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin internal_admin_origin configure_features turnstile_enabled direct_ip_access api_port image_tag
   deployment_mode="$(prompt "Deployment mode (same or split)" "${DEPLOYMENT_MODE_OVERRIDE:-$(env_get DEPLOYMENT_MODE "same")}")"
   [[ "$deployment_mode" =~ ^(same|split)$ ]] || die "Deployment mode must be same or split."
   split_role="$(env_get SPLIT_ROLE "")"
@@ -898,7 +900,13 @@ configure_env() {
   else
     upsert_env DEPLOYMENT_IMAGE_MODE "$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
   fi
-  upsert_env YAEMIPASTE_IMAGE_TAG "$(env_get_nonempty YAEMIPASTE_IMAGE_TAG "$BRANCH")"
+  image_tag="$(env_get_nonempty YAEMIPASTE_IMAGE_TAG "")"
+  # Move existing installs from the retired branch tag to main. Preserve an
+  # explicit custom or SHA tag because production operators may pin images.
+  if [[ -z "$image_tag" || ( "$BRANCH" == "$DEFAULT_BRANCH" && "$image_tag" == "nestjs-rewrite" ) ]]; then
+    image_tag="$BRANCH"
+  fi
+  upsert_env YAEMIPASTE_IMAGE_TAG "$image_tag"
   upsert_env AUTH_ADMIN_BASE_URL "$admin_base"
   upsert_env AUTH_BOOTSTRAP_PATH "$bootstrap_path"
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"
@@ -1175,9 +1183,14 @@ init_admin_claim() {
   if [[ "$HTTP_STATUS" == "409" ]]; then
     detail="$(extract_detail_from_json "$HTTP_BODY")"
     [[ -n "$detail" ]] || detail="$HTTP_BODY"
-    warn "Admin claim token was not generated: ${detail}"
-    if [[ "$reset" -eq 0 ]]; then
-      warn "Existing admin/claim state was left unchanged. Use --action reset-admin-claim only if you intentionally need a fresh one-time token."
+    if [[ "$detail" == *"administrator already exists"* ]]; then
+      log "Administrator already exists; no new claim token is needed."
+      log "Sign in with the existing administrator account. AUTH_ADMIN_BEARER is for installer requests, not admin-panel login."
+    else
+      warn "Admin claim token was not generated: ${detail}"
+      if [[ "$reset" -eq 0 ]]; then
+        warn "Existing claim state was left unchanged. Use --action reset-admin-claim only when no administrator exists and the pending token was lost."
+      fi
     fi
     return 0
   fi
