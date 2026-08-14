@@ -129,6 +129,9 @@ confirm() {
   [[ "$confirm_count" -lt 3 ]]
 }
 prompt() { printf 'DELETE'; }
+docker() {
+  [[ "$1" == "ps" ]]
+}
 
 stack_uninstall
 [[ ! -e "$compose_env_file" ]]

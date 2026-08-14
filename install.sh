@@ -478,7 +478,7 @@ compose() {
 
 compose_for_uninstall() {
   [[ ${#COMPOSE_CMD[@]} -gt 0 ]] || detect_compose_cmd
-  local uninstall_env
+  local uninstall_env down_status=0 purge_status=0
   uninstall_env="$(mktemp)"
   # `down` must still work when the installation .env is incomplete or corrupt.
   # Keep production validation in compose(); these placeholders only satisfy
@@ -486,11 +486,38 @@ compose_for_uninstall() {
   # Compose still validates required image-tag interpolation during `down`.
   # Use safe placeholders so cleanup works even when .env is incomplete.
   printf 'JWT_SECRET=uninstall-placeholder\nAUTH_ADMIN_BEARER=uninstall-placeholder\nYAEMIPASTE_IMAGE_TAG=uninstall-placeholder\n' > "$uninstall_env"
-  if ! run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" --project-directory "$INSTALL_DIR" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" down "$@"; then
-    rm -f "$uninstall_env"
-    return 1
+  if run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" --project-directory "$INSTALL_DIR" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" down "$@"; then
+    :
+  else
+    down_status=$?
+    warn "Compose cleanup returned exit ${down_status}; checking for remaining ${APP_NAME} containers."
   fi
   rm -f "$uninstall_env"
+  if purge_compose_project_containers; then
+    :
+  else
+    purge_status=$?
+  fi
+  [[ "$down_status" -eq 0 ]] || return "$down_status"
+  return "$purge_status"
+}
+
+purge_compose_project_containers() {
+  [[ "$DRY_RUN" -eq 1 ]] && return 0
+  command_exists docker || {
+    warn "Docker is unavailable while verifying ${APP_NAME} container cleanup."
+    return 1
+  }
+  local container_output
+  if ! container_output="$(docker ps -aq --filter "label=com.docker.compose.project=${APP_NAME}" 2>/dev/null)"; then
+    warn "Could not inspect Docker containers for ${APP_NAME}."
+    return 1
+  fi
+  [[ -n "$container_output" ]] || return 0
+  local -a container_ids=()
+  mapfile -t container_ids <<< "$container_output"
+  warn "Removing ${#container_ids[@]} remaining ${APP_NAME} container(s)."
+  run docker rm -f "${container_ids[@]}"
 }
 
 ensure_repo_present() {
@@ -1219,9 +1246,13 @@ stack_uninstall() {
   fi
   if [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]]; then
     if confirm "Remove Docker volumes too? (destructive)" n; then
-      compose_for_uninstall --volumes --remove-orphans
+      if ! compose_for_uninstall --volumes --remove-orphans; then
+        die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
+      fi
     else
-      compose_for_uninstall --remove-orphans
+      if ! compose_for_uninstall --remove-orphans; then
+        die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
+      fi
     fi
   fi
   if confirm "Delete install directory ${INSTALL_DIR}?" n; then
