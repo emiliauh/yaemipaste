@@ -2240,7 +2240,9 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .upload-search {
   position: relative;
   display: flex;
-  align-self: stretch;
+  align-self: center;
+  flex: 0 0 48px;
+  height: 48px;
   min-height: 48px;
 }
 .upload-search input {
@@ -3187,7 +3189,12 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .users-table .user-actions > .btn-red {
     width: 100%;
     min-width: 0;
+    height: 40px;
     min-height: 40px;
+    padding: 0 var(--space-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .users-table .user-more {
     font-size: var(--fs-sm);

@@ -5455,5 +5455,7 @@ test('admin uploads search filters without layout shift', async ({ page }) => {
   await search.fill('upload-12')
   await expect(page.getByText('upload-12.txt')).toBeVisible()
   const after = await search.boundingBox()
-  expect(before && after ? Math.abs(before.height - after.height) : 0).toBe(0)
+  // Chromium can report a 1/65536px rounding delta after text input even
+  // when the control keeps the same CSS height.
+  expect(before && after ? Math.abs(before.height - after.height) : 0).toBeLessThanOrEqual(0.01)
 })
