@@ -19,7 +19,8 @@ export type AppConfig = {
   port: number
   publicUrl: string
   uploadPath: string
-  maxContentLength: number
+  /** Undefined means that the server does not impose a request-size limit. */
+  maxContentLength?: number
   maxUploadDirSize?: number
   timeoutMs: number
   exposeVersion: boolean
@@ -125,7 +126,10 @@ export class ConfigService {
       port,
       publicUrl: envOr(server.url, 'PASTE_URL', 'http://localhost:8080').replace(/\/$/, ''),
       uploadPath: envOr(server.upload_path, 'SERVER__UPLOAD_PATH', '/var/lib/yaemipaste/upload'),
-      maxContentLength: byteValue(server.max_content_length, 256 * 1024 * 1024),
+      maxContentLength: (() => {
+        const value = byteValue(server.max_content_length, 256 * 1024 * 1024)
+        return value === 0 ? undefined : value
+      })(),
       maxUploadDirSize: byteValue(process.env.MAX_UPLOAD_DIR_SIZE ?? server.max_upload_dir_size, 10 * 1024 * 1024 * 1024),
       timeoutMs: durationMs(server.timeout) ?? 30_000,
       exposeVersion: truthy(server.expose_version, false),

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NotificationStack from './components/NotificationStack.vue'
+import WorkspaceShell from './components/WorkspaceShell.vue'
 import { SESSION_INVALIDATED_EVENT } from './lib/api'
 import { useNotificationStore } from './stores/notifications'
 
 const route = useRoute()
 const router = useRouter()
 const notificationStore = useNotificationStore()
+const workspaceComponentKey = computed(() => route.path.startsWith('/admin') ? 'admin' : route.fullPath)
 
 function handleSessionInvalidated() {
   notificationStore.push('Your session has ended. Please log in again.', 'error')
@@ -21,7 +23,10 @@ onBeforeUnmount(() => window.removeEventListener(SESSION_INVALIDATED_EVENT, hand
 <template>
   <router-view v-slot="{ Component }">
     <Transition name="page-fade" mode="out-in">
-      <component :is="Component" :key="route.fullPath" />
+      <WorkspaceShell v-if="route.meta.workspace" key="workspace">
+        <component :is="Component" :key="workspaceComponentKey" />
+      </WorkspaceShell>
+      <component v-else :is="Component" :key="workspaceComponentKey" />
     </Transition>
   </router-view>
   <NotificationStack />
@@ -37,23 +42,4 @@ onBeforeUnmount(() => window.removeEventListener(SESSION_INVALIDATED_EVENT, hand
 .page-fade-leave-to {
   opacity: 0;
 }
-
-/* Workspace routes retain their navigation. Only their main panel crossfades. */
-.layout.page-fade-enter-active,
-.layout.page-fade-leave-active {
-  opacity: 1;
-  transition: none;
-}
-.layout.page-fade-leave-active {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  pointer-events: none;
-}
-.layout.page-fade-enter-active .workspace,
-.layout.page-fade-leave-active .workspace {
-  transition: opacity 250ms var(--ease-out);
-}
-.layout.page-fade-enter-from .workspace,
-.layout.page-fade-leave-to .workspace { opacity: 0; }
 </style>

@@ -47,6 +47,7 @@ const files = ref<PasteFile[]>([])
 const loading = ref(true)
 const error = ref('')
 const search = ref('')
+const searching = ref(false)
 const sortKey = ref<'file_name' | 'file_size' | 'expires_at' | 'created_at'>('created_at')
 const sortDir = ref<1 | -1>(-1)
 const preview = ref<PreviewState | null>(null)
@@ -55,6 +56,7 @@ const deleting = ref<Set<string>>(new Set())
 const selectedFiles = ref<Set<string>>(new Set())
 const actionsOpen = ref(false)
 const rowMoreOpen = ref<string | null>(null)
+const copiedFileName = ref<string | null>(null)
 const bulkDeleting = ref(false)
 const bulkDownloading = ref(false)
 const pageSize = ref<PageSize>(15)
@@ -97,6 +99,8 @@ let compactFileNamesMediaQuery: MediaQueryList | null = null
 let hoverAbortController: AbortController | null = null
 let previewCacheBytes = 0
 let historyRequestSequence = 0
+let copiedFileTimer: ReturnType<typeof setTimeout> | null = null
+let searchIndicatorTimer: ReturnType<typeof setTimeout> | null = null
 const previewCache = new Map<string, CachedPreview>()
 
 async function readPreviewText(blob: Blob): Promise<string> {
@@ -307,6 +311,12 @@ async function copy(f: PasteFile) {
     const stored = getStoredEncryptedFile(f.file_name)
     const link = stored ? encryptedShareUrl(f.file_name, stored.key, stored.origin) : shareUrl(f.file_name)
     await navigator.clipboard.writeText(link)
+    copiedFileName.value = f.file_name
+    if (copiedFileTimer) clearTimeout(copiedFileTimer)
+    copiedFileTimer = setTimeout(() => {
+      if (copiedFileName.value === f.file_name) copiedFileName.value = null
+      copiedFileTimer = null
+    }, 1000)
     showToast(stored ? 'Copied link with decryption key' : 'Copied to clipboard')
   } catch {
     showToast('Copy failed', 'error')
@@ -1132,6 +1142,15 @@ watch([search, sortKey, sortDir], () => {
   currentPage.value = 1
 })
 
+watch(search, () => {
+  searching.value = true
+  if (searchIndicatorTimer) clearTimeout(searchIndicatorTimer)
+  searchIndicatorTimer = setTimeout(() => {
+    searching.value = false
+    searchIndicatorTimer = null
+  }, 240)
+})
+
 watch(filtered, () => {
   currentPage.value = Math.min(currentPage.value, totalPages.value)
   if (!paginatedFiles.value.length) {
@@ -1149,6 +1168,11 @@ function onDocumentPointerDown(event: PointerEvent) {
   if (rowMoreOpen.value && (!element || !element.closest('.row-more-wrap'))) {
     closeRowMoreMenu()
   }
+}
+
+function closeMenusOnScroll() {
+  actionsOpen.value = false
+  closeRowMoreMenu()
 }
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -1283,6 +1307,7 @@ onMounted(async () => {
   compactFileNamesMediaQuery.addEventListener('change', onCompactNamesMediaChange)
   window.addEventListener('blur', hideHover)
   window.addEventListener('scroll', hideHover, true)
+  window.addEventListener('scroll', closeMenusOnScroll, true)
   window.addEventListener('focus', onWindowFocus)
   window.addEventListener(HISTORY_REFRESH_EVENT, onHistoryRefreshEvent)
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -1300,6 +1325,7 @@ onBeforeUnmount(() => {
   compactFileNamesMediaQuery = null
   window.removeEventListener('blur', hideHover)
   window.removeEventListener('scroll', hideHover, true)
+  window.removeEventListener('scroll', closeMenusOnScroll, true)
   window.removeEventListener('focus', onWindowFocus)
   window.removeEventListener(HISTORY_REFRESH_EVENT, onHistoryRefreshEvent)
   document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -1311,6 +1337,8 @@ onBeforeUnmount(() => {
   }
   clearPreviewObjectUrl(preview.value)
   clearPreviewObjectUrl(hoverPreview.value)
+  if (copiedFileTimer) clearTimeout(copiedFileTimer)
+  if (searchIndicatorTimer) clearTimeout(searchIndicatorTimer)
 })
 
 </script>
@@ -1347,10 +1375,15 @@ onBeforeUnmount(() => {
 
     <section class="history-panel" aria-label="History controls and files">
       <div v-if="!accountRequired" class="toolbar">
-        <div class="toolbar-main">
-          <div class="search-wrap toolbar-control">
-            <input v-model="search" type="text" placeholder="Search uploads" aria-label="Search uploads" />
-            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <div class="toolbar-main">
+            <div class="search-wrap toolbar-control">
+            <input v-model="search" type="text" placeholder="" :aria-label="`Search ${files.length} uploads`" />
+            <span v-if="!search" class="search-placeholder" aria-hidden="true">Search <strong>{{ files.length }}</strong> uploads</span>
+            <svg v-if="searching" class="search-icon search-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="8" stroke-opacity=".28"/><path d="M20 12a8 8 0 0 0-8-8"/>
+            </svg>
+            <button v-else-if="search" class="search-clear" type="button" aria-label="Clear search" title="Clear search" @click="search = ''">×</button>
+            <svg v-else class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
           </div>
@@ -1419,29 +1452,31 @@ onBeforeUnmount(() => {
           >
             Actions
           </button>
-          <div v-if="actionsOpen" class="actions-menu" role="menu">
-            <button
-              class="menu-action"
-              :disabled="bulkDeleting || bulkDownloading"
-              @click="downloadSelectedAsZip"
-            >
-              {{ bulkDownloading ? 'Downloading…' : 'Download selected' }}
-            </button>
-            <button
-              class="menu-action danger"
-              :disabled="bulkDeleting || bulkDownloading"
-              @click="requestDeleteSelected"
-            >
-              {{ bulkDeleting ? 'Deleting…' : 'Delete selected' }}
-            </button>
-            <button
-              class="menu-action"
-              :disabled="bulkDeleting || bulkDownloading"
-              @click="clearSelection(); actionsOpen = false"
-            >
-              Clear selection
-            </button>
-          </div>
+          <Transition name="dropdown-fade">
+            <div v-if="actionsOpen" class="actions-menu" role="menu">
+              <button
+                class="menu-action"
+                :disabled="bulkDeleting || bulkDownloading"
+                @click="downloadSelectedAsZip"
+              >
+                {{ bulkDownloading ? 'Downloading…' : 'Download selected' }}
+              </button>
+              <button
+                class="menu-action danger"
+                :disabled="bulkDeleting || bulkDownloading"
+                @click="requestDeleteSelected"
+              >
+                {{ bulkDeleting ? 'Deleting…' : 'Delete selected' }}
+              </button>
+              <button
+                class="menu-action"
+                :disabled="bulkDeleting || bulkDownloading"
+                @click="clearSelection(); actionsOpen = false"
+              >
+                Clear selection
+              </button>
+            </div>
+          </Transition>
         </div>
       </div>
 
@@ -1576,12 +1611,15 @@ onBeforeUnmount(() => {
                     </svg>
                     <span class="action-label">Download</span>
                   </button>
-                  <button class="btn-orange action-btn" aria-label="Copy" @click.stop="copy(f)">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                    <span class="action-label">Copy</span>
+                  <button class="btn-orange action-btn" :aria-label="copiedFileName === f.file_name ? 'Copied' : 'Copy'" @click.stop="copy(f)">
+                    <Transition name="copy-feedback" mode="out-in">
+                      <svg v-if="copiedFileName === f.file_name" key="copied" class="copy-feedback-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>
+                      <svg v-else key="copy" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    </Transition>
+                    <span class="action-label">{{ copiedFileName === f.file_name ? 'Copied' : 'Copy' }}</span>
                   </button>
                   <div class="row-more-wrap">
                     <button
@@ -1593,26 +1631,28 @@ onBeforeUnmount(() => {
                     >
                       ⋯
                     </button>
-                    <div v-if="rowMoreOpen === f.file_name" class="row-item-menu" role="menu">
-                      <button
-                        v-if="isPasswordEncryptedFile(f)"
-                        class="menu-action"
-                        :disabled="!canChangeDecryptionPassword(f) || changingPassword"
-                        @click.stop="openPasswordModal(f)"
-                      >
-                        Change decryption password
-                      </button>
-                      <div v-if="isPasswordEncryptedFile(f)" class="row-item-note">
-                        {{ passwordChangesRemaining(f.file_name) }} / {{ PASSWORD_CHANGE_LIMIT }} changes remaining
+                    <Transition name="dropdown-fade">
+                      <div v-if="rowMoreOpen === f.file_name" class="row-item-menu" role="menu">
+                        <button
+                          v-if="isPasswordEncryptedFile(f)"
+                          class="menu-action"
+                          :disabled="!canChangeDecryptionPassword(f) || changingPassword"
+                          @click.stop="openPasswordModal(f)"
+                        >
+                          Change decryption password
+                        </button>
+                        <div v-if="isPasswordEncryptedFile(f)" class="row-item-note">
+                          {{ passwordChangesRemaining(f.file_name) }} / {{ PASSWORD_CHANGE_LIMIT }} changes remaining
+                        </div>
+                        <button
+                          class="menu-action danger"
+                          :disabled="deleting.has(f.file_name)"
+                          @click.stop="del(f)"
+                        >
+                          {{ deleting.has(f.file_name) ? 'Deleting…' : 'Delete' }}
+                        </button>
                       </div>
-                      <button
-                        class="menu-action danger"
-                        :disabled="deleting.has(f.file_name)"
-                        @click.stop="del(f)"
-                      >
-                        {{ deleting.has(f.file_name) ? 'Deleting…' : 'Delete' }}
-                      </button>
-                    </div>
+                    </Transition>
                   </div>
                 </div>
               </td>
@@ -1951,6 +1991,25 @@ onBeforeUnmount(() => {
   padding-right: 34px;
   background: color-mix(in srgb, var(--bg2) 72%, var(--bg));
   border-color: var(--border);
+}
+
+.search-placeholder {
+  position: absolute;
+  left: 11px;
+  right: 34px;
+  overflow: hidden;
+  color: var(--text3);
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.search-placeholder strong {
+  color: var(--text2);
+  font-weight: 700;
+}
+.search-wrap input:focus + .search-placeholder {
+  opacity: 0;
 }
 
 .search-icon {

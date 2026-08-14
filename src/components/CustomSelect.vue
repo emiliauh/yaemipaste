@@ -115,6 +115,7 @@ function onDocumentPointerDown(event: PointerEvent) {
 }
 
 function onViewportChange() { if (open.value) positionMenu() }
+function onScroll() { if (open.value) close() }
 function onVisibilityChange() { if (document.visibilityState === 'hidden') close() }
 
 watch(() => props.modelValue, syncActive)
@@ -122,13 +123,13 @@ onMounted(() => {
   document.addEventListener('pointerdown', onDocumentPointerDown, true)
   document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('resize', onViewportChange)
-  window.addEventListener('scroll', onViewportChange, true)
+  window.addEventListener('scroll', onScroll, true)
 })
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('resize', onViewportChange)
-  window.removeEventListener('scroll', onViewportChange, true)
+  window.removeEventListener('scroll', onScroll, true)
   window.clearTimeout(typeaheadTimer)
 })
 </script>
@@ -151,22 +152,24 @@ onUnmounted(() => {
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
     </button>
     <Teleport to="body">
-      <div v-if="open" ref="menuRef" :id="listboxId" class="custom-select-menu" role="listbox" :aria-label="label" :style="menuStyle">
-        <button
-          v-for="(option, index) in options"
-          :key="option.value"
-          type="button"
-          role="option"
-          :disabled="option.disabled"
-          :aria-selected="option.value === modelValue"
-          :class="{ active: option.value === modelValue, focused: index === activeIndex }"
-          @mouseenter="activeIndex = index"
-          @click="choose(option)"
-        >
-          <span><strong>{{ option.label }}</strong><small v-if="option.hint">{{ option.hint }}</small></span>
-          <span v-if="option.value === modelValue" class="select-check" aria-hidden="true">✓</span>
-        </button>
-      </div>
+      <Transition name="dropdown-fade">
+        <div v-if="open" ref="menuRef" :id="listboxId" class="custom-select-menu" role="listbox" :aria-label="label" :style="menuStyle">
+          <button
+            v-for="(option, index) in options"
+            :key="option.value"
+            type="button"
+            role="option"
+            :disabled="option.disabled"
+            :aria-selected="option.value === modelValue"
+            :class="{ active: option.value === modelValue, focused: index === activeIndex }"
+            @mouseenter="activeIndex = index"
+            @click="choose(option)"
+          >
+            <span><strong>{{ option.label }}</strong><small v-if="option.hint">{{ option.hint }}</small></span>
+            <span v-if="option.value === modelValue" class="select-check" aria-hidden="true">✓</span>
+          </button>
+        </div>
+      </Transition>
     </Teleport>
   </div>
 </template>

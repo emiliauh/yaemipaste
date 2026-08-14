@@ -48,6 +48,10 @@ function onPointerDown(event: PointerEvent) {
   }
 }
 
+function onScroll() {
+  if (open.value) open.value = false
+}
+
 function onVisibilityChange() {
   if (document.visibilityState === 'hidden') {
     open.value = false
@@ -58,11 +62,13 @@ function onVisibilityChange() {
 onMounted(() => {
   document.addEventListener('pointerdown', onPointerDown, true)
   document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('scroll', onScroll, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onPointerDown, true)
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('scroll', onScroll, true)
 })
 </script>
 
@@ -105,7 +111,7 @@ onUnmounted(() => {
         aria-haspopup="listbox"
         :aria-expanded="open"
         data-testid="expiry-trigger"
-        @click="onTriggerClick"
+        @click.stop="onTriggerClick"
       >
         <span class="expiry-value">{{ selected.label }}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -341,7 +347,10 @@ onUnmounted(() => {
     display: block;
     min-height: auto;
     max-height: 220px;
-    overflow: hidden;
+    /* Keep the listbox reachable below the trigger on touch screens.  The
+       old clipped panel made the control look like it did nothing when the
+       options were actually rendered outside the panel's bounds. */
+    overflow: visible;
     border-radius: var(--radius-md);
     background: var(--bg1);
     padding: var(--space-2);

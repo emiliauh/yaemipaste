@@ -28,6 +28,92 @@ function normalized(value: unknown): string { return String(value ?? '').trim().
 export function isInstallerSecret(value: string): boolean {
   return /^[a-f0-9]{64}$/.test(value) && !/^([a-f0-9])\1{63}$/.test(value)
 }
+
+function isDiscordWebhook(url: URL): boolean {
+  return /(^|\.)discord(?:app)?\.com$/i.test(url.hostname) && url.pathname.startsWith('/api/webhooks/')
+}
+
+function discordValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value == null) return 'null'
+  try { return JSON.stringify(value) } catch { return String(value) }
+}
+
+function discordCode(value: unknown): string {
+  return `\`${discordValue(value).replaceAll('`', 'ˋ')}\``
+}
+
+function discordFieldValue(value: unknown): string {
+  const text = discordValue(value)
+  return text === 'null' || text === '' ? 'N/A' : text
+}
+
+function discordEventTitle(event: string): string {
+  return ({
+    'file.uploaded': 'File uploaded',
+    'file.deleted': 'File deleted',
+    'user.created': 'User created',
+    'user.deleted': 'User deleted',
+    'user.suspended': 'User suspended',
+    'storage.threshold_reached': 'Storage threshold reached',
+    'admin.purge.completed': 'Purge completed',
+    'admin.settings.updated': 'Admin settings updated',
+    'admin.webhook.test': 'Webhook test',
+  } as Record<string, string>)[event] ?? event.replaceAll('.', ' ').replace(/\b\w/g, value => value.toUpperCase())
+}
+
+function discordFields(event: string, payload: Record<string, unknown>): Array<{ name: string; value: string; inline?: boolean }> {
+  const field = (name: string, value: unknown, inline = true) => ({ name, value: discordFieldValue(value), inline })
+  if (event === 'file.uploaded') {
+    const file = discordFieldValue(payload.file)
+    const url = typeof payload.url === 'string' && /^https?:\/\//i.test(payload.url) ? payload.url : ''
+    return [
+      { name: 'File', value: url ? `[${discordCode(file)}](${url})` : discordCode(file), inline: false },
+      field('Uploader', payload.uploader),
+      field('Source', payload.source),
+      field('Size', payload.size_bytes == null ? 'N/A' : `${payload.size_bytes} bytes`),
+    ]
+  }
+  if (event === 'file.deleted') {
+    return [
+      field('File', payload.file, false),
+      field('Owner', payload.owner),
+      field('Size removed', payload.bytes_removed == null ? 'N/A' : `${payload.bytes_removed} bytes`),
+    ]
+  }
+  if (event === 'admin.webhook.test') return []
+  return Object.entries(payload).slice(0, 25).map(([key, value]) => field(key.replaceAll('_', ' ').replace(/\b\w/g, item => item.toUpperCase()), discordValue(value)))
+}
+
+function discordPayload(event: string, createdAt: number, payload: Record<string, unknown>): string {
+  const fileUrl = typeof payload.url === 'string' && /^https?:\/\//i.test(payload.url) ? payload.url : undefined
+  const embed = {
+    title: discordEventTitle(event),
+    ...(fileUrl ? { url: fileUrl } : {}),
+    color: event === 'admin.webhook.test' ? 0xb18cff : 0x74b7ff,
+    description: `**yaemipaste** · ${discordCode(event)}`,
+    fields: discordFields(event, payload),
+    footer: { text: 'yaemipaste' },
+    timestamp: new Date(createdAt * 1000).toISOString(),
+  }
+  return JSON.stringify({ username: 'yaemipaste', embeds: [embed], allowed_mentions: { parse: [] } })
+}
+
+function webhookPayload(url: URL, event: string, createdAt: number, payload: Record<string, unknown>): string {
+  return isDiscordWebhook(url)
+    ? discordPayload(event, createdAt, payload)
+    : JSON.stringify({ event, created_at: createdAt, payload })
+}
+
+function webhookRequestUrl(url: URL): URL {
+  if (!isDiscordWebhook(url)) return url
+  const next = new URL(url)
+  // Discord defaults to wait=false, which can hide validation failures. Ask
+  // it to confirm the message so the delivery record reflects the real result.
+  next.searchParams.set('wait', 'true')
+  return next
+}
+
 @Injectable()
 export class AuthService {
   readonly jwtSecret: string
@@ -371,12 +457,13 @@ export class AuthService {
       for (const hook of hooks) {
         const subscribed = hook.events.split(',').map(value => value.trim()).includes(event)
         if (event !== 'admin.webhook.test' && !subscribed) continue
-        const body = JSON.stringify({ event, created_at: createdAt, payload })
+        const target = new URL(hook.url)
+        const body = webhookPayload(target, event, createdAt, payload)
         const delivery = this.db.run('INSERT INTO webhook_deliveries (webhook_id,event,payload,status,created_at) VALUES (?,?,?,?,?)', [hook.id, event, body, 'pending', createdAt])
         let statusCode: number | null = null
         let error = ''
         try {
-          let current = new URL(hook.url)
+          let current = webhookRequestUrl(target)
           let response: Awaited<ReturnType<typeof requestPinnedHttp>> | undefined
           for (let attempt = 0; attempt < 5; attempt++) {
             response = await requestPinnedHttp(current, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(body)) }, body, timeoutMs: 5_000 })

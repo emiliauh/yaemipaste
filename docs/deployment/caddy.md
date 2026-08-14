@@ -1,29 +1,27 @@
-# Caddy Deployment
+# Caddy deployment
 
-## Same Host
+## Same host
 
-Bind Compose UI to `127.0.0.1:8080`, then proxy the entire public host to it:
+Bind the Compose UI to `127.0.0.1:8080`. Send the complete public hostname to
+that service:
 
 ```caddyfile
 paste.example.com {
-  request_body { max_size 100MB }
   reverse_proxy 127.0.0.1:8080
 }
 ```
 
-The bundled UI Nginx owns SPA fallback and API/auth/raw routing. Caddy must send
-**every** request for the UI hostname to that service. Do not add a final
-catch-all that proxies unknown paths to the NestJS API: `/`, `/files`,
-`/history`, `/login`, `/register`, `/admin`, and `/file/*` are browser routes
-and must receive the UI's `index.html`.
+The bundled UI proxy owns SPA fallback and API, auth, raw, and download
+routing. Caddy must send every request for the UI hostname to this service.
+Do not send unknown paths to the NestJS API. `/`, `/files`, `/history`,
+`/login`, `/register`, and `/file/*` are browser routes and must receive the
+UI `index.html`.
 
-If Caddy serves the build directory directly instead, use an explicit SPA
-fallback and put API matchers before it:
+If Caddy serves the build directory directly, use an SPA fallback and put API
+matchers before it:
 
 ```caddyfile
 paste.example.com {
-  request_body { max_size 100MB }
-
   handle /api/* {
     uri strip_prefix /api
     reverse_proxy 127.0.0.1:8000
@@ -41,13 +39,12 @@ paste.example.com {
 }
 ```
 
-The direct-static example is intentionally incomplete for public raw-file and
-native API resolution routes. Prefer proxying the entire host to the bundled UI
-unless those routes are also reproduced from `docker/nginx/default.conf`.
+This direct-static example does not include public raw-file and native
+resolution routes. Proxy the complete host to the bundled UI unless you also
+configure those routes from `docker/nginx/default.conf`.
 
-For direct-static deployments, route crawler requests for modern preview links
-to the NestJS API before the SPA fallback. The API returns a small Open Graph
-document for crawlers while normal browsers continue to receive the Vue preview:
+For direct-static deployments, send crawler preview requests to the NestJS API
+before the SPA fallback:
 
 ```caddyfile
 @embedPreview {
@@ -64,19 +61,22 @@ handle @embedPreview {
 }
 ```
 
-Place this handler before `handle /file/*` and keep the existing raw/download
-handlers below it.
+Place this handler before `handle /file/*`. Keep the raw and download handlers
+after it.
 
-Validate before reload with `caddy validate --config /etc/caddy/Caddyfile`.
+Validate before reload:
 
-## Cloudflare Troubleshooting
+```sh
+caddy validate --config /etc/caddy/Caddyfile
+```
 
-When loopback requests with `Host: paste.example.com` return the UI but the
-public hostname returns the YaemiPaste file-not-found page, the Vue router is
-not involved. The public request is reaching a different Caddy site/upstream,
-or Cloudflare is serving a cached response or route rule.
+## Cloudflare troubleshooting
 
-Compare the origin and edge response without changing DNS:
+If a loopback request with `Host: paste.example.com` returns the UI but the
+public hostname returns the file-not-found page, the public request is using a
+different Caddy site, upstream, or cached response.
+
+Compare the origin and edge:
 
 ```sh
 curl -skS -D- --resolve paste.example.com:443:127.0.0.1 \
@@ -85,29 +85,25 @@ curl -sS -D- https://paste.example.com/history -o /dev/null
 ```
 
 Check both `A` and `AAAA` records, Cloudflare Tunnel ingress, Origin Rules,
-Redirect Rules, Workers routes, and cache rules for the hostname. Remove any
-rule that sends UI paths to the API port and purge cached HTML, metadata, and
-404 responses after correcting the route. A healthy response for each browser route is `200` with
-`Content-Type: text/html`; `/api/` should remain the API response.
+Redirect Rules, Workers routes, and cache rules. Remove rules that send UI
+paths to the API port. Purge cached HTML, metadata, and 404 responses after
+you correct the route.
 
 Set `Cache-Control: no-store` for HTML, `/api/*`, and `/auth/*` at every active
-origin listener, including a separate listener used by a tunnel. Cache only
-fingerprinted assets. Test the tunnel-facing listener directly as well as the
-normal HTTPS listener; two listeners can otherwise serve different UI roots.
+origin listener. Cache only fingerprinted assets. Test the tunnel listener and
+the normal HTTPS listener because they can serve different UI roots.
 
-## Split Host
+## Split host
 
-Serve the built UI on `paste.example.com`; proxy the API origin to the
-loopback-published NestJS service:
+Serve the UI on `paste.example.com`. Proxy the API to the loopback service:
 
 ```caddyfile
 api.example.com {
-  request_body { max_size 100MB }
   reverse_proxy 127.0.0.1:8000
 }
 ```
 
-The UI host must route raw public file bytes to `api.example.com` while keeping
-SPA preview routes local. Configure exact `CORS_ALLOWED_ORIGINS` and
-`CSP_CONNECT_SRC` before building the UI. Preserve `Host`, forwarded client IP,
-and HTTPS scheme headers; Caddy supplies these by default.
+The UI host must send raw public-file bytes to `api.example.com` while keeping
+SPA preview routes local. Set exact `CORS_ALLOWED_ORIGINS` and
+`CSP_CONNECT_SRC` values before building the UI. Preserve the host, client IP,
+and HTTPS scheme headers. Caddy supplies these headers by default.

@@ -1,6 +1,6 @@
 # Deployment
 
-## Build And Test
+## Build and test
 
 ```bash
 npm ci
@@ -11,9 +11,9 @@ npm run test:e2e:preview
 ```
 
 `npm run validate:release` runs the frontend build, backend build and tests,
-installer smoke test, and preview end-to-end suite as one release check.
+installer smoke test, and preview end-to-end suite.
 
-## Container Deployment
+## Container deployment
 
 The standard stack contains the static frontend and native NestJS backend:
 
@@ -22,41 +22,44 @@ cp .env.example .env
 COMPOSE_PROFILES=ui,api DEPLOYMENT_IMAGE_MODE=build docker compose up --build -d
 ```
 
-Use persistent volumes for `DB_PATH` and `SERVER__UPLOAD_PATH`. Keep both when
-upgrading so users, auth state, metadata, and uploads remain intact.
+Use persistent volumes for `DB_PATH` and `SERVER__UPLOAD_PATH`. Keep both
+volumes during an upgrade. They contain users, authentication data, metadata,
+and uploads.
 
-## Reverse Proxy Contract
+## Reverse proxy contract
 
-The simplest same-host deployment proxies the entire public hostname to the
+The simplest same-host deployment sends the complete public hostname to the
 bundled UI service. Its Nginx configuration handles:
 
-- SPA pages including `/files`, `/history`, `/login`, `/register`, and `/admin`
-- `/api/*` to the backend with `/api` stripped
+- SPA pages such as `/files`, `/history`, `/login`, `/register`, and `/admin`
+- `/api/*` to the backend, with `/api` removed
 - `/auth/*` to backend auth routes
-- public preview and explicit raw/download file requests
+- Public preview and explicit raw or download file requests
 
-When serving `dist/` directly, reproduce the API, auth, and public-file
-matchers before the SPA fallback. Do not send unknown paths to the API because
-browser pages must receive `index.html`.
+When serving `dist/` directly, put the API, auth, and public-file matchers
+before the SPA fallback. Unknown browser paths must receive `index.html`, not
+an API response.
 
-HTML, API, auth, metadata, and error responses should not be cached at an edge.
-Cache only fingerprinted static assets. This prevents an obsolete HTML shell,
-metadata response, or 404 from surviving a deployment.
+Do not cache HTML, API, auth, metadata, or error responses at the edge. Cache
+only fingerprinted static assets. This prevents old HTML, metadata, or 404
+responses from surviving a deployment.
 
-## Production Validation
+## Production validation
 
-After every deployment:
+Run these checks after each deployment:
 
-1. Confirm `/`, `/files`, `/history`, `/login`, `/register`, and `/admin`
+1. Check that `/`, `/files`, `/history`, `/login`, `/register`, and `/admin`
    return the current frontend HTML.
-2. Confirm `/api/` and `/auth/admin/public-settings` reach the NestJS backend.
-3. Register or sign in, upload text and an image, and verify history metadata.
-4. Verify preview, raw, download, and deletion behavior.
+2. Check that `/api/` and `/auth/admin/public-settings` reach the NestJS
+   backend.
+3. Register or sign in. Upload text and an image. Check the history metadata.
+4. Check preview, raw, download, and delete behavior.
 5. Download and test the authenticated ShareX configuration.
-6. Verify admin authorization and enabled Turnstile or passkey flows.
+6. Check administrator authorization and enabled Turnstile or passkey flows.
 7. Compare origin and edge responses, including cache headers, when a CDN or
    tunnel is present.
-8. Restore SQLite and upload backups in an isolated environment periodically.
+8. Restore SQLite and upload backups in an isolated environment at regular
+   intervals.
 
-The optional service in `resolver-server/` is migration-only. Do not enable it
+The optional service in `resolver-server/` is for migrations. Do not enable it
 for a normal NestJS deployment.

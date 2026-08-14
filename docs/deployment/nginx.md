@@ -1,6 +1,6 @@
-# Nginx Deployment
+# Nginx deployment
 
-## Same Host
+## Same host
 
 ```nginx
 server {
@@ -11,18 +11,19 @@ server {
 }
 ```
 
-The bundled UI proxy handles the native NestJS API, auth, public-link
-resolution, and public raw paths. Browser routes such as `/files`, `/history`,
-`/login`, `/register`, and `/admin` receive the SPA shell.
-Validate with `nginx -t` before reload.
+The bundled UI proxy handles the NestJS API, auth, public-link resolution,
+and public raw paths. Browser routes such as `/files`, `/history`, `/login`,
+`/register`, and `/admin` receive the SPA shell.
 
-## Split Host
+Run `nginx -t` before a reload.
 
-Expose the NestJS API through a separate TLS server block at
-`api.example.com`, proxying to `127.0.0.1:8000`. The UI server must proxy raw
-public file byte requests to that API host and apply SPA fallback only after
-API/auth/raw route matching. Configure exact CORS and CSP values from
+## Split host
+
+Expose the NestJS API through a separate TLS server at `api.example.com` and
+proxy it to `127.0.0.1:8000`. The UI server must send raw public-file requests
+to that API host. Apply SPA fallback only after API, auth, and raw route
+matching. Use the exact CORS and CSP values from
 `docs/deployment/production.md`.
 
-Do not cache `index.html`, API/auth responses, metadata, or 404s. Fingerprinted
-files under `/assets/` are the appropriate cacheable surface.
+Do not cache `index.html`, API or auth responses, metadata, or 404 responses.
+Cache only fingerprinted files under `/assets/`.

@@ -1,26 +1,27 @@
 # Architecture
 
-## Native Runtime
+## Runtime components
 
 yaemipaste has two runtime components:
 
-1. The Vue frontend, built as static assets.
+1. The Vue frontend, built as static files.
 2. The native NestJS backend in `backend/nestjs`.
 
-The bundled Nginx container serves the frontend, applies SPA fallback, and
-proxies backend requests. Business logic remains in the NestJS service.
+The bundled Nginx container serves the frontend and applies SPA fallback. It
+also proxies backend requests. The NestJS service contains the application
+logic.
 
-## Data Model
+## Data stores
 
 The backend uses two persistent stores:
 
 - SQLite at `DB_PATH` for users, password hashes, upload tokens, sessions,
-  passkeys, admin settings, registration and claim tokens, webhooks, and audit
-  records.
-- The directory at `SERVER__UPLOAD_PATH` for uploaded bytes and file metadata.
+  passkeys, administrator settings, registration and claim tokens, webhooks,
+  and audit records
+- The directory at `SERVER__UPLOAD_PATH` for file bytes and file metadata
 
-Both paths must use persistent volumes and must be backed up together. Moving
-or replacing the backend container must not replace these volumes.
+Use persistent volumes for both stores. Back up both stores together. Replacing
+the backend container must not replace either volume.
 
 ## Responsibilities
 
@@ -29,16 +30,16 @@ history, previews, browser-side encryption, ShareX settings, and the admin UI.
 
 The NestJS backend provides:
 
-- multipart uploads, remote uploads when enabled, listing, metadata, deletion,
-  expiry cleanup, and public file delivery
-- registration, login, JWT sessions, upload tokens, password changes, and
+- Multipart and remote uploads when enabled
+- File listing, metadata, deletion, expiry cleanup, and public file delivery
+- Registration, login, JWT sessions, upload tokens, password changes, and
   optional passkeys
-- authenticated ShareX configuration at `/auth/sharex`
-- administrator claims, users, uploads, settings, webhooks, and audit events
+- Authenticated ShareX settings at `/auth/sharex`
+- Administrator claims, users, uploads, settings, webhooks, and audit events
 
-## Route Model
+## Routes
 
-Browser pages are paths, not query-selected tabs:
+Browser pages use paths, not query-string tabs:
 
 - `/files`
 - `/history`
@@ -48,14 +49,13 @@ Browser pages are paths, not query-selected tabs:
 - `/file/<token>/preview`, `/file/<token>/raw`, and
   `/file/<token>/download`
 
-The same-host frontend proxies `/api/*` to the backend root and `/auth/*` to
-backend auth routes. Public stored-file paths use `/<id>/file` or
-`/<id>/file.<ext>`; the bundled proxy keeps normal navigation in the preview
-UI and sends explicit raw or download requests to the backend.
+On the same host, the frontend proxies `/api/*` to the backend root and
+`/auth/*` to backend auth routes. Public file links use `/<id>/file` or
+`/<id>/file.<ext>`. Normal navigation stays in the preview UI. Explicit raw
+and download requests go to the backend.
 
-## Migration-Only Resolver
+## Migration-only resolver
 
 `resolver-server/` is an optional compatibility service for migrations that
-still require older token-resolution behavior. It is disabled by default and
-is not part of the native NestJS architecture. New deployments should use the
-backend and bundled UI route contract without enabling it.
+need older token resolution. It is disabled by default. New deployments should
+use the native backend and bundled UI without enabling this service.

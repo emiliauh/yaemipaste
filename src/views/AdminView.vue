@@ -17,6 +17,7 @@ import {
   adminPurgeUserUploads,
   adminRotateUserToken,
   adminTestWebhook,
+  adminUploads,
   adminUpdateSettings,
   adminUpdateUser,
   adminUpdateWebhook,
@@ -39,14 +40,12 @@ import {
   type PasteFile,
   type WebhookDelivery,
 } from '../lib/api'
-import SettingsPanel from '../components/SettingsPanel.vue'
-import AppSidebar from '../components/AppSidebar.vue'
 import ActionConfirmDialog from '../components/ActionConfirmDialog.vue'
 import FilePreview from '../components/FilePreview.vue'
 import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
-import { loadAdminData, peekAdminData } from '../lib/adminData'
+import { loadAdminData, peekAdminData, updateCachedAdminUploads } from '../lib/adminData'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
 
 const router = useRouter()
@@ -54,6 +53,7 @@ const route = useRoute()
 const notifications = useNotificationStore()
 const tabs = ['Overview', 'Users', 'Uploads', 'Settings', 'Webhooks', 'Audit'] as const
 type AdminTab = typeof tabs[number]
+const ADMIN_UPLOAD_REFRESH_MS = 2_000
 type ConfirmationRequest = {
   title: string
   message: string
@@ -69,14 +69,17 @@ type UploadHoverPreview = {
 }
 
 const tab = ref<AdminTab>('Overview')
-const showSettings = ref(false)
-const settingsLayer = ref<HTMLElement | null>(null)
-const settingsTrigger = ref<HTMLElement | null>(null)
+const adminTabsScroll = ref<HTMLElement | null>(null)
+const adminTabsCanScrollLeft = ref(false)
+const adminTabsCanScrollRight = ref(false)
+const adminTabsHasOverflow = computed(() => adminTabsCanScrollLeft.value || adminTabsCanScrollRight.value)
 const confirmationRequest = ref<ConfirmationRequest | null>(null)
 const confirmationAcknowledged = ref(false)
 const confirmationBusy = ref(false)
 const tokenDialog = ref<{ username: string; token: string; kind: 'upload' | 'registration'; expiresAt: number | null } | null>(null)
 const tokenCopied = ref(false)
+const copiedUploadPath = ref<string | null>(null)
+let copiedUploadTimer: ReturnType<typeof setTimeout> | null = null
 const createMode = ref<'user' | 'token'>('user')
 const newRegistrationToken = ref({ label: '', ttl_seconds: '86400' })
 const registrationTokens = ref<AdminRegistrationToken[]>([])
@@ -108,7 +111,9 @@ const webhooks = ref<AdminWebhook[]>(initialAdminData?.webhooks ?? [])
 const deliveries = ref<WebhookDelivery[]>(initialAdminData?.deliveries ?? [])
 const audit = ref<AdminAuditEntry[]>(initialAdminData?.audit ?? [])
 let refreshSequence = 0
+let uploadsRefreshSequence = 0
 let registrationTokensSequence = 0
+let uploadsRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 function tabFromRoute(): AdminTab {
   const section = String(route.params.section ?? '').toLowerCase()
@@ -118,6 +123,24 @@ function tabFromRoute(): AdminTab {
 function selectTab(nextTab: AdminTab) {
   const path = nextTab === 'Overview' ? '/admin' : `/admin/${nextTab.toLowerCase()}`
   if (route.path !== path) void router.push(path)
+}
+
+function updateAdminTabsScrollState() {
+  const element = adminTabsScroll.value
+  if (!element) return
+  const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth)
+  const scrollLeft = Math.max(0, element.scrollLeft)
+  adminTabsCanScrollLeft.value = scrollLeft > 2
+  adminTabsCanScrollRight.value = scrollLeft < maxScrollLeft - 2
+}
+
+function scrollAdminTabs(direction: -1 | 1) {
+  const element = adminTabsScroll.value
+  if (!element) return
+  element.scrollBy({
+    left: direction * Math.max(140, element.clientWidth * 0.7),
+    behavior: 'smooth',
+  })
 }
 
 watch(() => route.params.section, () => {
@@ -153,6 +176,8 @@ function webhookEventLabel(event: string): string {
     ?? event.replace(/\./g, ' ')
 }
 const filterText = ref('')
+const searchingUploads = ref(false)
+let searchIndicatorTimer: ReturnType<typeof setTimeout> | null = null
 const filterOwner = ref('')
 const filterExpired = ref<'all' | 'expired' | 'active'>('all')
 const PAGE_SIZE = 10
@@ -192,10 +217,6 @@ const pageByTab = ref<Record<string, number>>({
 
 const currentUser = getAuthUsername()
 const { refreshPublicSettings } = usePublicSettings()
-const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
-const sidebarCollapsed = ref(
-  typeof window !== 'undefined' && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
-)
 const filteredUploads = computed(() => uploads.value.filter((upload) => {
   const ownerOk = !filterOwner.value || uploadOwner(upload) === filterOwner.value
   const text = filterText.value.trim().toLowerCase()
@@ -209,6 +230,15 @@ const filteredUploads = computed(() => uploads.value.filter((upload) => {
     || (filterExpired.value === 'expired' ? upload.expired : !upload.expired)
   return ownerOk && textOk && expiryOk
 }))
+const hasUploadFilters = computed(() => Boolean(filterText.value.trim() || filterOwner.value || filterExpired.value !== 'all'))
+watch(filterText, () => {
+  searchingUploads.value = true
+  if (searchIndicatorTimer) clearTimeout(searchIndicatorTimer)
+  searchIndicatorTimer = setTimeout(() => {
+    searchingUploads.value = false
+    searchIndicatorTimer = null
+  }, 240)
+})
 const ownerFilterOptions = computed<SelectOption[]>(() => {
   const owners = new Set(uploads.value.map((upload) => uploadOwner(upload)).filter(Boolean))
   return [
@@ -329,6 +359,12 @@ async function copyUploadLink(upload: AdminUpload) {
     const fileName = uploadFileName(upload)
     if (!fileName) throw new Error('Missing upload file name')
     await navigator.clipboard.writeText(publicPreviewUrl(fileName))
+    copiedUploadPath.value = upload.path
+    if (copiedUploadTimer) clearTimeout(copiedUploadTimer)
+    copiedUploadTimer = setTimeout(() => {
+      if (copiedUploadPath.value === upload.path) copiedUploadPath.value = null
+      copiedUploadTimer = null
+    }, 1000)
     notifications.push('Preview link copied', 'success')
   } catch {
     notifications.push('Could not copy preview link', 'error')
@@ -386,56 +422,6 @@ function downloadPreviewUpload() {
 
 function ts(value: number | string | null | undefined): string {
   return formatTimestamp(value)
-}
-
-function openSettings() {
-  if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-    settingsTrigger.value = document.activeElement
-  }
-  showSettings.value = true
-  void nextTick(() => {
-    settingsLayer.value?.querySelector<HTMLElement>(
-      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
-    )?.focus()
-  })
-}
-
-function closeSettings() {
-  showSettings.value = false
-  void nextTick(() => settingsTrigger.value?.focus())
-}
-
-function toggleSettings() {
-  if (showSettings.value) closeSettings()
-  else openSettings()
-}
-
-function handleSettingsKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    closeSettings()
-    return
-  }
-  if (event.key !== 'Tab' || !settingsLayer.value) return
-
-  const focusable = Array.from(settingsLayer.value.querySelectorAll<HTMLElement>(
-    'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
-  )).filter((element) => element.getAttribute('aria-hidden') !== 'true')
-  if (!focusable.length) {
-    event.preventDefault()
-    settingsLayer.value.focus()
-    return
-  }
-
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first.focus()
-  }
 }
 
 function requestConfirmation(request: ConfirmationRequest) {
@@ -548,6 +534,7 @@ async function copyToken() {
 
 async function refreshAll(showLoading = true) {
   const sequence = ++refreshSequence
+  uploadsRefreshSequence++
   if (showLoading) loading.value = true
   error.value = ''
   try {
@@ -559,6 +546,7 @@ async function refreshAll(showLoading = true) {
     dashboard.value = next.dashboard
     users.value = next.users
     uploads.value = next.uploads
+    selectedUploads.value = new Set([...selectedUploads.value].filter((path) => next.uploads.some((upload) => upload.path === path)))
     settings.value = next.settings
     webhooks.value = next.webhooks
     deliveries.value = next.deliveries
@@ -582,6 +570,21 @@ async function refreshAll(showLoading = true) {
     if (sequence === refreshSequence) error.value = e.message ?? 'Could not load admin data'
   } finally {
     if (sequence === refreshSequence) loading.value = false
+  }
+}
+
+async function refreshUploads() {
+  const sequence = ++uploadsRefreshSequence
+  try {
+    const next = await adminUploads()
+    if (sequence !== uploadsRefreshSequence) return
+    uploads.value = next
+    selectedUploads.value = new Set([...selectedUploads.value].filter((path) => next.some((upload) => upload.path === path)))
+    updateCachedAdminUploads(next)
+  } catch (e) {
+    // Upload polling is best-effort. Keep the last known list visible while a
+    // transient request failure is retried on the next interval.
+    console.error('Admin upload refresh failed', e)
   }
 }
 
@@ -802,6 +805,10 @@ function refreshAdminWhenVisible() {
   const now = Date.now()
   if (now - lastVisibilityRefresh < VISIBILITY_REFRESH_COOLDOWN_MS) return
   lastVisibilityRefresh = now
+  if (tab.value === 'Uploads') {
+    void refreshUploads()
+    return
+  }
   if (tab.value !== 'Settings') void refreshAll(false)
 }
 
@@ -812,6 +819,13 @@ function closeUploadMenusOnOutsidePointer(event: PointerEvent) {
   if (userRowMenuOpen.value && !userRowMenuTrigger.value?.contains(target) && !userRowMenuPanel.value?.contains(target)) closeUserRowMenu()
 }
 
+function closeAdminMenusOnScroll() {
+  uploadsActionsOpen.value = false
+  uploadRowMenuOpen.value = null
+  registrationExpiryOpen.value = false
+  closeUserRowMenu()
+}
+
 function positionUserRowMenu() {
   const trigger = userRowMenuTrigger.value
   const panel = userRowMenuPanel.value
@@ -820,7 +834,14 @@ function positionUserRowMenu() {
   const gap = 6
   const triggerBox = trigger.getBoundingClientRect()
   const panelBox = panel.getBoundingClientRect()
-  const left = Math.max(gutter, Math.min(triggerBox.right - panelBox.width, window.innerWidth - panelBox.width - gutter))
+  const containingCard = trigger.closest<HTMLElement>('.card')
+  const cardBox = containingCard?.getBoundingClientRect()
+  const minLeft = Math.max(gutter, (cardBox?.left ?? gutter) + gutter)
+  const maxRight = Math.min(window.innerWidth - gutter, (cardBox?.right ?? window.innerWidth - gutter) - gutter)
+  const maxLeft = Math.max(minLeft, maxRight - panelBox.width)
+  // Keep the dropdown's left edge in line with More when possible. If the
+  // card is narrower than the menu, clamp it to the card and viewport.
+  const left = Math.max(minLeft, Math.min(triggerBox.left, maxLeft))
   const below = triggerBox.bottom + gap
   const above = triggerBox.top - panelBox.height - gap
   const top = below + panelBox.height <= window.innerHeight - gutter
@@ -831,7 +852,6 @@ function positionUserRowMenu() {
 
 function closeUserRowMenu(restoreFocus = false) {
   userRowMenuOpen.value = null
-  userRowMenuStyle.value = {}
   if (restoreFocus) void nextTick(() => userRowMenuTrigger.value?.focus())
 }
 
@@ -855,7 +875,10 @@ watch(tab, async (nextTab) => {
   closeUserRowMenu()
   await nextTick()
   if (nextTab === 'Users') usersTableScroll.value?.scrollTo({ left: 0 })
-  if (nextTab === 'Uploads') uploadsTableScroll.value?.scrollTo({ left: 0 })
+  if (nextTab === 'Uploads') {
+    uploadsTableScroll.value?.scrollTo({ left: 0 })
+    void refreshUploads()
+  }
   if (nextTab === 'Users') void loadRegistrationTokens()
 })
 
@@ -864,6 +887,7 @@ watch(pagedUsers, (nextUsers) => {
 })
 
 onMounted(() => {
+  void nextTick(updateAdminTabsScrollState)
   void refreshPublicSettings()
   if (!initialAdminData) void refreshAll()
   // refreshAll() is the only other place that loads registration tokens, and
@@ -872,6 +896,10 @@ onMounted(() => {
   // fires the tab watcher below either, since tab starts at 'Users' rather
   // than transitioning into it - so tokens would silently never load.
   else if (tab.value === 'Users') void loadRegistrationTokens()
+  if (initialAdminData && tab.value === 'Uploads') void refreshUploads()
+  uploadsRefreshTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && tab.value === 'Uploads') void refreshUploads()
+  }, ADMIN_UPLOAD_REFRESH_MS)
   // visibilitychange alone is enough to catch "the admin returned to this
   // tab"; also listening on window focus made every alt-tab fire this twice.
   document.addEventListener('visibilitychange', refreshAdminWhenVisible)
@@ -880,7 +908,8 @@ onMounted(() => {
   window.addEventListener('blur', hideUploadHover)
   window.addEventListener('scroll', hideUploadHover, true)
   window.addEventListener('resize', repositionUserRowMenu)
-  window.addEventListener('scroll', repositionUserRowMenu, true)
+  window.addEventListener('resize', updateAdminTabsScrollState)
+  window.addEventListener('scroll', closeAdminMenusOnScroll, true)
 })
 
 onBeforeUnmount(() => {
@@ -890,28 +919,20 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', hideUploadHover)
   window.removeEventListener('scroll', hideUploadHover, true)
   window.removeEventListener('resize', repositionUserRowMenu)
-  window.removeEventListener('scroll', repositionUserRowMenu, true)
+  window.removeEventListener('resize', updateAdminTabsScrollState)
+  window.removeEventListener('scroll', closeAdminMenusOnScroll, true)
+  if (uploadsRefreshTimer) {
+    clearInterval(uploadsRefreshTimer)
+    uploadsRefreshTimer = null
+  }
+  if (copiedUploadTimer) clearTimeout(copiedUploadTimer)
+  if (searchIndicatorTimer) clearTimeout(searchIndicatorTimer)
 })
 </script>
 
 <template>
-  <div class="layout admin-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <AppSidebar
-      active-tab="admin"
-      show-history
-      show-admin
-      show-settings
-      :settings-open="showSettings"
-      :collapsed="sidebarCollapsed"
-      @update:collapsed="sidebarCollapsed = $event"
-      @select-files="router.push('/files')"
-      @select-history="router.push('/history')"
-      @select-admin="router.push('/admin')"
-      @toggle-settings="toggleSettings"
-    />
-
-    <main class="workspace">
-      <section class="admin-layout">
+  <div class="admin-view-content">
+    <section class="admin-layout">
         <header class="admin-header">
           <div>
             <p class="eyebrow">Administrator</p>
@@ -923,15 +944,41 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <div class="tabs admin-tabs">
-          <button v-for="item in tabs" :key="item" :class="{ active: tab === item }" type="button" @click="selectTab(item)">
-            {{ item }}
-          </button>
+        <div class="admin-tabs-wrap">
+          <div class="admin-tabs-row">
+            <button
+              v-if="adminTabsHasOverflow"
+              class="admin-tabs-scroll-button admin-tabs-scroll-button--left"
+              type="button"
+              aria-label="Scroll admin sections left"
+              aria-controls="admin-tabs-scroll"
+              :disabled="!adminTabsCanScrollLeft"
+              @click="scrollAdminTabs(-1)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
+            <div id="admin-tabs-scroll" ref="adminTabsScroll" class="tabs admin-tabs" @scroll="updateAdminTabsScrollState">
+              <button v-for="item in tabs" :key="item" :class="{ active: tab === item }" type="button" @click="selectTab(item)">
+                {{ item }}
+              </button>
+            </div>
+            <button
+              v-if="adminTabsHasOverflow"
+              class="admin-tabs-scroll-button admin-tabs-scroll-button--right"
+              type="button"
+              aria-label="Scroll admin sections right"
+              aria-controls="admin-tabs-scroll"
+              :disabled="!adminTabsCanScrollRight"
+              @click="scrollAdminTabs(1)"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+          </div>
         </div>
 
     <div class="admin-content-stage">
-    <Transition name="workspace-content" appear>
-    <div :key="`${tab}-${loading ? 'loading' : 'ready'}`">
+    <Transition name="admin-content">
+    <div :key="tab" class="admin-content-panel">
     <div v-if="error" class="error-box">{{ error }}</div>
     <div v-if="loading" class="info-box">Loading admin data…</div>
 
@@ -1015,49 +1062,55 @@ onBeforeUnmount(() => {
           <button class="btn-ghost" :class="{ active: createMode === 'token' }" type="button" role="tab" :aria-selected="createMode === 'token'" @click="createMode = 'token'">Token</button>
         </div>
         <form class="form-grid" @submit.prevent="submitCreateMode">
-          <template v-if="createMode === 'user'">
-            <input v-model="newUser.username" placeholder="username" aria-label="username" />
-            <input v-model="newUser.password" type="password" placeholder="password" aria-label="password" />
-            <input v-model="newUser.upload_token" type="password" placeholder="custom upload token (optional)" aria-label="custom upload token (optional)" />
-            <label class="inline-check"><input v-model="newUser.is_admin" type="checkbox" /> administrator</label>
-            <button class="btn-orange" type="submit">Create user</button>
-          </template>
-          <template v-else>
-            <label>
-              Token label
-              <input v-model="newRegistrationToken.label" placeholder="e.g. contractor invite" aria-label="Token label" />
-            </label>
-            <div ref="registrationExpiryPicker" class="registration-expiry-picker" :class="{ open: registrationExpiryOpen }">
-              <button
-                class="registration-expiry-trigger"
-                type="button"
-                aria-label="Token expiration"
-                aria-haspopup="listbox"
-                :aria-expanded="registrationExpiryOpen"
-                aria-controls="registration-expiry-menu"
-                @click="registrationExpiryOpen = !registrationExpiryOpen"
-                @keydown.escape.prevent="registrationExpiryOpen = false"
-              >
-                <span><small>Expires</small><strong>{{ selectedRegistrationExpiry.label }}</strong></span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-              </button>
-              <div v-if="registrationExpiryOpen" id="registration-expiry-menu" class="registration-expiry-menu" role="listbox" aria-label="Token expiration">
-                <button
-                  v-for="option in registrationTokenExpiryOptions"
-                  :key="option.value"
-                  type="button"
-                  role="option"
-                  :aria-selected="option.value === newRegistrationToken.ttl_seconds"
-                  :class="{ selected: option.value === newRegistrationToken.ttl_seconds }"
-                  @click="selectRegistrationExpiry(option.value)"
-                >
-                  {{ option.label }} <span v-if="option.value === newRegistrationToken.ttl_seconds" aria-hidden="true">✓</span>
-                </button>
-              </div>
+          <Transition name="panel-fade" mode="out-in">
+            <div :key="createMode" class="create-mode-panel">
+              <template v-if="createMode === 'user'">
+                <input v-model="newUser.username" placeholder="username" aria-label="username" />
+                <input v-model="newUser.password" type="password" placeholder="password" aria-label="password" />
+                <input v-model="newUser.upload_token" type="password" placeholder="custom upload token (optional)" aria-label="custom upload token (optional)" />
+                <label class="inline-check"><input v-model="newUser.is_admin" type="checkbox" /> administrator</label>
+                <button class="btn-orange" type="submit">Create user</button>
+              </template>
+              <template v-else>
+                <label>
+                  Token label
+                  <input v-model="newRegistrationToken.label" placeholder="e.g. contractor invite" aria-label="Token label" />
+                </label>
+                <div ref="registrationExpiryPicker" class="registration-expiry-picker" :class="{ open: registrationExpiryOpen }">
+                  <button
+                    class="registration-expiry-trigger"
+                    type="button"
+                    aria-label="Token expiration"
+                    aria-haspopup="listbox"
+                    :aria-expanded="registrationExpiryOpen"
+                    aria-controls="registration-expiry-menu"
+                    @click="registrationExpiryOpen = !registrationExpiryOpen"
+                    @keydown.escape.prevent="registrationExpiryOpen = false"
+                  >
+                    <span><small>Expires</small><strong>{{ selectedRegistrationExpiry.label }}</strong></span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
+                  <Transition name="dropdown-fade">
+                    <div v-if="registrationExpiryOpen" id="registration-expiry-menu" class="registration-expiry-menu" role="listbox" aria-label="Token expiration">
+                      <button
+                        v-for="option in registrationTokenExpiryOptions"
+                        :key="option.value"
+                        type="button"
+                        role="option"
+                        :aria-selected="option.value === newRegistrationToken.ttl_seconds"
+                        :class="{ selected: option.value === newRegistrationToken.ttl_seconds }"
+                        @click="selectRegistrationExpiry(option.value)"
+                      >
+                        {{ option.label }} <span v-if="option.value === newRegistrationToken.ttl_seconds" aria-hidden="true">✓</span>
+                      </button>
+                    </div>
+                  </Transition>
+                </div>
+                <p class="subtle token-help">This token can be used once to create one account.</p>
+                <button class="btn-orange" type="submit">Generate token</button>
+              </template>
             </div>
-            <p class="subtle token-help">This token can be used once to create one account.</p>
-            <button class="btn-orange" type="submit">Generate token</button>
-          </template>
+          </Transition>
         </form>
       </div>
 
@@ -1124,12 +1177,14 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <Teleport to="body">
-        <div v-if="activeUserMenuUser" :id="`user-actions-${activeUserMenuUser.username}`" ref="userRowMenuPanel" class="user-row-menu-panel" :style="userRowMenuStyle" role="group" aria-label="User actions" @keydown.escape.prevent="closeUserRowMenu(true)">
-          <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { suspended: !activeUserMenuUser!.suspended_at }, activeUserMenuUser!.suspended_at ? 'User unsuspended' : 'User suspended')">{{ activeUserMenuUser.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
-          <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { is_admin: !activeUserMenuUser!.is_admin }, 'Role updated')">{{ activeUserMenuUser.is_admin ? 'Demote' : 'Promote' }}</button>
-          <button class="menu-action" type="button" @click="rotateToken(activeUserMenuUser!.username); closeUserRowMenu(true)">Rotate token</button>
-          <button class="menu-action danger" type="button" @click="requestUserPurge(activeUserMenuUser!.username); closeUserRowMenu()">Purge uploads</button>
-        </div>
+        <Transition name="dropdown-fade" @after-leave="userRowMenuStyle = {}">
+          <div v-if="activeUserMenuUser" :key="activeUserMenuUser.username" :id="`user-actions-${activeUserMenuUser.username}`" ref="userRowMenuPanel" class="user-row-menu-panel" :style="userRowMenuStyle" role="group" aria-label="User actions" @keydown.escape.prevent="closeUserRowMenu(true)">
+            <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { suspended: !activeUserMenuUser!.suspended_at }, activeUserMenuUser!.suspended_at ? 'User unsuspended' : 'User suspended')">{{ activeUserMenuUser.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
+            <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { is_admin: !activeUserMenuUser!.is_admin }, 'Role updated')">{{ activeUserMenuUser.is_admin ? 'Demote' : 'Promote' }}</button>
+            <button class="menu-action" type="button" @click="rotateToken(activeUserMenuUser!.username); closeUserRowMenu(true)">Rotate token</button>
+            <button class="menu-action danger" type="button" @click="requestUserPurge(activeUserMenuUser!.username); closeUserRowMenu()">Purge uploads</button>
+          </div>
+        </Transition>
       </Teleport>
     </section>
 
@@ -1140,8 +1195,11 @@ onBeforeUnmount(() => {
             <CustomSelect v-model="filterOwner" label="Owner" :options="ownerFilterOptions" />
             <CustomSelect v-model="filterExpired" label="Expiry" :options="expiryFilterOptions" />
             <label class="upload-search">
-              <input v-model="filterText" placeholder="Search uploads" aria-label="Search uploads" />
-              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input v-model="filterText" placeholder="" :aria-label="`Search ${uploads.length} uploads`" />
+              <span v-if="!filterText" class="upload-search-placeholder" aria-hidden="true">Search <strong>{{ uploads.length }}</strong> uploads</span>
+              <svg v-if="searchingUploads" class="search-spinner" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" stroke-opacity=".28"/><path d="M20 12a8 8 0 0 0-8-8"/></svg>
+              <button v-else-if="filterText" class="search-clear" type="button" aria-label="Clear search" title="Clear search" @click="filterText = ''">×</button>
+              <svg v-else aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </label>
           </div>
           <button class="btn-red" type="button" :disabled="!filteredUploads.length || loading" @click="deleteAdminUploads(filteredUploads.map((upload) => upload.path), 'All matching uploads deleted')">Delete all</button>
@@ -1208,24 +1266,26 @@ onBeforeUnmount(() => {
             >
               Actions
             </button>
-            <div v-if="uploadsActionsOpen" class="admin-actions-menu-panel" role="menu">
-              <button class="menu-action" type="button" role="menuitem" :disabled="!selectedUploads.size" @click="deleteAdminUploads(Array.from(selectedUploads), 'Selected uploads deleted')">
-                Delete selected
-              </button>
-              <button class="menu-action danger" type="button" role="menuitem" :disabled="!filteredUploads.length" @click="deleteAdminUploads(filteredUploads.map((upload) => upload.path), 'All matching uploads deleted')">
-                Delete all
-              </button>
-              <button class="menu-action danger" type="button" role="menuitem" @click="requestPurgeExpired">
-                Purge expired
-              </button>
-              <button class="menu-action" type="button" role="menuitem" :disabled="!selectedUploads.size" @click="clearUploadSelection(); uploadsActionsOpen = false">
-                Clear selection
-              </button>
-            </div>
+            <Transition name="dropdown-fade">
+              <div v-if="uploadsActionsOpen" class="admin-actions-menu-panel" role="menu">
+                <button class="menu-action" type="button" role="menuitem" :disabled="!selectedUploads.size" @click="deleteAdminUploads(Array.from(selectedUploads), 'Selected uploads deleted')">
+                  Delete selected
+                </button>
+                <button class="menu-action danger" type="button" role="menuitem" :disabled="!filteredUploads.length" @click="deleteAdminUploads(filteredUploads.map((upload) => upload.path), 'All matching uploads deleted')">
+                  Delete all
+                </button>
+                <button class="menu-action danger" type="button" role="menuitem" @click="requestPurgeExpired">
+                  Purge expired
+                </button>
+                <button class="menu-action" type="button" role="menuitem" :disabled="!selectedUploads.size" @click="clearUploadSelection(); uploadsActionsOpen = false">
+                  Clear selection
+                </button>
+              </div>
+            </Transition>
           </div>
           </div>
         </div>
-        <div ref="uploadsTableScroll" class="table-scroll">
+        <div ref="uploadsTableScroll" class="table-scroll uploads-table-scroll">
         <table class="file-table admin-table uploads-table">
           <thead>
             <tr>
@@ -1268,23 +1328,37 @@ onBeforeUnmount(() => {
                   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   <span>Download</span>
                 </a>
-                <button class="btn-orange upload-action" type="button" aria-label="Copy preview link" @click="copyUploadLink(upload)">
-                  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  <span>Copy</span>
+                <button class="btn-orange upload-action" type="button" :aria-label="copiedUploadPath === upload.path ? 'Copied' : 'Copy preview link'" @click="copyUploadLink(upload)">
+                  <Transition name="copy-feedback" mode="out-in">
+                    <svg v-if="copiedUploadPath === upload.path" key="copied" class="copy-feedback-icon" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>
+                    <svg v-else key="copy" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </Transition>
+                  <span>{{ copiedUploadPath === upload.path ? 'Copied' : 'Copy' }}</span>
                 </button>
                 <div class="upload-row-menu">
                   <button class="btn-ghost upload-more" type="button" aria-label="More" :aria-expanded="uploadRowMenuOpen === upload.path ? 'true' : 'false'" @click="uploadRowMenuOpen = uploadRowMenuOpen === upload.path ? null : upload.path">⋯</button>
-                  <div v-if="uploadRowMenuOpen === upload.path" class="upload-row-menu-panel" role="menu">
-                    <button class="menu-action" type="button" role="menuitem" @click="openUploadPreview(upload)">Preview</button>
-                    <button class="menu-action danger" type="button" role="menuitem" @click="deleteUploadWithConfirmation(upload); uploadRowMenuOpen = null">Delete</button>
-                  </div>
+                  <Transition name="dropdown-fade">
+                    <div v-if="uploadRowMenuOpen === upload.path" class="upload-row-menu-panel" role="menu">
+                      <button class="menu-action" type="button" role="menuitem" @click="openUploadPreview(upload)">Preview</button>
+                      <button class="menu-action danger" type="button" role="menuitem" @click="deleteUploadWithConfirmation(upload); uploadRowMenuOpen = null">Delete</button>
+                    </div>
+                  </Transition>
                 </div>
               </td>
             </tr>
           </tbody>
         </table>
         </div>
-        <p v-if="!pagedUploads.length && !loading" class="empty-state">No uploads match the current filters.</p>
+        <div v-if="!pagedUploads.length && !loading" class="upload-empty-state">
+          <template v-if="hasUploadFilters">
+            <strong>No matching files</strong>
+            <p>Try a different filename or clear the search field.</p>
+          </template>
+          <template v-else>
+            <strong>No uploads yet.</strong>
+            <p>Upload a file to get started.</p>
+          </template>
+        </div>
         <div class="pagination-bar" aria-label="Upload pagination">
           <span>{{ pageLabel('Uploads', filteredUploads.length, uploadsPageSize) }}</span>
           <div>
@@ -1436,12 +1510,12 @@ onBeforeUnmount(() => {
 
     <section v-if="tab === 'Audit'" class="card">
       <h2>Audit log</h2>
-      <div class="table-scroll">
-      <table class="file-table admin-table">
+      <div class="table-scroll audit-table-scroll">
+      <table class="file-table admin-table audit-table">
         <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Status</th><th>Reason</th></tr></thead>
         <tbody>
           <tr v-for="entry in pagedAudit" :key="entry.id">
-            <td>{{ ts(entry.created_at) }}</td><td>{{ entry.actor ?? 'system' }}</td><td>{{ entry.action }}</td><td>{{ entry.target ?? 'N/A' }}</td><td>{{ entry.status }}</td><td>{{ entry.reason ?? 'N/A' }}</td>
+            <td data-label="Time">{{ ts(entry.created_at) }}</td><td data-label="Actor">{{ entry.actor ?? 'system' }}</td><td data-label="Action">{{ entry.action }}</td><td data-label="Target">{{ entry.target ?? 'N/A' }}</td><td data-label="Status">{{ entry.status }}</td><td data-label="Reason">{{ entry.reason ?? 'N/A' }}</td>
           </tr>
         </tbody>
       </table>
@@ -1459,7 +1533,7 @@ onBeforeUnmount(() => {
     </Transition>
     </div>
       </section>
-    </main>
+    </div>
 
     <ActionConfirmDialog
       v-if="confirmationRequest"
@@ -1493,78 +1567,41 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <Transition name="settings-layer">
-      <div
-        v-if="showSettings"
-        ref="settingsLayer"
-        class="settings-layer"
-        data-testid="settings-layer"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Preferences"
-        tabindex="-1"
-        @keydown="handleSettingsKeydown"
-      >
-        <div class="overlay" aria-hidden="true" @click="closeSettings" />
-        <SettingsPanel
-          @close="closeSettings"
-          @login="router.push('/login')"
-          @register="router.push('/register')"
-          @logout="router.push('/login')"
-        />
-      </div>
-    </Transition>
-  </div>
 </template>
 
 <style scoped>
-.layout {
-  width: 100%;
-  min-height: max(100vh, 100dvh);
+.admin-content-stage {
+  position: relative;
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  overflow-x: hidden;
-  --surface: var(--bg1);
-  --surface2: var(--bg2);
-  --surface3: var(--bg3);
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  background: transparent;
-}
-.admin-shell {
-  height: 100dvh;
-  min-height: 100dvh;
-  max-height: 100dvh;
-  overflow: hidden;
-}
-.admin-content-stage { position: relative; display: grid; }
-.admin-content-stage > * { grid-area: 1 / 1; }
-.workspace-content-enter-active, .workspace-content-leave-active { transition: opacity 250ms var(--ease-out); }
-.workspace-content-leave-active { position: absolute; inset: 0; width: 100%; pointer-events: none; }
-.workspace-content-enter-from { opacity: 0; }
-.workspace-content-leave-to { opacity: 0; }
-.layout.sidebar-collapsed {
-  grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
-}
-.workspace {
   min-width: 0;
-  min-height: 0;
-  height: 100dvh;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  scrollbar-gutter: stable;
-  padding: 32px 32px 38px;
+  max-width: 100%;
 }
-.admin-shell :deep(.sidebar) {
-  height: 100dvh;
-  min-height: 100dvh;
-  max-height: 100dvh;
-  position: sticky;
-  top: 0;
+.admin-content-stage > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+  max-width: 100%;
+}
+.admin-content-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.admin-content-enter-active,
+.admin-content-leave-active {
+  transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out);
+  will-change: opacity, transform;
+}
+.admin-content-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.admin-content-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 .admin-layout {
   max-width: 1120px;
   width: 100%;
+  min-width: 0;
   margin: 0 auto;
 }
 .admin-header {
@@ -1673,26 +1710,51 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   color: var(--text2);
   font-size: var(--fs-xs);
 }
+.admin-tabs-wrap {
+  min-width: 0;
+}
+.admin-tabs-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 20px;
+}
 .admin-tabs {
-  margin: 0 0 20px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
   max-width: 100%;
   overflow-x: auto;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   border-color: color-mix(in srgb, var(--border2) 70%, transparent);
   background: transparent;
   box-shadow: none;
 }
+.admin-tabs::-webkit-scrollbar {
+  display: none;
+}
 .admin-tabs button {
   position: relative;
+  flex: 0 0 auto;
+  min-width: max-content;
+  overflow: visible;
+  white-space: nowrap;
 }
 .admin-tabs button.active::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 12px;
+  right: 12px;
   bottom: 0;
-  height: 2px;
+  height: 3px;
   border-radius: var(--radius-full);
   background: var(--accent);
+}
+.admin-tabs-scroll-button {
+  display: none;
 }
 .admin-grid {
   display: grid;
@@ -1720,6 +1782,10 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   gap: var(--space-3);
 }
 .form-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+.create-mode-panel {
   display: grid;
   gap: var(--space-3);
 }
@@ -2169,6 +2235,26 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   min-height: 48px;
   padding-right: 38px;
 }
+.upload-search-placeholder {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  right: 38px;
+  overflow: hidden;
+  color: var(--text3);
+  pointer-events: none;
+  text-overflow: ellipsis;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.upload-search-placeholder strong {
+  color: var(--text2);
+  font-weight: 700;
+}
+.upload-search input:focus + .upload-search-placeholder {
+  opacity: 0;
+}
 .upload-search svg {
   position: absolute;
   top: 50%;
@@ -2357,12 +2443,11 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .admin-actions-menu-panel .menu-action.danger:hover:not(:disabled) {
   color: var(--red-h);
 }
-@media (max-width: 700px) {
-  .table-scroll {
-    box-shadow: inset -18px 0 14px -14px color-mix(in srgb, black 35%, transparent);
-  }
-}
 @media (max-width: 600px) {
+  .uploads-table-scroll {
+    overflow-x: visible;
+    box-shadow: none;
+  }
   .upload-toolbar,
   .upload-toolbar-main {
     align-items: stretch;
@@ -2485,6 +2570,26 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   font-size: var(--fs-body);
   text-align: center;
 }
+.upload-empty-state {
+  margin-top: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  text-align: center;
+}
+.upload-empty-state strong {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-h1);
+  font-weight: 600;
+}
+.upload-empty-state p {
+  color: var(--text2);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-body);
+}
 .pagination-bar {
   display: flex;
   align-items: center;
@@ -2503,53 +2608,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .pagination-bar button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-.settings-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  pointer-events: none;
-  --settings-panel-left: calc(var(--sidebar-w) + 26px);
-  --settings-panel-right: auto;
-  --settings-panel-top: auto;
-  --settings-panel-bottom: 20px;
-  --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w) - 50px));
-  --settings-panel-max-height: calc(100dvh - 40px);
-}
-.settings-layer-enter-active,
-.settings-layer-leave-active {
-  transition: opacity var(--duration-slow) var(--ease-out);
-}
-.settings-layer-enter-active :deep(.settings-panel),
-.settings-layer-leave-active :deep(.settings-panel) {
-  transition: opacity var(--duration-slow) var(--ease-out), transform var(--duration-slow) var(--ease-out);
-  will-change: opacity, transform;
-}
-.settings-layer-enter-from,
-.settings-layer-leave-to {
-  opacity: 0;
-}
-.settings-layer-enter-from :deep(.settings-panel),
-.settings-layer-leave-to :deep(.settings-panel) {
-  opacity: 0;
-  transform: translate3d(0, 14px, 0);
-}
-.overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: auto;
-}
-.settings-layer :deep(.settings-panel) {
-  pointer-events: auto;
-  z-index: 1;
-  height: auto;
-  min-height: 0;
-  overflow: auto;
-}
-.sidebar-collapsed .settings-layer {
-  --settings-panel-left: calc(var(--sidebar-w-collapsed) + 24px);
-  --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w-collapsed) - 48px));
 }
 .token-dialog-backdrop {
   position: fixed;
@@ -2602,7 +2660,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   margin-top: var(--space-2);
 }
 @media (max-width: 760px) {
-  .workspace { padding: var(--space-4); }
   .admin-header { flex-direction: column; }
   .admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tabs button { padding: var(--space-2) var(--space-4); }
@@ -2639,25 +2696,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
     width: 100%;
   }
 }
-@media (min-width: 601px) and (max-width: 960px) {
-  .layout {
-    grid-template-columns: var(--sidebar-w-tablet) minmax(0, 1fr);
-  }
-  .layout.sidebar-collapsed {
-    grid-template-columns: var(--sidebar-w-collapsed-tablet) minmax(0, 1fr);
-  }
-  .settings-layer {
-    --settings-panel-left: calc(var(--sidebar-w-tablet) + 26px);
-    --settings-panel-width: min(380px, calc(100vw - var(--sidebar-w-tablet) - 50px));
-    --settings-panel-top: auto;
-    --settings-panel-bottom: 20px;
-    --settings-panel-max-height: calc(100dvh - 40px);
-  }
-}
 @media (max-width: 600px) {
-  .layout {
-    display: block;
-  }
   .filter-text,
   .filter-actions {
     width: 100%;
@@ -2669,17 +2708,73 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   .settings-fields {
     grid-template-columns: 1fr;
   }
-  .workspace {
-    /* Mobile scrollbars are overlaid, so a reserved gutter only pushes the
-       content off-centre against the fixed tab bar. */
-    scrollbar-gutter: auto;
-    padding: 18px var(--space-3) calc(var(--mobile-bar-space) + 42px);
-  }
   .admin-header {
     padding: var(--space-4);
   }
   .admin-tabs {
+    flex: 1 1 auto;
+    min-width: 0;
     width: 100%;
+  }
+  .admin-tabs-row {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+    align-items: center;
+    gap: 8px;
+  }
+  .admin-tabs-scroll-button {
+    display: inline-flex;
+    width: 32px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text3);
+    box-shadow: none;
+    transition: opacity var(--duration-fast) var(--ease-out), background var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out);
+  }
+  .admin-tabs-scroll-button:not(:disabled):hover,
+  .admin-tabs-scroll-button:not(:disabled):focus-visible {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--text);
+  }
+  .admin-tabs-scroll-button:not(:disabled):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+    outline-offset: 2px;
+  }
+  .admin-tabs-scroll-button:disabled {
+    color: var(--text3);
+    opacity: 0.3;
+    cursor: default;
+  }
+  .admin-tabs-scroll-button svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .admin-tabs {
+    grid-column: 2;
+    min-width: 0;
+    justify-self: stretch;
+    width: 100%;
+    scroll-padding-inline: 12px;
+    scroll-snap-type: x proximity;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+  .admin-tabs-scroll-button--left { grid-column: 1; }
+  .admin-tabs-scroll-button--right { grid-column: 3; }
+  .admin-tabs button { scroll-snap-align: center; }
+  .admin-tabs button.active::after {
+    top: 0;
+    bottom: auto;
   }
   .header-actions {
     width: 100%;
@@ -2883,14 +2978,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 @media (max-width: 600px) {
   .admin-table tbody tr:hover:not(:has(input[type="checkbox"]:checked)) td {
     background: transparent;
-  }
-  .settings-layer {
-    --settings-panel-left: var(--mobile-chrome-left);
-    --settings-panel-right: var(--mobile-chrome-right);
-    --settings-panel-top: auto;
-    --settings-panel-bottom: calc(var(--mobile-bar-space) + 14px);
-    --settings-panel-width: auto;
-    --settings-panel-max-height: calc(100dvh - var(--mobile-bar-space) - 30px);
   }
   .webhook-section-heading {
     align-items: flex-start;
@@ -3096,6 +3183,25 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
   .users-table .user-more-label {
     display: inline;
+  }
+  /* Keep every audit column available on phones, but contain the wide table
+     inside its own scroll viewport so it cannot widen the page. */
+  .audit-table-scroll {
+    display: block;
+    box-sizing: border-box;
+    min-width: 0;
+    min-inline-size: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .audit-table {
+    min-width: 720px;
+    width: max-content;
   }
 }
 @media (max-width: 480px) {

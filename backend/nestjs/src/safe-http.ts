@@ -94,6 +94,8 @@ export async function requestPinnedHttp(url: URL, options: { method: string; hea
   const addresses = await lookup(url.hostname, { all: true })
   if (!addresses.length || addresses.some(item => blockedAddress(item.address))) throw new Error('target is private')
   const address = addresses[0]
+  type LookupOptions = { all?: boolean }
+  type LookupCallback = (error: NodeJS.ErrnoException | null, address: string | Array<{ address: string; family: number }>, family?: number) => void
   const requestOptions = {
     hostname: url.hostname,
     port: url.port ? Number(url.port) : undefined,
@@ -102,7 +104,17 @@ export async function requestPinnedHttp(url: URL, options: { method: string; hea
     headers: options.headers,
     servername: url.hostname,
     // Pin the address checked above so DNS cannot change between validation and connect.
-    lookup: ((_: string, __: object, callback: (error: NodeJS.ErrnoException | null, resolvedAddress: string, family: number) => void) => callback(null, address.address, address.family)) as any,
+    lookup: ((_: string, lookupOptions: LookupOptions, callback: LookupCallback) => {
+      // Node may ask a custom resolver for all candidates when auto-selecting
+      // between address families. Returning a scalar in that mode causes
+      // Node's connector to read `.address` from a string and fail with
+      // `ERR_INVALID_IP_ADDRESS: Invalid IP address: undefined`.
+      if (lookupOptions?.all) {
+        callback(null, [{ address: address.address, family: address.family }])
+      } else {
+        callback(null, address.address, address.family)
+      }
+    }) as any,
   }
   return new Promise((resolve, reject) => {
     const transport = url.protocol === 'https:' ? httpsRequest : httpRequest

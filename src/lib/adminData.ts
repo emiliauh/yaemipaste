@@ -32,6 +32,11 @@ export function peekAdminData(): AdminDataSnapshot | null {
   return cached
 }
 
+export function updateCachedAdminUploads(uploads: AdminUpload[]) {
+  if (!cached) return
+  cached = { ...cached, uploads }
+}
+
 export function loadAdminData(force = false): Promise<AdminDataSnapshot> {
   if (!force && cached) return Promise.resolve(cached)
   if (inflight) return inflight

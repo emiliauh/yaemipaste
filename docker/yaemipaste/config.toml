@@ -5,8 +5,9 @@ refresh_rate = "1s"
 address = "0.0.0.0:8000"
 
 url = "http://localhost:8080"
-max_content_length = "51200MB"
-max_upload_dir_size = "10GiB"
+# Set to 0 to disable the backend request-size and upload-directory quotas.
+max_content_length = "0"
+max_upload_dir_size = "0"
 upload_path = "/var/lib/yaemipaste/upload"
 timeout = "30s"
 expose_version = true

@@ -1,33 +1,45 @@
 # yaemipaste
 
-Self-hosted file sharing and text pastes with previews, downloads, upload
-history, expiry controls, accounts, ShareX integration, and administration.
+yaemipaste is a self-hosted service for file sharing and text pastes. It
+supports previews, downloads, upload history, expiry rules, user accounts,
+ShareX, webhooks, and an administrator panel.
 
-yaemipaste uses its native NestJS backend in `backend/nestjs`. The backend
-stores account, session, administration, and audit state in SQLite and stores
-uploaded file bytes and metadata on the filesystem. It is the default and
-supported backend for new installations.
+The supported backend is the native NestJS service in `backend/nestjs`. It
+stores account, session, administrator, and audit data in SQLite. It stores
+uploaded files and metadata on the filesystem.
 
 ## Features
 
-- File and text uploads with expiry and optional browser-side encryption
-- Path-based pages at `/files`, `/history`, `/login`, `/register`, and `/admin`
-- Public preview, raw, and download links
-- Account registration, login, upload tokens, password changes, and passkeys
-- ShareX configuration generated for the signed-in account
-- Admin user, upload, settings, webhook, and audit management
-- SQLite authentication state and filesystem-backed upload storage
+- Upload files and text with expiry rules and optional browser-side encryption
+- Use path-based pages at `/files`, `/history`, `/login`, `/register`, and
+  `/admin`
+- Create public preview, raw, and download links
+- Register accounts, sign in, change passwords, use upload tokens, and use
+  passkeys
+- Generate ShareX settings for a signed-in account
+- Manage users, uploads, settings, webhooks, and audit events as an
+  administrator
+- Store authentication data in SQLite and upload data on the filesystem
 
 ## Install
 
-Requirements: Linux, Docker Compose, `git`, and `curl`. A DNS name with HTTPS
-handled by Caddy or Nginx is recommended for public deployments.
+Requirements:
+
+- Linux
+- Docker Compose
+- `git`
+- `curl`
+
+For a public deployment, use a DNS name with HTTPS. Caddy and Nginx are
+supported reverse proxies.
+
+Run the installer:
 
 ```bash
 curl -fsSL https://paste.yaemi.one/install.sh | sudo bash
 ```
 
-Or clone the repository:
+You can also clone the repository:
 
 ```bash
 git clone --branch nestjs-rewrite https://github.com/emiliauh/yaemipaste.git
@@ -36,11 +48,15 @@ sudo ./install.sh
 ```
 
 The installer creates `.env`, configures the UI and NestJS API, asks for the
-public URL, and prints an administrator claim link. Uploads require an account
-or upload token by default. Set `ALLOW_ANONYMOUS_UPLOADS=1` only when anonymous
-uploads are intentional.
+public URL, and prints an administrator claim link. New installations require
+an account or upload token for uploads. Set `ALLOW_ANONYMOUS_UPLOADS=1` only
+when you want anonymous uploads.
 
-For unattended installation:
+The installer stores the generated JWT signing secret and admin bearer in
+`.env` with mode `0600`. Each later Compose command loads this file. You can
+run the installer from any working directory.
+
+For an unattended install:
 
 ```bash
 sudo ./install.sh --action install --yes \
@@ -48,10 +64,21 @@ sudo ./install.sh --action install --yes \
   --deployment same
 ```
 
-For split hosts, add `--deployment split --split-role ui|api` and
+For a temporary test server without a reverse proxy, use a reachable IP and
+bind the UI to all interfaces:
+
+```bash
+sudo ./install.sh --action install --yes \
+  --public-url http://203.0.113.10:8080 \
+  --ui-bind 0.0.0.0 \
+  --deployment same
+```
+
+For separate UI and API hosts, use
+`--deployment split --split-role ui|api` and set
 `--api-origin https://api.example.com`.
 
-## Build And Run
+## Build and run
 
 Build and test the frontend and API from source:
 
@@ -70,8 +97,7 @@ cp .env.example .env
 COMPOSE_PROFILES=ui,api DEPLOYMENT_IMAGE_MODE=build docker compose up --build -d
 ```
 
-For frontend development, run `npm run dev`. Build and start the backend
-directly with:
+For frontend development, run `npm run dev`. To build and start the backend:
 
 ```bash
 npm --prefix backend/nestjs ci
@@ -79,15 +105,16 @@ npm --prefix backend/nestjs run build
 npm --prefix backend/nestjs start
 ```
 
-The backend reads `CONFIG` when set, uses `DB_PATH` for its SQLite database,
-and uses `SERVER__UPLOAD_PATH` for uploaded files.
+The backend reads `CONFIG` when it is set. It uses `DB_PATH` for SQLite and
+`SERVER__UPLOAD_PATH` for uploaded files.
 
-## CI And Images
+## CI and images
 
-GitHub Actions validates pushes and pull requests for `nestjs-rewrite`,
-including the installer smoke test, NestJS API build/security tests, frontend
-build, and Playwright suite. The image workflow publishes branch and immutable
-SHA tags to GHCR:
+GitHub Actions checks pushes and pull requests for `nestjs-rewrite`. The checks
+include the installer smoke test, NestJS API build and security tests, frontend
+build, and Playwright tests.
+
+The image workflow publishes branch and commit-SHA tags to GHCR:
 
 ```text
 ghcr.io/emiliauh/yaemipaste-api:nestjs-rewrite
@@ -96,13 +123,12 @@ ghcr.io/emiliauh/yaemipaste-api:sha-<commit>
 ghcr.io/emiliauh/yaemipaste-ui:sha-<commit>
 ```
 
-The installer defaults to the `nestjs-rewrite` source branch and matching
-image tag. Pin `YAEMIPASTE_IMAGE_TAG` to a SHA tag for a fully immutable
-production deployment.
+The installer uses the `nestjs-rewrite` branch and image tag by default. For a
+fixed production version, set `YAEMIPASTE_IMAGE_TAG` to a commit-SHA tag.
 
-## First Administrator
+## First administrator
 
-Create an initial account and claim the one-time administrator token:
+Create an account and claim the one-time administrator token:
 
 ```bash
 sudo ./install.sh --action init-user

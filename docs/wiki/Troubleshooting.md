@@ -1,60 +1,65 @@
 # Troubleshooting
 
-## Every Page Returns 404
+## Every page returns 404
 
 `/files`, `/history`, `/login`, `/register`, `/admin`, and `/file/*` are SPA
-routes. The public hostname must reach the bundled UI service or a static host
-with fallback to `index.html`. Do not route unknown paths directly to the
+routes. Send the public hostname to the bundled UI service, or serve the
+static files with a fallback to `index.html`. Do not send unknown paths to the
 NestJS API.
 
 If the origin works but the public hostname fails, check DNS `A` and `AAAA`
-records, tunnel ingress, CDN origin rules, workers, and cached HTML or 404s.
-Compare the origin and edge as shown in `docs/deployment/caddy.md`.
+records, tunnel ingress, CDN origin rules, workers, and cached HTML or 404
+responses. Compare the origin and edge as described in
+`docs/deployment/caddy.md`.
 
-## Uploads Fail
+## Uploads fail
 
 Check `VITE_PASTE_API`, `/api/*` proxying, upload-size limits at every proxy,
-`SERVER__UPLOAD_PATH` permissions, available disk space, and the configured
-upload policy. ShareX must send multipart field `file` and the account upload
-token in the `Authorization` header.
+`SERVER__UPLOAD_PATH` permissions, disk space, and the upload policy. ShareX
+must send the multipart field `file` and the account upload token in the
+`Authorization` header.
 
-## Login, ShareX, Or Admin Actions Fail
+## Login, ShareX, or administrator actions fail
 
-Check that `/auth/*` reaches the NestJS backend without stripping `/auth`.
-Verify `DB_PATH` is persistent and writable, `JWT_SECRET` and
-`AUTH_ADMIN_BEARER` meet production requirements, and the account is not
-suspended. `/auth/sharex` requires a signed-in account and ShareX support to be
-enabled; `/auth/admin/*` management routes require administrator authorization.
+Check that `/auth/*` reaches the NestJS backend without removing `/auth`.
+Check that `DB_PATH` is persistent and writable. Check that `JWT_SECRET` and
+`AUTH_ADMIN_BEARER` meet the production requirements. Check that the account
+is not suspended.
 
-## History Shows The Stored Name
+`/auth/sharex` requires a signed-in account and enabled ShareX support.
+`/auth/admin/*` requires administrator authorization.
 
-History display names come from filesystem metadata beside the upload. Confirm
-the upload volume and metadata sidecars were migrated together. Do not cache
-`/api/meta/*`; stale edge metadata can hide a backend fix even when the origin
-returns the correct value.
+## History shows the stored name
 
-## Public Preview Or Download Fails
+History display names come from metadata beside each upload. Migrate the
+upload volume and metadata sidecars together. Do not cache `/api/meta/*`.
+Stale edge metadata can hide a backend fix.
 
-Check the UI handling for `/file/<token>/preview`, `/file/<token>/raw`, and
-`/file/<token>/download`, plus proxy handling for `/<id>/file` and
-`/<id>/file.<ext>`. Explicit raw/download requests must reach the backend while
-normal public-link navigation remains in the SPA.
+## Public preview or download fails
 
-The service in `resolver-server/` is only for migrations that explicitly need
-older resolution behavior. It is not required by the native backend.
+Check UI handling for `/file/<token>/preview`, `/file/<token>/raw`, and
+`/file/<token>/download`. Also check proxy handling for `/<id>/file` and
+`/<id>/file.<ext>`.
 
-## Passkeys Fail
+Explicit raw and download requests must reach the backend. Normal public-link
+navigation must stay in the SPA.
 
-Enable passkeys in Admin > Settings. `PASSKEYS_ENABLED=1` only initializes that
-setting for a new database; it is not required after the setting has been
-saved. Then check HTTPS, RP ID and origin values, and the configured allowed
-origins. Direct HTTP IP deployments do not provide the secure browser context
-passkeys require.
+`resolver-server/` is for migrations that need older resolution behavior. It
+is not required by the native backend.
 
-## Tests Will Not Start
+## Passkeys fail
+
+Enable passkeys in Admin > Settings. `PASSKEYS_ENABLED=1` sets the initial
+value for a new database. The administrator can change the setting later.
+
+Check HTTPS, the RP ID, origin values, and the allowed origins. Direct HTTP IP
+deployments do not provide the secure browser context required by passkeys.
+
+## Tests do not start
 
 The Playwright suite starts a local Vite server by default. If the environment
-blocks local listeners, provide a reachable `PLAYWRIGHT_BASE_URL`. Run API
-checks with `npm run api:build && npm run api:test`, frontend end-to-end checks
-with `npm run test:e2e:preview`, or the complete release check with
+blocks local listeners, set a reachable `PLAYWRIGHT_BASE_URL`.
+
+Run API checks with `npm run api:build && npm run api:test`. Run frontend tests
+with `npm run test:e2e:preview`. Run the complete release check with
 `npm run validate:release`.

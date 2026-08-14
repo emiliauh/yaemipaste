@@ -5,6 +5,7 @@ import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
 
 const { refreshPublicSettings } = usePublicSettings()
+const adminView = () => import('../views/AdminView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -44,12 +45,12 @@ const router = createRouter({
     { path: '/admin/claim', component: () => import('../views/AdminClaimView.vue') },
     {
       path: '/admin',
-      component: () => import('../views/AdminView.vue'),
+      component: adminView,
       meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true, workspace: true },
     },
     {
       path: '/admin/:section(overview|users|uploads|settings|webhooks|audit)',
-      component: () => import('../views/AdminView.vue'),
+      component: adminView,
       meta: { requiresAuth: isAuthEnabled(), requiresAdmin: true, workspace: true },
     },
     { path: '/file/:filekey/preview', component: () => import('../views/FileView.vue') },

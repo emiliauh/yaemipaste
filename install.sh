@@ -279,13 +279,35 @@ generate_secret() {
   die "Unable to generate a secure secret. Install openssl or provide /dev/urandom + od."
 }
 
+valid_installer_secret() {
+  local value="$1"
+  [[ "$value" =~ ^[a-f0-9]{64}$ ]] || return 1
+  # Match the backend's production guard: a repeated character is not a secret.
+  local first="${value:0:1}"
+  [[ "${value//"$first"/}" != "" ]]
+}
+
+valid_admin_bearers() {
+  local value="$1"
+  local item
+  local -a bearers
+  [[ -n "$value" ]] || return 1
+  IFS=',' read -r -a bearers <<< "$value"
+  [[ "${#bearers[@]}" -gt 0 ]] || return 1
+  for item in "${bearers[@]}"; do
+    item="${item#${item%%[![:space:]]*}}"
+    item="${item%${item##*[![:space:]]}}"
+    valid_installer_secret "$item" || return 1
+  done
+}
+
 detect_host_address() {
   local value=""
   if command_exists ip; then
-    value="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i += 1) if ($i == "src") { print $(i + 1); exit }}')"
+    value="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i += 1) if ($i == "src") { print $(i + 1); exit }}' || true)"
   fi
   if [[ -z "$value" ]] && command_exists hostname; then
-    value="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    value="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
   fi
   if [[ -z "$value" ]]; then
     value="localhost"
@@ -424,6 +446,14 @@ compose() {
     fi
     die "Compose file not found at ${INSTALL_DIR}/${COMPOSE_FILE}"
   fi
+  local env_path="${INSTALL_DIR}/${ENV_FILE}"
+  if [[ ! -f "$env_path" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log "[DRY-RUN] would load Compose environment from ${env_path}"
+    else
+      die "Environment file not found at ${env_path}. Run the install action first so secrets are generated."
+    fi
+  fi
   local resolver_enabled profiles profile image_mode
   local -a profile_list
   local -a profile_args
@@ -438,11 +468,12 @@ compose() {
     [[ -n "$profile" ]] && profile_args+=(--profile "$profile")
   done
   image_mode="$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
+  local -a compose_args=(--env-file "$env_path" --project-directory "$INSTALL_DIR")
   local -a compose_files=(-f "${INSTALL_DIR}/${COMPOSE_FILE}")
   if [[ "$image_mode" == "build" ]]; then
     compose_files+=(-f "${INSTALL_DIR}/docker-compose.build.yml")
   fi
-  run "${COMPOSE_CMD[@]}" "${compose_files[@]}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
+  run "${COMPOSE_CMD[@]}" "${compose_args[@]}" "${compose_files[@]}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
 }
 
 compose_for_uninstall() {
@@ -453,7 +484,7 @@ compose_for_uninstall() {
   # Keep production validation in compose(); these placeholders only satisfy
   # Compose interpolation while it removes the existing project resources.
   printf 'JWT_SECRET=uninstall-placeholder\nAUTH_ADMIN_BEARER=uninstall-placeholder\n' > "$uninstall_env"
-  if ! run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" down "$@"; then
+  if ! run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" --project-directory "$INSTALL_DIR" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" down "$@"; then
     rm -f "$uninstall_env"
     return 1
   fi
@@ -635,13 +666,14 @@ wait_for_http() {
     [[ -n "$curl_error" ]] && warn "Waiting for ${label}: ${curl_error}"
     sleep "$delay"
   done
-  warn "${label} did not become ready in time (${url}). Check Docker logs with: docker compose -f ${INSTALL_DIR}/${COMPOSE_FILE} logs"
+  warn "${label} did not become ready in time (${url}). Check Docker logs with: docker compose --env-file ${INSTALL_DIR}/${ENV_FILE} --project-directory ${INSTALL_DIR} -f ${INSTALL_DIR}/${COMPOSE_FILE} logs"
   return 1
 }
 
 configure_env() {
   section "Install Configuration"
   local env_path="${INSTALL_DIR}/${ENV_FILE}"
+  local env_created=0
   if [[ ! -f "$env_path" ]]; then
     if [[ ! -f "${INSTALL_DIR}/.env.example" ]]; then
       if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -651,8 +683,12 @@ configure_env() {
       fi
     else
       run install -m 0600 "${INSTALL_DIR}/.env.example" "$env_path"
+      env_created=1
       success "Created ${env_path} from .env.example"
     fi
+  fi
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    run chmod 0600 "$env_path"
   fi
 
   local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin internal_admin_origin configure_features turnstile_enabled direct_ip_access api_port
@@ -802,6 +838,11 @@ configure_env() {
   if [[ -z "$admin_bearer" ]]; then
     admin_bearer="$(generate_secret)"
     success "Generated admin bearer automatically."
+  elif ! valid_admin_bearers "$admin_bearer"; then
+    if [[ "$env_created" -eq 1 ]]; then
+      die "AUTH_ADMIN_BEARER in .env.example is invalid. It must be a 64-character lowercase hex secret."
+    fi
+    die "AUTH_ADMIN_BEARER in ${env_path} is invalid for production. Replace it with a 64-character lowercase hex secret, then rerun the installer."
   fi
   if [[ -n "$turnstile_key" && -z "$turnstile_secret" ]]; then
     warn "Turnstile site key set but TURNSTILE_SECRET_KEY is empty; the secret is what enables enforcement, so the widget will not run and logins will succeed without any challenge. Set a secret to actually enable Turnstile."
@@ -812,6 +853,11 @@ configure_env() {
   if [[ -z "$jwt_secret" ]]; then
     jwt_secret="$(generate_secret)"
     success "Generated JWT secret automatically."
+  elif ! valid_installer_secret "$jwt_secret"; then
+    if [[ "$env_created" -eq 1 ]]; then
+      die "JWT_SECRET in .env.example is invalid. It must be a 64-character lowercase hex secret."
+    fi
+    die "JWT_SECRET in ${env_path} is invalid for production. Replace it with a 64-character lowercase hex secret, then rerun the installer."
   fi
   upsert_env DEPLOYMENT_MODE "$deployment_mode"
   upsert_env SPLIT_ROLE "$split_role"
@@ -1007,6 +1053,13 @@ read_admin_bearer() {
     return 0
   fi
   [[ -n "$token" ]] || die "AUTH_ADMIN_BEARER is empty in .env. Set it, restart the stack, then retry."
+  # The backend accepts a comma-separated rotation set, while each request
+  # still carries exactly one Bearer token. Use the first configured key for
+  # installer calls and leave the full CSV intact in Compose.
+  token="${token%%,*}"
+  token="${token#${token%%[![:space:]]*}}"
+  token="${token%${token##*[![:space:]]}}"
+  [[ -n "$token" ]] || die "AUTH_ADMIN_BEARER has no usable bearer in .env."
   printf '%s' "$token"
 }
 

@@ -88,6 +88,8 @@ const previewImage = ref<HTMLImageElement | null>(null)
 const mediaUrl = ref('')
 const copyMenuOpen = ref(false)
 const openMenuOpen = ref(false)
+const copiedPreview = ref(false)
+let copiedPreviewTimer: ReturnType<typeof setTimeout> | null = null
 const TEXT_PREVIEW_BYTES = 256 * 1024
 const TEXT_PREVIEW_CHARS = 32_000
 
@@ -306,11 +308,21 @@ async function copyPreviewContent() {
   }
 }
 
-async function copyUrlValue(value: string) {
+function showCopiedPreviewFeedback() {
+  copiedPreview.value = true
+  if (copiedPreviewTimer) clearTimeout(copiedPreviewTimer)
+  copiedPreviewTimer = setTimeout(() => {
+    copiedPreview.value = false
+    copiedPreviewTimer = null
+  }, 1000)
+}
+
+async function copyUrlValue(value: string, showFeedback = false) {
   copyMenuOpen.value = false
   openMenuOpen.value = false
   try {
     await writeTextToClipboard(value)
+    if (showFeedback) showCopiedPreviewFeedback()
     notificationStore.push('Copied!')
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not copy URL'
@@ -359,17 +371,25 @@ function onWindowClick() {
   openMenuOpen.value = false
 }
 
+function onWindowScroll() {
+  copyMenuOpen.value = false
+  openMenuOpen.value = false
+}
+
 onMounted(() => {
   void refreshPublicSettings()
   window.addEventListener('keydown', onWindowKeydown)
   window.addEventListener('click', onWindowClick)
+  window.addEventListener('scroll', onWindowScroll, true)
 })
 onBeforeUnmount(() => {
   mediaRequest += 1
   clearMediaUrl()
   clearDecryptedUrl()
+  if (copiedPreviewTimer) clearTimeout(copiedPreviewTimer)
   window.removeEventListener('keydown', onWindowKeydown)
   window.removeEventListener('click', onWindowClick)
+  window.removeEventListener('scroll', onWindowScroll, true)
 })
 </script>
 
@@ -455,28 +475,35 @@ onBeforeUnmount(() => {
                 <path d="m4.5 6 3.5 3.5L11.5 6" />
               </svg>
             </button>
-            <div v-if="openMenuOpen" class="copy-menu open-menu" role="menu" aria-label="Open options">
-              <a :href="previewPageUrl" target="_blank" rel="noopener" role="menuitem" class="copy-menu-item">
-                <span class="copy-menu-title">Open preview</span>
-                <span class="copy-menu-note">Share page in a new tab</span>
-              </a>
-              <a :href="openRawUrl" target="_blank" rel="noopener" role="menuitem" class="copy-menu-item">
-                <span class="copy-menu-title">Open raw</span>
-                <span class="copy-menu-note">{{ decryptedUrl ? 'Decrypted file in a new tab' : 'Direct file in a new tab' }}</span>
-              </a>
-            </div>
+            <Transition name="dropdown-fade">
+              <div v-if="openMenuOpen" class="copy-menu open-menu" role="menu" aria-label="Open options">
+                <a :href="previewPageUrl" target="_blank" rel="noopener" role="menuitem" class="copy-menu-item">
+                  <span class="copy-menu-title">Open preview</span>
+                  <span class="copy-menu-note">Share page in a new tab</span>
+                </a>
+                <a :href="openRawUrl" target="_blank" rel="noopener" role="menuitem" class="copy-menu-item">
+                  <span class="copy-menu-title">Open raw</span>
+                  <span class="copy-menu-note">{{ decryptedUrl ? 'Decrypted file in a new tab' : 'Direct file in a new tab' }}</span>
+                </a>
+              </div>
+            </Transition>
           </div>
           <div class="copy-actions">
             <button
               class="btn-ghost btn-copy"
-              aria-label="Copy file content or URL"
-              @click="copyUrlValue(previewPageUrl)"
+              :aria-label="copiedPreview ? 'Copied' : 'Copy file content or URL'"
+              @click="copyUrlValue(previewPageUrl, true)"
             >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <rect x="5.25" y="5.25" width="7.25" height="8.25" rx="1" />
-                <path d="M10.25 5.25V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1v7.25a1 1 0 0 0 1 1h1.75" />
-              </svg>
-              <span>Copy</span>
+              <Transition name="copy-feedback" mode="out-in">
+                <svg v-if="copiedPreview" key="copied" class="copy-feedback-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 4 4L19 6" />
+                </svg>
+                <svg v-else key="copy" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="5.25" y="5.25" width="7.25" height="8.25" rx="1" />
+                  <path d="M10.25 5.25V3.5a1 1 0 0 0-1-1H3.5a1 1 0 0 0-1 1v7.25a1 1 0 0 0 1 1h1.75" />
+                </svg>
+              </Transition>
+              <span>{{ copiedPreview ? 'Copied' : 'Copy' }}</span>
             </button>
             <button
               class="btn-ghost btn-copy-menu"
@@ -489,20 +516,22 @@ onBeforeUnmount(() => {
                 <path d="m4.5 6 3.5 3.5L11.5 6" />
               </svg>
             </button>
-            <div v-if="copyMenuOpen" class="copy-menu" role="menu" aria-label="Copy options">
-              <button role="menuitem" @click="copyPreviewContent">
-                <span class="copy-menu-title">Copy content</span>
-                <span class="copy-menu-note">{{ isImage ? 'Image' : isText ? 'Preview text' : 'File link' }}</span>
-              </button>
-              <button role="menuitem" @click="copyUrlValue(previewPageUrl)">
-                <span class="copy-menu-title">Copy preview URL</span>
-                <span class="copy-menu-note">Share page</span>
-              </button>
-              <button role="menuitem" :disabled="!!decryptedUrl" @click="copyUrlValue(rawFileUrl)">
-                <span class="copy-menu-title">Copy raw URL</span>
-                <span class="copy-menu-note">{{ decryptedUrl ? 'Decrypted blobs cannot be shared as URLs' : 'Direct file' }}</span>
-              </button>
-            </div>
+            <Transition name="dropdown-fade">
+              <div v-if="copyMenuOpen" class="copy-menu" role="menu" aria-label="Copy options">
+                <button role="menuitem" @click="copyPreviewContent">
+                  <span class="copy-menu-title">Copy content</span>
+                  <span class="copy-menu-note">{{ isImage ? 'Image' : isText ? 'Preview text' : 'File link' }}</span>
+                </button>
+                <button role="menuitem" @click="copyUrlValue(previewPageUrl)">
+                  <span class="copy-menu-title">Copy preview URL</span>
+                  <span class="copy-menu-note">Share page</span>
+                </button>
+                <button role="menuitem" :disabled="!!decryptedUrl" @click="copyUrlValue(rawFileUrl)">
+                  <span class="copy-menu-title">Copy raw URL</span>
+                  <span class="copy-menu-note">{{ decryptedUrl ? 'Decrypted blobs cannot be shared as URLs' : 'Direct file' }}</span>
+                </button>
+              </div>
+            </Transition>
           </div>
         </div>
       </div>

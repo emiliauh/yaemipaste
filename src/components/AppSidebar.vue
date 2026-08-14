@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useTheme, type ThemeMode } from '../lib/theme'
 import { usePublicSettings } from '../lib/publicSettings'
 
 const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
+const MOBILE_NAV_COLLAPSED_KEY = 'yp_mobile_nav_collapsed_v2'
 
 const props = withDefaults(defineProps<{
   activeTab: 'files' | 'history' | 'admin' | null
@@ -33,6 +34,11 @@ const emit = defineEmits<{
 
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
 const { appName, publicSettings } = usePublicSettings()
+const mobileNavCollapsed = ref(false)
+
+if (typeof window !== 'undefined') {
+  mobileNavCollapsed.value = window.localStorage.getItem(MOBILE_NAV_COLLAPSED_KEY) === '1'
+}
 
 const themeOptions: Array<{ mode: ThemeMode; label: string }> = [
   { mode: 'system', label: 'Auto' },
@@ -51,6 +57,14 @@ function toggleCollapsed() {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
   }
   emit('update:collapsed', next)
+}
+
+function toggleMobileNav() {
+  const next = !mobileNavCollapsed.value
+  mobileNavCollapsed.value = next
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(MOBILE_NAV_COLLAPSED_KEY, next ? '1' : '0')
+  }
 }
 
 function toggleCompactTheme() {
@@ -235,8 +249,46 @@ function toggleCompactTheme() {
     </div>
   </aside>
 
-  <nav class="mobile-tabbar" aria-label="Primary mobile" data-testid="mobile-tabbar">
-    <div class="mobile-tabbar-main" :class="{ 'has-admin': showAdmin }">
+  <nav
+    class="mobile-tabbar"
+    :class="{ 'is-collapsed': mobileNavCollapsed }"
+    aria-label="Primary mobile"
+    data-testid="mobile-tabbar"
+  >
+    <div class="mobile-nav-cluster">
+      <button
+        v-if="showSettings"
+        class="mobile-tabbar-settings"
+        :class="{ active: settingsOpen }"
+        type="button"
+        aria-label="Preferences"
+        aria-controls="settings-panel"
+        :aria-expanded="settingsOpen"
+        data-testid="mobile-nav-preferences"
+        @click="emit('toggle-settings')"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+        </svg>
+      </button>
+      <div class="mobile-nav-ribbon">
+      <button
+        class="mobile-tabbar-toggle"
+        type="button"
+        :aria-label="mobileNavCollapsed ? 'Expand navigation' : 'Collapse navigation'"
+        :aria-expanded="!mobileNavCollapsed"
+        data-testid="mobile-nav-toggle"
+        @click="toggleMobileNav"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 7h16" />
+          <path d="M4 12h16" />
+          <path d="M4 17h16" />
+        </svg>
+      </button>
+        <Transition name="mobile-nav-content">
+    <div v-if="!mobileNavCollapsed" class="mobile-tabbar-main" :class="{ 'has-history': showHistory, 'has-admin': showAdmin }">
       <button
         type="button"
         :class="{ active: activeTab === 'files' }"
@@ -251,7 +303,7 @@ function toggleCompactTheme() {
             <path d="M5 20h14" />
           </svg>
         </span>
-        <span>Files</span>
+        <span class="mobile-tab-label">Files</span>
       </button>
       <button
         v-if="showHistory"
@@ -268,7 +320,7 @@ function toggleCompactTheme() {
             <path d="M12 7v5l3 2" />
           </svg>
         </span>
-        <span>History</span>
+        <span class="mobile-tab-label">History</span>
       </button>
       <button
         v-if="showAdmin"
@@ -284,25 +336,12 @@ function toggleCompactTheme() {
             <path d="M9 12l2 2 4-4" />
           </svg>
         </span>
-        <span>Admin</span>
+        <span class="mobile-tab-label">Admin</span>
       </button>
     </div>
-    <button
-      v-if="showSettings"
-      class="mobile-tabbar-settings"
-      :class="{ active: settingsOpen }"
-      type="button"
-      aria-label="Preferences"
-      aria-controls="settings-panel"
-      :aria-expanded="settingsOpen"
-      data-testid="mobile-nav-preferences"
-      @click="emit('toggle-settings')"
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
-      </svg>
-    </button>
+        </Transition>
+      </div>
+    </div>
   </nav>
 </template>
 
@@ -718,6 +757,12 @@ function toggleCompactTheme() {
   display: none;
 }
 
+.mobile-nav-cluster,
+.mobile-tabbar-settings,
+.mobile-tabbar-toggle {
+  display: none;
+}
+
 @media (max-width: 600px) {
   .sidebar {
     display: none;
@@ -725,64 +770,92 @@ function toggleCompactTheme() {
 
   .mobile-tabbar {
     position: fixed;
-    left: var(--mobile-chrome-left);
-    right: var(--mobile-chrome-right);
+    left: calc(var(--mobile-chrome-left) + var(--mobile-nav-inset));
+    right: auto;
+    width: calc(100vw - var(--mobile-chrome-left) - var(--mobile-nav-inset) - var(--mobile-chrome-right) - var(--mobile-nav-inset));
+    max-width: calc(100vw - var(--mobile-chrome-left) - var(--mobile-nav-inset) - var(--mobile-chrome-right) - var(--mobile-nav-inset));
     bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     z-index: 110;
+    display: block;
+    pointer-events: none;
+    transition: width var(--duration-base) var(--ease-out);
+  }
+
+  .mobile-tabbar.is-collapsed {
+    width: 58px;
+  }
+
+  .mobile-nav-cluster {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .mobile-nav-ribbon {
+    position: relative;
+    width: 100%;
+    height: 58px;
+    --mobile-ribbon-radius: 18px;
+    --mobile-ribbon-overlap: var(--mobile-ribbon-radius);
     display: flex;
     align-items: stretch;
-    gap: 10px;
+    pointer-events: none;
   }
 
-  .mobile-tabbar-main {
-    min-width: 0;
-    flex: auto;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-    padding: 6px;
-    border: 1px solid var(--border);
-    border-radius: 13px;
-    background: var(--surface);
-    box-shadow: 0 10px 24px var(--shadow);
-  }
-
-  .mobile-tabbar-main.has-admin {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .mobile-tabbar-main button,
-  .mobile-tabbar-settings {
-    min-height: 44px;
+  .mobile-tabbar-settings,
+  .mobile-tabbar-toggle {
+    width: 58px;
+    height: 58px;
+    min-height: 58px;
+    flex: 0 0 58px;
     display: inline-flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    padding: 2px;
-    border: 1px solid transparent;
-    background: transparent;
+    padding: 0;
     color: var(--text2);
-    font-weight: 600;
-    font-size: 11px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: 0 10px 24px var(--shadow);
+    pointer-events: auto;
     touch-action: manipulation;
+    transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), border-radius var(--duration-base) var(--ease-out), transform var(--duration-fast) var(--ease-out);
   }
 
-  .mobile-tabbar-main button.active {
-    border-color: var(--border);
-    background: var(--surface2, var(--bg2));
+  .mobile-tabbar-settings {
+    pointer-events: auto;
+  }
+
+  .mobile-tabbar-settings:hover,
+  .mobile-tabbar-settings:focus-visible,
+  .mobile-tabbar-settings.active,
+  .mobile-tabbar-toggle:hover,
+  .mobile-tabbar-toggle:focus-visible,
+  .mobile-tabbar.is-collapsed .mobile-tabbar-toggle {
     color: var(--text);
+    background: var(--surface2, var(--bg2));
+    border-color: var(--border2);
   }
 
-  .mobile-tabbar .nav-icon {
-    width: 22px;
-    height: 22px;
-    border: none;
-    background: transparent;
+  .mobile-tabbar-toggle {
+    position: relative;
+    z-index: 1;
+    border-right: 1px solid var(--border);
+    border-radius: var(--mobile-ribbon-radius);
   }
-  .mobile-tabbar-settings svg {
-    width: 22px;
-    height: 22px;
+
+  .mobile-tabbar.is-collapsed .mobile-tabbar-toggle {
+    border-right: 1px solid var(--border);
+    border-radius: var(--mobile-ribbon-radius);
+  }
+
+  .mobile-tabbar-settings svg,
+  .mobile-tabbar-toggle svg {
+    width: 21px;
+    height: 21px;
     flex: none;
     fill: none;
     stroke: currentColor;
@@ -791,18 +864,110 @@ function toggleCompactTheme() {
     stroke-linejoin: round;
   }
 
-  .mobile-tabbar-settings {
-    flex: 0 0 52px;
-    padding: 0;
-    border-color: var(--border);
-    border-radius: 14px;
+  .mobile-tabbar-main {
+    position: relative;
+    min-width: 0;
+    width: auto;
+    height: 58px;
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-left: calc(var(--mobile-ribbon-overlap) * -1);
+    padding: 6px 6px 6px calc(6px + var(--mobile-ribbon-overlap));
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    border-left: 0;
+    border-radius: 0 var(--mobile-ribbon-radius) var(--mobile-ribbon-radius) 0;
     background: var(--surface);
     box-shadow: 0 10px 24px var(--shadow);
+    pointer-events: auto;
+    transform-origin: left center;
+    transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
   }
-  .mobile-tabbar-settings.active {
-    border-color: var(--border2);
-    background: var(--surface2, var(--bg2));
+
+  .mobile-tabbar-main.has-history {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mobile-tabbar-main.has-admin {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mobile-tabbar-main button {
+    min-width: 0;
+    min-height: 44px;
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 2px 6px;
+    color: var(--text2);
+    font-weight: 600;
+    font-size: 11px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    touch-action: manipulation;
+    transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  }
+
+  .mobile-tabbar-main button:hover,
+  .mobile-tabbar-main button:focus-visible {
     color: var(--text);
+    background: color-mix(in srgb, var(--surface2, var(--bg2)) 72%, transparent);
+  }
+
+  .mobile-tabbar-main button.active {
+    color: var(--text);
+    border-color: var(--border);
+    background: var(--surface2, var(--bg2));
+  }
+
+  .mobile-tabbar .nav-icon {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border: none;
+    background: transparent;
+  }
+
+  .mobile-tabbar .mobile-tab-label {
+    display: block;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    white-space: nowrap;
+    transform: translateX(-4px);
+    transition: max-width var(--duration-base) var(--ease-out), opacity var(--duration-fast) var(--ease-out), transform var(--duration-base) var(--ease-out);
+  }
+
+  .mobile-tabbar-main button.active .mobile-tab-label {
+    max-width: 64px;
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .mobile-nav-content-enter-active,
+  .mobile-nav-content-leave-active {
+    transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+  }
+
+  .mobile-nav-content-enter-from,
+  .mobile-nav-content-leave-to {
+    opacity: 0;
+    transform: translateX(-12px) scaleX(0.14);
+    transform-origin: left center;
+  }
+
+  .mobile-nav-content-leave-active {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 58px;
   }
 }
+
 </style>

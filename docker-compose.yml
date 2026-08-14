@@ -27,7 +27,7 @@ services:
       SERVER__URL: ${PASTE_URL:-http://localhost:8080}
       SERVER__ADDRESS: 0.0.0.0:8000
       SERVER__UPLOAD_PATH: /var/lib/yaemipaste/upload
-      MAX_UPLOAD_DIR_SIZE: ${MAX_UPLOAD_DIR_SIZE:-10GiB}
+      MAX_UPLOAD_DIR_SIZE: ${MAX_UPLOAD_DIR_SIZE:-0}
     volumes:
       - ./docker/yaemipaste/config.toml:/etc/yaemipaste/config.toml:ro
       - yaemipaste-upload:/var/lib/yaemipaste/upload
@@ -74,7 +74,7 @@ services:
 
 networks:
   yaemipaste:
-    name: yaemipaste
+    name: ${COMPOSE_NETWORK_NAME:-yaemipaste}
 
 volumes:
   yaemipaste-upload:

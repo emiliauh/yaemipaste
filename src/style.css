@@ -63,10 +63,13 @@
   --space-6: 32px;
   --space-7: 48px;
   --space-8: 64px;
-  --mobile-bar-space: calc(82px + env(safe-area-inset-bottom, 0px));
+  --mobile-bar-space: calc(122px + env(safe-area-inset-bottom, 0px));
   /* Fixed mobile chrome (tab bar, settings sheet) shares the workspace gutter. */
-  --mobile-chrome-left: 12px;
-  --mobile-chrome-right: 12px;
+  --mobile-chrome-left: 16px;
+  --mobile-chrome-right: 16px;
+  /* The floating navigation follows the visible controls inside the upload
+     panel, including its border and mobile padding. */
+  --mobile-nav-inset: 4px;
   --sidebar-w: 228px;
   --sidebar-w-tablet: 208px;
   --sidebar-w-collapsed: 72px;
@@ -121,6 +124,68 @@
   }
 }
 
+/* Shared motion for menus and the small inline panels that replace them. */
+.dropdown-fade-enter-active,
+.dropdown-fade-leave-active,
+.panel-fade-enter-active,
+.panel-fade-leave-active {
+  transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+  will-change: opacity, transform;
+}
+.dropdown-fade-enter-from,
+.dropdown-fade-leave-to,
+.panel-fade-enter-from,
+.panel-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(.985);
+}
+.copy-feedback-enter-active,
+.copy-feedback-leave-active {
+  transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+.copy-feedback-enter-from,
+.copy-feedback-leave-to {
+  opacity: 0;
+  transform: scale(.72);
+}
+.copy-feedback-icon {
+  color: var(--on-accent);
+}
+.search-spinner {
+  transform-origin: center;
+  animation: search-spinner-spin .7s linear infinite;
+}
+.search-clear {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text3);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+.search-clear:hover {
+  background: color-mix(in srgb, var(--bg3) 72%, transparent);
+  color: var(--text);
+}
+.upload-search .search-clear {
+  right: var(--space-3);
+}
+@keyframes search-spinner-spin {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
@@ -160,7 +225,7 @@ body {
 /* ── Dashboard shell ───────────────────────────────────────────────────── */
 .layout,
 .workspace {
-  background: transparent;
+  background: var(--surface);
 }
 
 
@@ -170,6 +235,8 @@ body {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+.workspace::-webkit-scrollbar-track { background: var(--surface); }
+.workspace { scrollbar-color: var(--bg3) var(--surface); }
 
 /* ── Inputs ────────────────────────────────────────────────────────────── */
 input, textarea {
@@ -485,4 +552,8 @@ button:active:not(:disabled),
   .file-table th.col-size,
   .file-table td.expiry,
   .file-table th.col-expiry { display: none; }
+
+  .settings-panel {
+    border-radius: var(--radius-lg);
+  }
 }

@@ -1,7 +1,7 @@
-# Environment Reference
+# Environment reference
 
-This file explains the variables in `.env.example` and how they affect the
-native Vue and NestJS deployment.
+This file lists the variables in `.env.example`. It explains how each variable
+affects the Vue frontend and NestJS backend.
 
 ## Quick Start
 
@@ -9,7 +9,7 @@ native Vue and NestJS deployment.
 cp .env.example .env
 ```
 
-Then edit only what your deployment needs.
+Edit only the values required by your deployment.
 
 Same-host deployment starts both Compose profiles:
 
@@ -19,12 +19,12 @@ COMPOSE_PROFILES=ui,api docker compose up -d
 ```
 
 The standard same-host setup pulls prebuilt UI and API images. Use
-`DEPLOYMENT_IMAGE_MODE=build` only when changing compile-time `VITE_*` UI
-settings or using a split deployment.
+`DEPLOYMENT_IMAGE_MODE=build` when you change compile-time `VITE_*` UI settings
+or use a split deployment.
 
-The API service is the custom backend in `backend/nestjs`. It stores auth and
-administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
-`SERVER__UPLOAD_PATH`.
+The API service is the backend in `backend/nestjs`. It stores auth and
+administrator state in SQLite at `DB_PATH`. It stores upload bytes and
+metadata under `SERVER__UPLOAD_PATH`.
 
 ## Core Frontend Variables
 
@@ -49,7 +49,7 @@ administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
 | `DB_PATH` | Auth DB path inside the backend container | `/var/lib/yaemipaste-auth/users.db` |
 | `JWT_SECRET` | Required session-signing secret; production requires `openssl rand -hex 32` format (64 lowercase hex characters) | empty |
 | `TURNSTILE_SECRET_KEY` | Server-side Turnstile secret. If set without a matching `VITE_TURNSTILE_SITE_KEY`, the login page shows an explicit "Security check is misconfigured on the server" message rather than blocking silently. Keep both empty to disable Turnstile, or set both together. | empty |
-| `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key. Despite the `VITE_` prefix (kept for `.env` naming continuity), this is read by the **backend** at runtime, not baked into the frontend build - the UI fetches the live value from `/auth/admin/public-settings` on every page load. Change it via `.env` + `docker compose up -d`; no rebuild needed. | empty |
+| `VITE_TURNSTILE_SITE_KEY` | Login Turnstile site key. The `VITE_` prefix remains for environment-file compatibility, but the **backend** reads this value at runtime. The UI gets the current value from `/auth/admin/public-settings` on each page load. Change it in `.env`, then run `docker compose up -d`; no rebuild is needed. | empty |
 | `PASTE_PUBLIC_API` | Public API upload URL written into ShareX configs | empty |
 | `ALLOW_ANONYMOUS_UPLOADS` | Allow uploads without an account or token | `0` for new installs |
 | `REMOTE_UPLOADS_ENABLED` | Allow backend URL-fetch uploads | `0` for new installs |
@@ -100,21 +100,20 @@ administrative state in SQLite at `DB_PATH` and upload bytes and metadata under
 
 ## Recommended Public Configuration
 
-For a new deployment:
+For a new deployment, use these values:
 - keep `VITE_PASTE_API=/api`
 - keep `VITE_AUTH_API=/auth`
 - use `VITE_FILE_RESOLVE_BASE=/api/resolve`
 - keep `RESOLVER_ENABLED=0`
 - keep `PASTE_URL` aligned with the frontend origin
 - set `JWT_SECRET` and `AUTH_ADMIN_BEARER` with `openssl rand -hex 32`
-- set upload policy flags explicitly before upgrading an existing deployment
+- set upload policy flags before upgrading an existing deployment
 
 ## Migration-Only Resolver
 
 `resolver-server/` is not part of the default backend. Enable it only while
-migrating an installation that explicitly depends on its older token-resolution
-behavior. New installations and completed NestJS migrations must keep
-`RESOLVER_ENABLED=0`.
+migrating an installation that needs its older token-resolution behavior. New
+installations and completed NestJS migrations must keep `RESOLVER_ENABLED=0`.
 
 If you enable it:
 - set `RESOLVER_ENABLED=1`
@@ -125,17 +124,17 @@ If you enable it:
 
 The native NestJS backend provides upload, list, delete, metadata, token-owner,
 public file, `/auth/*`, ShareX, and admin routes. Passkey routes are available
-when passkeys are enabled. Browser pages remain path-based SPA routes such as
-`/files`, `/history`, `/login`, `/register`, and `/admin`.
+when passkeys are enabled. Browser pages use SPA paths such as `/files`,
+`/history`, `/login`, `/register`, and `/admin`.
 
 ## Validation Checklist
 
-After changing env or deployment routing, validate:
+After changing environment values or deployment routing, check:
 - frontend build succeeds
 - upload works
 - history list loads
 - a public preview link opens
 - raw/download links resolve correctly
-- auth, passkeys, and token lifecycle commands only if those features are enabled
+- auth, passkeys, and token lifecycle commands when those features are enabled
 - ShareX configuration downloads and performs a multipart upload
-- SQLite and upload filesystem paths remain mounted after container replacement
+- SQLite and upload filesystem paths remain mounted after replacing a container

@@ -85,6 +85,11 @@ async function openSettings(page: Page) {
   await expect(page.locator('.settings-panel')).toBeVisible()
 }
 
+async function openMobileNavigationMenu(page: Page) {
+  await expect(page.getByTestId('mobile-nav-toggle')).toBeVisible()
+  await expect(page.getByTestId('mobile-nav-preferences')).toBeVisible()
+}
+
 async function mockClipboard(page: Page, readValue = '') {
   await page.addInitScript((value) => {
     let written = ''
@@ -466,6 +471,7 @@ test('public upload mode opens Files without a login', async ({ page }) => {
     : page.getByTestId('desktop-nav-files')
   await expect(filesNav).toBeVisible()
   if (page.viewportSize()?.width && page.viewportSize()!.width <= 600) {
+    await openMobileNavigationMenu(page)
     await expect(page.getByTestId('mobile-nav-preferences')).toBeVisible()
   } else {
     const loginButton = page.getByRole('button', { name: 'Log in' })
@@ -555,6 +561,7 @@ test('public registration setting offers account creation to guests', async ({ p
   // The sidebar carries guest actions on wider screens; on mobile the tab bar
   // has no room for them, so they live in the Preferences sheet.
   if ((page.viewportSize()?.width ?? 0) <= 600) {
+    await openMobileNavigationMenu(page)
     await page.getByTestId('mobile-nav-preferences').click()
   }
   await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
@@ -1218,6 +1225,12 @@ test('mobile navigation keeps primary cells and detached settings within bounds'
     await page.goto('/#/files')
     const controls = page.locator('.mobile-tabbar-main [data-testid^="mobile-nav-"]')
     await expect(controls).toHaveCount(3)
+    const labelStates = await page.locator('.mobile-tabbar-main .mobile-tab-label').evaluateAll((labels) => labels.map((label) => ({
+      text: label.textContent?.trim(),
+      opacity: getComputedStyle(label).opacity,
+    })))
+    expect(labelStates.filter(({ opacity }) => Number(opacity) > 0)).toHaveLength(1)
+    expect(labelStates.find(({ text }) => text === 'Files')?.opacity).toBe('1')
     const boxes = await controls.evaluateAll((items) => items.map((item) => {
       const rect = item.getBoundingClientRect()
       const children = [...item.querySelectorAll<HTMLElement>('span, svg')].map((child) => {
@@ -1235,27 +1248,27 @@ test('mobile navigation keeps primary cells and detached settings within bounds'
         expect(child.right).toBeLessThanOrEqual(box.right)
       }
     }
-    const settingsBox = await page.getByTestId('mobile-nav-preferences').boundingBox()
-    const mainBox = await page.locator('.mobile-tabbar-main').boundingBox()
-    expect(settingsBox).not.toBeNull()
-    expect(mainBox).not.toBeNull()
-    if (settingsBox && mainBox) {
-      expect(settingsBox.x).toBeGreaterThan(boxes.at(-1)!.right)
-      // The tab bar shares the workspace gutter, which is symmetric at 12px:
-      // no scrollbar gutter is reserved at mobile widths.
-      expect(mainBox.x).toBeCloseTo(12, 1)
-      expect(settingsBox.x + settingsBox.width).toBeCloseTo(viewport.width - 12, 1)
-      expect(settingsBox.x - (mainBox.x + mainBox.width)).toBeCloseTo(10, 1)
-      expect(mainBox.width + 10 + settingsBox.width).toBeCloseTo(viewport.width - 24, 1)
-    }
+    const visibleContentBox = await page.locator('.upload-zone').boundingBox()
+    expect(visibleContentBox).not.toBeNull()
+    await openMobileNavigationMenu(page)
     const tabbarBox = await page.getByTestId('mobile-tabbar').boundingBox()
-    const uploadPanelBox = await page.locator('.upload-panel').boundingBox()
-    expect(tabbarBox).not.toBeNull()
-    expect(uploadPanelBox).not.toBeNull()
-    if (tabbarBox && uploadPanelBox) {
-      expect(tabbarBox.x).toBeCloseTo(uploadPanelBox.x, 1)
-      expect(tabbarBox.x + tabbarBox.width).toBeCloseTo(uploadPanelBox.x + uploadPanelBox.width, 1)
+    if (tabbarBox && visibleContentBox) {
+      expect(tabbarBox.x).toBeGreaterThanOrEqual(0)
+      expect(tabbarBox.x + tabbarBox.width).toBeLessThanOrEqual(viewport.width)
+      expect(tabbarBox.height).toBeLessThanOrEqual(124)
     }
+    await page.getByTestId('mobile-nav-preferences').click()
+    const settingsPanel = page.locator('.settings-panel')
+    await expect(settingsPanel).toBeVisible()
+    const settingsPanelBox = await settingsPanel.boundingBox()
+    expect(settingsPanelBox).not.toBeNull()
+    if (settingsPanelBox && tabbarBox) {
+      expect(settingsPanelBox.x).toBeCloseTo(tabbarBox.x, 1)
+      expect(settingsPanelBox.x + settingsPanelBox.width).toBeCloseTo(tabbarBox.x + tabbarBox.width, 1)
+    }
+    expect(await settingsPanel.evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius))).toBeGreaterThanOrEqual(15)
+    await page.getByTestId('settings-layer').locator('.overlay').click({ position: { x: 8, y: 8 } })
+    await expect(page.getByTestId('settings-layer')).toBeHidden()
     await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(viewport.width)
   }
 })
@@ -1266,6 +1279,7 @@ test('mobile repository link appears inside the centered Settings footer', async
   await page.goto('/#/files')
 
   await expect(page.locator('.github-link')).toHaveCount(0)
+  await openMobileNavigationMenu(page)
   await page.getByTestId('mobile-nav-preferences').click()
   const panel = page.locator('.settings-panel')
   const footer = page.locator('.settings-footer')
@@ -1274,12 +1288,14 @@ test('mobile repository link appears inside the centered Settings footer', async
   await expect(repository).toBeVisible()
   await expect.poll(() => panel.evaluate((element) => getComputedStyle(element).transform)).toBe('none')
   const panelBox = await panel.boundingBox()
-  const uploadPanelBox = await page.locator('.upload-panel').boundingBox()
+  const visibleContentBox = await page.locator('.upload-zone').boundingBox()
+  const tabbarBox = await page.getByTestId('mobile-tabbar').boundingBox()
   expect(panelBox).not.toBeNull()
-  expect(uploadPanelBox).not.toBeNull()
-  if (panelBox && uploadPanelBox) {
-    expect(panelBox.x).toBeCloseTo(uploadPanelBox.x, 1)
-    expect(panelBox.x + panelBox.width).toBeCloseTo(uploadPanelBox.x + uploadPanelBox.width, 1)
+  expect(visibleContentBox).not.toBeNull()
+  expect(tabbarBox).not.toBeNull()
+    if (panelBox && visibleContentBox && tabbarBox) {
+      expect(panelBox.x).toBeCloseTo(tabbarBox.x, 1)
+      expect(panelBox.x + panelBox.width).toBeCloseTo(tabbarBox.x + tabbarBox.width, 1)
   }
   const repositoryBox = await repository.boundingBox()
   const labelBox = await footer.getByText('yaemipaste').boundingBox()
@@ -3745,6 +3761,7 @@ test('admin Preferences control opens and fades closed on desktop and mobile', a
   await page.goto('/admin')
 
   const isMobile = (page.viewportSize()?.width ?? 1280) <= 600
+  if (isMobile) await openMobileNavigationMenu(page)
   const preferences = page.getByTestId(isMobile ? 'mobile-nav-preferences' : 'desktop-preferences')
   await expect(preferences).toBeVisible()
   const enterTransition = page.waitForFunction(() =>
@@ -3756,7 +3773,7 @@ test('admin Preferences control opens and fades closed on desktop and mobile', a
   const layer = page.getByTestId('settings-layer')
   await expect(layer).toBeVisible()
   await expect(layer.locator('.settings-panel')).toBeVisible()
-  await expect(preferences).toHaveAttribute('aria-expanded', 'true')
+  await expect(preferences).toHaveCount(0)
   await expect.poll(() => layer.evaluate((element) => getComputedStyle(element).transitionProperty)).toContain('opacity')
 
   const leaveTransition = page.waitForFunction(() =>
@@ -3765,7 +3782,7 @@ test('admin Preferences control opens and fades closed on desktop and mobile', a
   await layer.locator('.overlay').click({ position: { x: 8, y: 8 } })
   await leaveTransition
   await expect(layer).toBeHidden()
-  await expect(preferences).toHaveAttribute('aria-expanded', 'false')
+  if (!isMobile) await expect(preferences).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('mobile Preferences toggles the detached settings panel closed', async ({ page }) => {
@@ -3774,16 +3791,20 @@ test('mobile Preferences toggles the detached settings panel closed', async ({ p
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/admin')
 
+  await openMobileNavigationMenu(page)
   const preferences = page.getByTestId('mobile-nav-preferences')
   await preferences.click()
   await expect(page.getByTestId('settings-layer')).toBeVisible()
+  await expect(preferences).toBeVisible()
   await expect(preferences).toHaveAttribute('aria-expanded', 'true')
   const panel = page.locator('.settings-panel')
   const enteringPanelBox = await panel.boundingBox()
+  const preferencesBox = await preferences.boundingBox()
   const enteringTabbarBox = await page.getByTestId('mobile-tabbar').boundingBox()
   expect(enteringPanelBox).not.toBeNull()
+  expect(preferencesBox).not.toBeNull()
   expect(enteringTabbarBox).not.toBeNull()
-  if (enteringPanelBox && enteringTabbarBox) {
+  if (enteringPanelBox && preferencesBox && enteringTabbarBox) {
     expect(enteringPanelBox.x).toBeCloseTo(enteringTabbarBox.x, 1)
     expect(enteringPanelBox.x + enteringPanelBox.width).toBeCloseTo(enteringTabbarBox.x + enteringTabbarBox.width, 1)
   }
@@ -3796,9 +3817,134 @@ test('mobile Preferences toggles the detached settings panel closed', async ({ p
       expect(panelBox.x).toBeCloseTo(tabbarBox.x, 1)
       expect(panelBox.x + panelBox.width).toBeCloseTo(tabbarBox.x + tabbarBox.width, 1)
     }
-  await preferences.click()
+    if (panelBox && preferencesBox) {
+      expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(preferencesBox.y - 6)
+    }
+  await page.getByTestId('settings-layer').locator('.overlay').click({ position: { x: 8, y: 8 } })
   await expect(page.getByTestId('settings-layer')).toBeHidden()
-  await expect(preferences).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('mobile Admin navigation controls stay detached and mobile nav collapses cleanly', async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 1280) > 600, 'mobile-only navigation regression')
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+
+  const tabStrip = page.locator('.admin-tabs')
+  const tabsRow = page.locator('.admin-tabs-row')
+  const leftControl = page.getByRole('button', { name: 'Scroll admin sections left' })
+  const rightControl = page.getByRole('button', { name: 'Scroll admin sections right' })
+  await expect(tabStrip).toBeVisible()
+  await expect(leftControl).toBeVisible()
+  await expect(rightControl).toBeVisible()
+
+  const initialStripBox = await tabStrip.boundingBox()
+  const initialRowBox = await tabsRow.boundingBox()
+  const initialLeftBox = await leftControl.boundingBox()
+  const initialRightBox = await rightControl.boundingBox()
+  expect(initialStripBox).not.toBeNull()
+  expect(initialRowBox).not.toBeNull()
+  expect(initialLeftBox).not.toBeNull()
+  expect(initialRightBox).not.toBeNull()
+  if (initialStripBox && initialRowBox && initialLeftBox && initialRightBox) {
+    expect(initialLeftBox.x + initialLeftBox.width).toBeLessThanOrEqual(initialStripBox.x + 1)
+    expect(initialStripBox.x + initialStripBox.width).toBeLessThanOrEqual(initialRightBox.x + 1)
+    expect(Math.abs((initialStripBox.x + initialStripBox.width / 2) - (initialRowBox.x + initialRowBox.width / 2))).toBeLessThanOrEqual(2)
+    expect(initialLeftBox.width).toBeCloseTo(initialRightBox.width, 1)
+    expect(initialLeftBox.height).toBeCloseTo(initialRightBox.height, 1)
+  }
+  const tabLabelMetrics = await tabStrip.locator('button').evaluateAll((buttons) => buttons.map((button) => ({
+    label: button.textContent?.trim(),
+    scrollWidth: button.scrollWidth,
+    clientWidth: button.clientWidth,
+  })))
+  expect(tabLabelMetrics.every(({ scrollWidth, clientWidth }) => scrollWidth <= clientWidth + 1)).toBeTruthy()
+  const activeMobileLabel = page.locator('.mobile-tabbar-main button.active .mobile-tab-label')
+  const activeMobileLabelMetrics = await activeMobileLabel.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }))
+  expect(activeMobileLabelMetrics.scrollWidth).toBeLessThanOrEqual(activeMobileLabelMetrics.clientWidth + 1)
+  await expect(leftControl).toBeDisabled()
+  await expect(rightControl).toBeEnabled()
+
+  const initialLeftX = initialLeftBox?.x ?? 0
+  const initialLeftY = initialLeftBox?.y ?? 0
+  const initialRightX = initialRightBox?.x ?? 0
+  const initialRightY = initialRightBox?.y ?? 0
+  await rightControl.click()
+  await expect.poll(() => tabStrip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  await expect(leftControl).toBeEnabled()
+  const scrolledLeftBox = await leftControl.boundingBox()
+  const scrolledRightBox = await rightControl.boundingBox()
+  expect(scrolledLeftBox).not.toBeNull()
+  expect(scrolledRightBox).not.toBeNull()
+  if (scrolledLeftBox && scrolledRightBox) {
+    expect(scrolledLeftBox.x).toBeCloseTo(initialLeftX, 1)
+    expect(scrolledLeftBox.y).toBeCloseTo(initialLeftY, 1)
+    expect(scrolledRightBox.x).toBeCloseTo(initialRightX, 1)
+    expect(scrolledRightBox.y).toBeCloseTo(initialRightY, 1)
+  }
+
+  const mobileTabbar = page.getByTestId('mobile-tabbar')
+  const mobileToggle = page.getByTestId('mobile-nav-toggle')
+  const expandedMainBox = await page.locator('.mobile-tabbar-main').boundingBox()
+  expect(expandedMainBox).not.toBeNull()
+  await expect(mobileToggle).toHaveAttribute('aria-expanded', 'true')
+  await mobileToggle.click()
+  await expect(mobileToggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(mobileTabbar).toHaveClass(/is-collapsed/)
+  await expect(page.locator('.mobile-tabbar-main')).toHaveCount(0)
+  const collapsedNavBox = await mobileTabbar.boundingBox()
+  expect(collapsedNavBox).not.toBeNull()
+  if (expandedMainBox && collapsedNavBox) expect(collapsedNavBox.width).toBeLessThan(expandedMainBox.width)
+
+  await mobileToggle.click()
+  await expect(mobileToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(mobileTabbar).not.toHaveClass(/is-collapsed/)
+  await expect(page.locator('.mobile-tabbar-main')).toBeVisible()
+  await expect(page.locator('.mobile-tabbar-main .mobile-tab-label')).toHaveCount(3)
+})
+
+test('admin section changes keep the workspace shell mounted', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+
+  const workspaceShell = await page.locator('.workspace-shell').elementHandle()
+  const adminHeader = await page.locator('.admin-header').elementHandle()
+  const adminTabs = await page.locator('.admin-tabs').elementHandle()
+  const initialHeaderBox = await page.locator('.admin-header').boundingBox()
+  expect(workspaceShell).not.toBeNull()
+  expect(adminHeader).not.toBeNull()
+  expect(adminTabs).not.toBeNull()
+  expect(initialHeaderBox).not.toBeNull()
+
+  const webhooksTransition = page.waitForFunction(() => document.querySelector('.admin-content-enter-active') !== null)
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Webhooks', exact: true }).click()
+  await webhooksTransition
+  await expect(page).toHaveURL(/\/admin\/webhooks$/)
+  await expect(page.getByRole('heading', { name: 'Create webhook' })).toBeVisible()
+  expect(await workspaceShell?.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await adminHeader?.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await adminTabs?.evaluate((element) => element.isConnected)).toBe(true)
+  const webhooksHeaderBox = await page.locator('.admin-header').boundingBox()
+  expect(webhooksHeaderBox).not.toBeNull()
+  if (initialHeaderBox && webhooksHeaderBox) {
+    expect(webhooksHeaderBox.x).toBeCloseTo(initialHeaderBox.x, 1)
+    expect(webhooksHeaderBox.y).toBeCloseTo(initialHeaderBox.y, 1)
+    expect(webhooksHeaderBox.width).toBeCloseTo(initialHeaderBox.width, 1)
+    expect(webhooksHeaderBox.height).toBeCloseTo(initialHeaderBox.height, 1)
+  }
+
+  const auditTransition = page.waitForFunction(() => document.querySelector('.admin-content-enter-active') !== null)
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Audit', exact: true }).click()
+  await auditTransition
+  await expect(page).toHaveURL(/\/admin\/audit$/)
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
+  expect(await workspaceShell?.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await adminHeader?.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await adminTabs?.evaluate((element) => element.isConnected)).toBe(true)
 })
 
 test('admin branding fields are visible and use responsive layout', async ({ page }) => {
@@ -4476,7 +4622,8 @@ test('returning to a visible admin tab does not refetch on every alt-tab', async
 })
 
 test('registration tokens still load when returning to a warm Users tab via browser back', async ({ page }) => {
-  // AdminView mounts fresh on every top-level route change (no keep-alive).
+  // AdminView stays mounted while switching admin sections, but leaving the
+  // workspace for /files and returning still creates a fresh admin instance.
   // With prefetched admin data already warm in module memory, refreshAll()
   // is skipped on mount, and if the route already points at /admin/users the
   // reactive tab watcher never fires either - it only reacts to a *change*

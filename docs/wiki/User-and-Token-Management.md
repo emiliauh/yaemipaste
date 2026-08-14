@@ -1,6 +1,6 @@
-# User And Token Management
+# User and token management
 
-## First User
+## First user
 
 Use the installer:
 
@@ -9,39 +9,45 @@ Use the installer:
 ```
 
 This supports:
-- direct register flow with a registration token
-- admin bootstrap flow through the configured auth admin endpoint
 
-Typical bootstrap flow:
+- Direct registration with a registration token
+- Administrator bootstrap through the configured auth admin endpoint
+
+Typical bootstrap steps:
+
 1. Set `AUTH_ADMIN_BEARER` and the related admin endpoint variables in `.env`.
 2. Start the stack.
 3. Run `./install.sh --action init-user`.
-4. Use the created account to log in through the UI.
+4. Sign in to the UI with the created account.
 
-## Token Creation
+## Create a token
 
 ```bash
 ./install.sh --action create-token
 ```
 
-The installer sends a token creation request to the configured admin endpoint and prints the returned token.
+The installer sends a request to the configured admin endpoint. It prints the
+returned token.
 
 Use tokens for:
-- headless uploads
-- ShareX integration
-- non-interactive client access
 
-## Token Revocation
+- Headless uploads
+- ShareX
+- Non-interactive clients
+
+## Revoke a token
 
 ```bash
 ./install.sh --action revoke-token
 ```
 
-The revoke path supports `%s` substitution so the installer can inject the token value safely.
+The revoke path supports `%s`. The installer replaces it with the URL-encoded
+token value.
 
-Revocation should be treated as immediate credential invalidation. Rotate any stored client configs after revoking and recreating a token.
+Treat revocation as immediate credential invalidation. Rotate stored client
+configuration after you revoke and recreate a token.
 
-## Required Env Values
+## Required environment values
 
 - `AUTH_ADMIN_BASE_URL`
 - `AUTH_BOOTSTRAP_PATH`
@@ -50,91 +56,91 @@ Revocation should be treated as immediate credential invalidation. Rotate any st
 - `AUTH_REGISTER_URL`
 - `AUTH_ADMIN_BEARER`
 
-## Backend Contract
+## Backend contract
 
-These commands assume the NestJS backend exposes compatible auth administration endpoints.
-If your backend does not provide those routes, the installer cannot create the first user or manage tokens for you.
+These commands require compatible auth administration routes in the NestJS
+backend. If the backend does not provide them, the installer cannot create the
+first user or manage tokens.
 
-## Anonymous Mode
+## Anonymous mode
 
 If `VITE_ENABLE_AUTH=0`:
-- login and registration UI are disabled
-- user bootstrap and token lifecycle are usually irrelevant
-- backend auth routes may be omitted
 
-## Admin Panel
+- The login and registration UI is disabled.
+- User bootstrap and token lifecycle commands are usually not needed.
+- The backend can omit auth routes.
 
-yaemipaste ships a full self-hosted admin panel at `/admin` (Vue) backed by
-`/auth/admin/*` (NestJS). It is separate from the installer's legacy
-bootstrap/token flow above; the admin panel manages users, uploads, settings,
-webhooks, and an audit log through the web UI, with every route enforced
-server-side by a signed account JWT plus `users.is_admin=1`.
+## Admin panel
 
-### Claiming the first administrator
+yaemipaste provides an admin panel at `/admin`. The Vue UI uses
+`/auth/admin/*` in the NestJS backend. This panel is separate from the
+installer bootstrap and token flow.
 
-`install.sh` generates a one-time admin claim token automatically the first
-time it brings the stack up with `VITE_ENABLE_AUTH=1` (and whenever you ask
-for one explicitly):
+The panel manages users, uploads, settings, webhooks, and audit events. The
+backend checks every route with a signed account JWT and `users.is_admin=1`.
+
+### Claim the first administrator
+
+`install.sh` generates a one-time admin claim token when it first starts the
+stack with `VITE_ENABLE_AUTH=1`. You can also request one directly:
 
 ```bash
 ./install.sh --action admin-claim
 ```
 
-The installer prints the claim URL (`<PASTE_URL>/admin/claim`) and a
-one-time token. Open that URL, paste the token, and set a username/password
-for the first administrator. The token:
+The installer prints a claim URL (`<PASTE_URL>/admin/claim`) and a one-time
+token. Open the URL, enter the token, and set the first administrator's
+username and password.
 
-- is stored server-side only as a bcrypt hash (`admin_claims.token_hash`),
-  never in plaintext, and is not written anywhere in the repo or client code
-- is invalidated the instant it is consumed, via an atomic
-  `UPDATE ... WHERE used_at IS NULL` so two concurrent claim attempts cannot
-  both succeed
-- expires after 24h by default (`ttl_seconds` in the claim-init request can
-  override this)
+The token:
 
-If you need a fresh token (lost the old one, want to re-run onboarding),
-reset it explicitly — this invalidates any pending unused token:
+- Is stored only as a bcrypt hash in `admin_claims.token_hash`.
+- Is not stored in the repository or client code.
+- Becomes invalid when it is used. An atomic update prevents two claim attempts
+  from succeeding.
+- Expires after 24 hours by default. The `ttl_seconds` value in the claim-init
+  request can change this period.
+
+To create a new token, reset the current one:
 
 ```bash
 ./install.sh --action reset-admin-claim
 ```
 
-Once an administrator exists, `claim-init`/`claim` both return `409` and no
-further claim tokens are issued unless you reset again.
+This invalidates any unused claim token. After an administrator exists,
+`claim-init` and `claim` return `409`. They issue no new token until you reset
+the claim flow.
 
-### What the panel covers
+### Admin panel functions
 
-- **Overview** — total disk usage, per-user usage, user/upload counts,
-  recent uploads, recent audit entries, failed webhook deliveries, storage
+- **Overview** — Disk usage, per-user usage, user and upload counts, recent
+  uploads, recent audit entries, failed webhook deliveries, and storage
   warnings.
-- **Users** — create, promote/demote admin, suspend/unsuspend, rotate
-  upload tokens, purge a user's uploads, delete a user (last administrator
-  cannot be removed or demoted).
-- **Uploads** — browse/filter all uploads, delete individually, bulk
-  delete, purge expired uploads.
-- **Settings** — app name, public title, registration on/off, storage
-  warning threshold. No secret is ever returned in plaintext by any admin
-  endpoint.
-- **Webhooks** — add/enable/disable/test/delete endpoints for events like
-  `file.uploaded`, `file.deleted`, `user.created`, `user.suspended`,
-  `user.deleted`, `storage.threshold_reached`, `admin.purge.completed`.
-  Delivery is fire-and-forget (`actix_web::rt::spawn`) so a slow or failing
-  endpoint never blocks an upload/delete. Webhook secrets are stored as a
-  hash + masked preview only — signing was intentionally not implemented
-  rather than keep a retrievable plaintext secret around.
-- **Audit log** — claim/login, user create/delete/suspend, token
-  rotation, upload/bulk delete, purge actions, settings and webhook
-  changes, denied claim attempts.
+- **Users** — Create users, change administrator status, suspend users, rotate
+  upload tokens, purge uploads, and delete users. The last administrator cannot
+  be removed or demoted.
+- **Uploads** — Browse and filter uploads, delete files, delete selected files,
+  and purge expired files.
+- **Settings** — Change the app name, public title, registration state, and
+  storage warning threshold. Admin endpoints never return secrets in plain
+  text.
+- **Webhooks** — Add, enable, disable, test, and delete endpoints for events
+  such as `file.uploaded`, `file.deleted`, `user.created`, `user.suspended`,
+  `user.deleted`, `storage.threshold_reached`, and `admin.purge.completed`.
+  Delivery runs in the background. A slow or failing endpoint does not block an
+  upload or delete. Webhook secrets are stored as a hash with a masked
+  preview. Signing is not implemented.
+- **Audit log** — Claim, login, user, token, upload, purge, settings, webhook,
+  and denied-claim events.
 
-Destructive actions (delete user, purge a user's uploads, purge expired
-uploads, bulk delete) require typed confirmation text that is validated
-**server-side**, not just in the UI.
+Destructive actions require typed confirmation. The backend validates this
+confirmation. The UI is not the only validation layer.
 
 ### Known limitations
 
-- Default retention and per-request upload-size limits remain
-  `config.toml`-managed; they are not yet exposed as admin-editable DB
-  settings (would need a config hot-reload path this pass didn't add).
-- Admin destructive/mutating endpoints and `/auth/login` are rate-limited
-  per client key; `AUTH_ADMIN_BEARER` (installer-only bootstrap bearer)
-  itself has no separate lockout beyond that.
+- Default retention and per-request upload-size limits remain in
+  `config.toml`. The admin panel cannot change them because the backend does
+  not yet reload this configuration at runtime.
+- Admin mutation routes and `/auth/login` use per-client-key rate limits.
+  `AUTH_ADMIN_BEARER` is used only for installer bootstrap and has no separate
+  lockout.

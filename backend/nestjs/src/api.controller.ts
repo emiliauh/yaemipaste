@@ -24,13 +24,13 @@ function html(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character))
 }
 
-async function readRemoteBody(response: IncomingMessage, maximumBytes: number): Promise<Buffer> {
+async function readRemoteBody(response: IncomingMessage, maximumBytes?: number): Promise<Buffer> {
   const chunks: Buffer[] = []
   let total = 0
   for await (const value of response) {
     const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value)
     total += chunk.length
-    if (total > maximumBytes) {
+    if (maximumBytes != null && total > maximumBytes) {
       response.destroy()
       throw apiError(413, 'payload too large')
     }
@@ -39,7 +39,7 @@ async function readRemoteBody(response: IncomingMessage, maximumBytes: number): 
   return Buffer.concat(chunks, total)
 }
 
-async function fetchRemoteFile(start: URL, timeoutMs: number, maximumBytes: number): Promise<{ data: Buffer; name: string }> {
+async function fetchRemoteFile(start: URL, timeoutMs: number, maximumBytes?: number): Promise<{ data: Buffer; name: string }> {
   let current = start
   for (let attempt = 0; attempt < 5; attempt++) {
     let response: IncomingMessage
@@ -157,12 +157,25 @@ export class ApiController {
     const contentType = this.storage.contentType(displayName)
     const origin = this.config.value.publicUrl
     const previewUrl = `${origin}/file/${encodeURIComponent(token)}/preview`
+    // Social crawlers need a public URL that resolves directly to the media.
+    // The API raw route handles expiring filenames consistently behind both
+    // the bundled Nginx proxy and split-host reverse proxies.
     const rawUrl = `${origin}/api/${encodeURIComponent(fileName)}?raw=1`
     const description = `${contentType} · ${stat.size.toLocaleString('en-US')} bytes${uploader ? ` · ${uploader}` : ''}`
-    const imageMeta = contentType.startsWith('image/')
-      ? `<meta property="og:image" content="${html(rawUrl)}"><meta property="og:image:type" content="${html(contentType)}"><meta property="og:image:alt" content="${html(displayName)}">`
+    const isImage = contentType.startsWith('image/')
+    const isVideo = contentType.startsWith('video/')
+    const isAudio = contentType.startsWith('audio/')
+    const mediaType = isVideo ? 'video.other' : isAudio ? 'music.song' : 'website'
+    const imageMeta = isImage
+      ? `<meta property="og:image" content="${html(rawUrl)}"><meta property="og:image:url" content="${html(rawUrl)}"><meta property="og:image:secure_url" content="${html(rawUrl)}"><meta property="og:image:type" content="${html(contentType)}"><meta property="og:image:alt" content="${html(displayName)}">`
       : ''
-    const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${html(displayName)} · yaemipaste</title><meta name="description" content="${html(description)}"><link rel="canonical" href="${html(previewUrl)}"><meta property="og:type" content="website"><meta property="og:title" content="${html(displayName)}"><meta property="og:description" content="${html(description)}"><meta property="og:url" content="${html(previewUrl)}">${imageMeta}<meta name="twitter:card" content="${contentType.startsWith('image/') ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${html(displayName)}"><meta name="twitter:description" content="${html(description)}"></head><body><main><h1>${html(displayName)}</h1><p>${html(description)}</p><p><a href="${html(previewUrl)}">Open preview</a></p></main></body></html>`
+    const videoMeta = isVideo
+      ? `<meta property="og:video" content="${html(rawUrl)}"><meta property="og:video:secure_url" content="${html(rawUrl)}"><meta property="og:video:type" content="${html(contentType)}">`
+      : ''
+    const audioMeta = isAudio
+      ? `<meta property="og:audio" content="${html(rawUrl)}"><meta property="og:audio:secure_url" content="${html(rawUrl)}"><meta property="og:audio:type" content="${html(contentType)}">`
+      : ''
+    const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${html(displayName)} · yaemipaste</title><meta name="description" content="${html(description)}"><link rel="canonical" href="${html(previewUrl)}"><meta property="og:type" content="${mediaType}"><meta property="og:title" content="${html(displayName)}"><meta property="og:description" content="${html(description)}"><meta property="og:url" content="${html(previewUrl)}">${imageMeta}${videoMeta}${audioMeta}<meta name="twitter:card" content="${isImage ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${html(displayName)}"><meta name="twitter:description" content="${html(description)}">${isImage ? `<meta name="twitter:image" content="${html(rawUrl)}">` : ''}</head><body><main><h1>${html(displayName)}</h1><p>${html(description)}</p><p><a href="${html(previewUrl)}">Open preview</a></p></main></body></html>`
     return response.status(200).set({
       'Cache-Control': 'no-store',
       'CDN-Cache-Control': 'no-store',
@@ -217,7 +230,7 @@ export class ApiController {
       destination: tmpdir(),
       filename: (_request, file, callback) => callback(null, `yaemipaste-${randomUUID()}-${basename(file.originalname || 'file')}`),
     }),
-    limits: { fileSize: 256 * 1024 * 1024, files: 4 },
+    limits: { files: 4 },
   }))
   async upload(@Req() request: Request, @Res() response: Response, @UploadedFiles() files: Array<{ fieldname: string; buffer?: Buffer; path?: string; originalname: string }>) {
     const token = this.auth.requireUploadAccess(request)

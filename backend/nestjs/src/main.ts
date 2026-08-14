@@ -47,7 +47,7 @@ export async function createApp() {
   app.getHttpAdapter().getInstance().set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1))
   app.use((request: Request, response: Response, next: NextFunction) => {
     const length = Number(request.headers['content-length'] ?? 0)
-    if (Number.isFinite(length) && length > config.value.maxContentLength) return response.status(413).json({ code: 'payload_too_large', detail: 'payload too large' })
+    if (config.value.maxContentLength != null && Number.isFinite(length) && length > config.value.maxContentLength) return response.status(413).json({ code: 'payload_too_large', detail: 'payload too large' })
     if (!isMultipartUpload(request)) return next()
 
     const client = request.ip || request.socket.remoteAddress || 'unknown'
@@ -70,7 +70,7 @@ export async function createApp() {
     const guardChunk = (chunk: Buffer) => {
       if (rejected) return
       total += chunk.length
-      if (total <= config.value.maxContentLength) return
+      if (config.value.maxContentLength == null || total <= config.value.maxContentLength) return
       rejected = true
       const guardedRequest = request as GuardedRequest
       guardedRequest[aggregateUploadLimitExceeded] = true
@@ -85,7 +85,9 @@ export async function createApp() {
       if (!request.readableEnded && !request.destroyed) request.on('data', guardChunk)
     })
   })
-  app.use(json({ limit: `${Math.ceil(config.value.maxContentLength / 1024 / 1024)}mb` }))
+  // Multipart uploads are handled by Multer. Keep a finite JSON limit even
+  // when file uploads are unlimited, since JSON payloads are not file data.
+  app.use(json({ limit: config.value.maxContentLength != null ? `${Math.ceil(config.value.maxContentLength / 1024 / 1024)}mb` : '100mb' }))
   app.use(urlencoded({ extended: true, limit: '1mb' }))
   app.enableCors({ origin: config.value.corsOrigins.length ? config.value.corsOrigins : false, methods: config.value.corsMethods, allowedHeaders: config.value.corsHeaders, credentials: false })
   return { app, config }
