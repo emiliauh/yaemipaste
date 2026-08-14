@@ -56,6 +56,10 @@ The installer stores the generated JWT signing secret and admin bearer in
 `.env` with mode `0600`. Each later Compose command loads this file. You can
 run the installer from any working directory.
 
+The administrator and uploads are stored in Docker volumes. Removing the
+install directory alone does not create a fresh database. Use the uninstall
+action and confirm Docker volume removal before reinstalling on the same host.
+
 For an unattended install:
 
 ```bash

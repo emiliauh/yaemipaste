@@ -40,6 +40,13 @@ INSTALL_DIR_CREATED_THIS_RUN=0
 STACK_STARTED_THIS_RUN=0
 ROLLBACK_IN_PROGRESS=0
 
+compose_project_name() {
+  # Keep the historical default so existing installations continue to use
+  # their persistent volumes. A custom project name isolates multiple stacks
+  # on the same Docker host.
+  env_get_nonempty COMPOSE_PROJECT_NAME "$APP_NAME"
+}
+
 setup_ui() {
   if [[ -t 1 && "${TERM:-}" != "dumb" ]]; then
     UI_COLOR=1
@@ -454,7 +461,7 @@ compose() {
       die "Environment file not found at ${env_path}. Run the install action first so secrets are generated."
     fi
   fi
-  local resolver_enabled profiles profile image_mode
+  local resolver_enabled profiles profile image_mode project_name
   local -a profile_list
   local -a profile_args
   resolver_enabled="$(env_get RESOLVER_ENABLED "0")"
@@ -468,17 +475,19 @@ compose() {
     [[ -n "$profile" ]] && profile_args+=(--profile "$profile")
   done
   image_mode="$(env_get DEPLOYMENT_IMAGE_MODE "pull")"
+  project_name="$(compose_project_name)"
   local -a compose_args=(--env-file "$env_path" --project-directory "$INSTALL_DIR")
   local -a compose_files=(-f "${INSTALL_DIR}/${COMPOSE_FILE}")
   if [[ "$image_mode" == "build" ]]; then
     compose_files+=(-f "${INSTALL_DIR}/docker-compose.build.yml")
   fi
-  run "${COMPOSE_CMD[@]}" "${compose_args[@]}" "${compose_files[@]}" --project-name "$APP_NAME" "${profile_args[@]}" "$@"
+  run "${COMPOSE_CMD[@]}" "${compose_args[@]}" "${compose_files[@]}" --project-name "$project_name" "${profile_args[@]}" "$@"
 }
 
 compose_for_uninstall() {
   [[ ${#COMPOSE_CMD[@]} -gt 0 ]] || detect_compose_cmd
-  local uninstall_env down_status=0 purge_status=0
+  local uninstall_env down_status=0 purge_status=0 project_name
+  project_name="$(compose_project_name)"
   uninstall_env="$(mktemp)"
   # `down` must still work when the installation .env is incomplete or corrupt.
   # Keep production validation in compose(); these placeholders only satisfy
@@ -486,7 +495,7 @@ compose_for_uninstall() {
   # Compose still validates required image-tag interpolation during `down`.
   # Use safe placeholders so cleanup works even when .env is incomplete.
   printf 'JWT_SECRET=uninstall-placeholder\nAUTH_ADMIN_BEARER=uninstall-placeholder\nYAEMIPASTE_IMAGE_TAG=uninstall-placeholder\n' > "$uninstall_env"
-  if run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" --project-directory "$INSTALL_DIR" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$APP_NAME" down "$@"; then
+  if run "${COMPOSE_CMD[@]}" --env-file "$uninstall_env" --project-directory "$INSTALL_DIR" -f "${INSTALL_DIR}/${COMPOSE_FILE}" --project-name "$project_name" down "$@"; then
     :
   else
     down_status=$?
@@ -508,16 +517,66 @@ purge_compose_project_containers() {
     warn "Docker is unavailable while verifying ${APP_NAME} container cleanup."
     return 1
   }
-  local container_output
-  if ! container_output="$(docker ps -aq --filter "label=com.docker.compose.project=${APP_NAME}" 2>/dev/null)"; then
-    warn "Could not inspect Docker containers for ${APP_NAME}."
+  local container_output project_name
+  project_name="$(compose_project_name)"
+  if ! container_output="$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null)"; then
+    warn "Could not inspect Docker containers for ${project_name}."
     return 1
   fi
   [[ -n "$container_output" ]] || return 0
   local -a container_ids=()
   mapfile -t container_ids <<< "$container_output"
-  warn "Removing ${#container_ids[@]} remaining ${APP_NAME} container(s)."
+  warn "Removing ${#container_ids[@]} remaining ${project_name} container(s)."
   run docker rm -f "${container_ids[@]}"
+}
+
+purge_compose_project_volumes() {
+  [[ "$DRY_RUN" -eq 1 ]] && return 0
+  command_exists docker || {
+    warn "Docker is unavailable while verifying ${APP_NAME} volume cleanup."
+    return 1
+  }
+  local volume_output project_name
+  project_name="$(compose_project_name)"
+  if ! volume_output="$(docker volume ls -q --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null)"; then
+    warn "Could not inspect Docker volumes for ${project_name}."
+    return 1
+  fi
+  [[ -n "$volume_output" ]] || return 0
+  local -a volume_ids=()
+  mapfile -t volume_ids <<< "$volume_output"
+  warn "Removing ${#volume_ids[@]} persistent ${project_name} volume(s)."
+  run docker volume rm "${volume_ids[@]}"
+}
+
+purge_compose_project_networks() {
+  [[ "$DRY_RUN" -eq 1 ]] && return 0
+  command_exists docker || {
+    warn "Docker is unavailable while verifying ${APP_NAME} network cleanup."
+    return 1
+  }
+  local network_output project_name
+  project_name="$(compose_project_name)"
+  if ! network_output="$(docker network ls -q --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null)"; then
+    warn "Could not inspect Docker networks for ${project_name}."
+    return 1
+  fi
+  [[ -n "$network_output" ]] || return 0
+  local -a network_ids=()
+  mapfile -t network_ids <<< "$network_output"
+  warn "Removing ${#network_ids[@]} ${project_name} network(s)."
+  run docker network rm "${network_ids[@]}"
+}
+
+project_has_docker_resources() {
+  [[ "$DRY_RUN" -eq 1 ]] && return 1
+  command_exists docker || return 1
+  local project_name
+  project_name="$(compose_project_name)"
+  [[ -n "$(docker ps -aq --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null || true)" ]] && return 0
+  [[ -n "$(docker volume ls -q --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null || true)" ]] && return 0
+  [[ -n "$(docker network ls -q --filter "label=com.docker.compose.project=${project_name}" 2>/dev/null || true)" ]] && return 0
+  return 1
 }
 
 ensure_repo_present() {
@@ -667,6 +726,15 @@ extract_detail_from_json() {
   sed -nE 's/.*"(detail|error|message)"[[:space:]]*:[[:space:]]*"([^"]+)".*/\2/p' <<<"$body" | head -n 1
 }
 
+extract_admin_exists_from_json() {
+  local body="$1"
+  if command_exists jq; then
+    jq -r 'if .admin_exists == true then "true" elif .admin_exists == false then "false" else empty end' <<<"$body" 2>/dev/null
+    return 0
+  fi
+  sed -nE 's/.*"admin_exists"[[:space:]]*:[[:space:]]*(true|false).*/\1/p' <<<"$body" | head -n 1
+}
+
 wait_for_http() {
   local url="$1"
   local label="$2"
@@ -720,7 +788,7 @@ configure_env() {
     run chmod 0600 "$env_path"
   fi
 
-  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin internal_admin_origin configure_features turnstile_enabled direct_ip_access api_port image_tag
+  local ui_port public_url api_base auth_base sharex_enabled auth_enabled turnstile_key turnstile_secret jwt_secret admin_base bootstrap_path token_create_path token_revoke_path claim_init_path claim_status_path register_url admin_bearer passkeys_enabled passkey_rp_name passkey_rp_id passkey_origins resolver_enabled resolve_base deployment_mode split_role api_origin ui_bind cors_origins csp_connect auth_admin_origin internal_admin_origin configure_features turnstile_enabled direct_ip_access api_port image_tag
   deployment_mode="$(prompt "Deployment mode (same or split)" "${DEPLOYMENT_MODE_OVERRIDE:-$(env_get DEPLOYMENT_MODE "same")}")"
   [[ "$deployment_mode" =~ ^(same|split)$ ]] || die "Deployment mode must be same or split."
   split_role="$(env_get SPLIT_ROLE "")"
@@ -828,6 +896,7 @@ configure_env() {
   token_create_path="$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")"
   token_revoke_path="$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")"
   claim_init_path="$(env_get AUTH_ADMIN_CLAIM_INIT_PATH "/claim/init")"
+  claim_status_path="$(env_get AUTH_ADMIN_CLAIM_STATUS_PATH "/claim/status")"
   register_url="$(env_get_nonempty AUTH_REGISTER_URL "${auth_admin_origin%/}/auth/register")"
   admin_bearer="$(env_get_nonempty AUTH_ADMIN_BEARER "")"
 
@@ -939,6 +1008,7 @@ configure_env() {
   upsert_env AUTH_TOKEN_CREATE_PATH "$token_create_path"
   upsert_env AUTH_TOKEN_REVOKE_PATH "$token_revoke_path"
   upsert_env AUTH_ADMIN_CLAIM_INIT_PATH "$claim_init_path"
+  upsert_env AUTH_ADMIN_CLAIM_STATUS_PATH "$claim_status_path"
   upsert_env AUTH_REGISTER_URL "$register_url"
   upsert_env AUTH_ADMIN_BEARER "$admin_bearer"
 }
@@ -1076,6 +1146,7 @@ read_auth_settings() {
   AUTH_TOKEN_CREATE_PATH_VALUE="$(env_get AUTH_TOKEN_CREATE_PATH "/tokens")"
   AUTH_TOKEN_REVOKE_PATH_VALUE="$(env_get AUTH_TOKEN_REVOKE_PATH "/tokens/%s")"
   AUTH_ADMIN_CLAIM_INIT_PATH_VALUE="$(env_get AUTH_ADMIN_CLAIM_INIT_PATH "/claim/init")"
+  AUTH_ADMIN_CLAIM_STATUS_PATH_VALUE="$(env_get AUTH_ADMIN_CLAIM_STATUS_PATH "/claim/status")"
   AUTH_REGISTER_URL_VALUE="$(env_get_nonempty AUTH_REGISTER_URL "${inferred_public_url%/}/auth/register")"
   AUTH_ADMIN_BEARER_VALUE="$(env_get_nonempty AUTH_ADMIN_BEARER "")"
 }
@@ -1196,9 +1267,10 @@ init_admin_claim() {
     ensure_repo_present
   fi
   read_auth_settings
-  local admin_bearer claim_url payload detail
+  local admin_bearer claim_url status_url payload detail status_body admin_exists
   admin_bearer="$(read_admin_bearer)"
   claim_url="${AUTH_ADMIN_BASE_URL_VALUE%/}/${AUTH_ADMIN_CLAIM_INIT_PATH_VALUE#/}"
+  status_url="${AUTH_ADMIN_BASE_URL_VALUE%/}/${AUTH_ADMIN_CLAIM_STATUS_PATH_VALUE#/}"
   payload="{\"reset\":$([[ "$reset" -eq 1 ]] && printf true || printf false)}"
   if [[ "$DRY_RUN" -eq 1 ]]; then
     log "[DRY-RUN] would request admin claim initialization at ${claim_url}"
@@ -1211,8 +1283,22 @@ init_admin_claim() {
     detail="$(extract_detail_from_json "$HTTP_BODY")"
     [[ -n "$detail" ]] || detail="$HTTP_BODY"
     if [[ "$detail" == *"administrator already exists"* ]]; then
-      log "Administrator already exists; no new claim token is needed."
-      log "Sign in with the existing administrator account. AUTH_ADMIN_BEARER is for installer requests, not admin-panel login."
+      # Confirm the conflict against the database-backed status endpoint before
+      # telling an operator that a fresh install already has an administrator.
+      # This catches a stale UI/API image or a proxy routing the request to a
+      # different stack.
+      http_json GET "$status_url"
+      status_body="$HTTP_BODY"
+      admin_exists="$(extract_admin_exists_from_json "$status_body")"
+      if [[ "$HTTP_STATUS" == "200" && "$admin_exists" == "true" ]]; then
+        log "Administrator exists in the persistent auth database; no new claim token is needed."
+        log "This install is reusing existing administrator data. To start with a blank database, uninstall with Docker volume removal enabled, then install again."
+        log "Sign in with the existing administrator account. AUTH_ADMIN_BEARER is for installer requests, not admin-panel login."
+      else
+        warn "The claim endpoint reported an administrator, but ${status_url} did not confirm it."
+        warn "The UI/API may be pointed at different stacks, or the running image may not match this installer. No claim token was generated."
+        return 1
+      fi
     else
       warn "Admin claim token was not generated: ${detail}"
       if [[ "$reset" -eq 0 ]]; then
@@ -1239,8 +1325,12 @@ stack_uninstall() {
   [[ -e "$INSTALL_DIR" ]] && install_path_present=1
   [[ -f "${INSTALL_DIR}/${COMPOSE_FILE}" ]] && compose_file_present=1
   if [[ "$install_path_present" -eq 0 ]]; then
-    warn "${APP_NAME} has no install directory at ${INSTALL_DIR}; no Docker resources were changed."
-    return 0
+    if ! project_has_docker_resources; then
+      warn "${APP_NAME} has no install directory or Docker resources for project $(compose_project_name); nothing to uninstall."
+      return 0
+    fi
+    warn "Install directory ${INSTALL_DIR} is missing, but Docker resources for project $(compose_project_name) still exist."
+    warn "Continuing will clean those resources; persistent volumes are removed only after explicit confirmation."
   fi
   ensure_runtime_prereqs
   if [[ "$compose_file_present" -eq 0 ]]; then
@@ -1250,18 +1340,28 @@ stack_uninstall() {
     log "Cancelled."
     return 0
   fi
+  local remove_volumes=0
+  if confirm "Remove Docker volumes too? (destructive)" n; then
+    remove_volumes=1
+  fi
   if [[ "$compose_file_present" -eq 1 ]]; then
-    if confirm "Remove Docker volumes too? (destructive)" n; then
+    if [[ "$remove_volumes" -eq 1 ]]; then
       if ! compose_for_uninstall --volumes --remove-orphans; then
         die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
       fi
-    else
-      if ! compose_for_uninstall --remove-orphans; then
-        die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
-      fi
+    elif ! compose_for_uninstall --remove-orphans; then
+      die "Could not fully stop and remove ${APP_NAME} containers. The install directory was kept for recovery."
     fi
-  elif ! purge_compose_project_containers; then
-    die "Could not verify cleanup of ${APP_NAME} containers. The partial install directory was kept for recovery."
+  else
+    if ! purge_compose_project_containers; then
+      die "Could not verify cleanup of ${APP_NAME} containers. The install directory was kept for recovery."
+    fi
+    if ! purge_compose_project_networks; then
+      die "Could not verify cleanup of ${APP_NAME} networks. The install directory was kept for recovery."
+    fi
+    if [[ "$remove_volumes" -eq 1 ]] && ! purge_compose_project_volumes; then
+      die "Could not remove ${APP_NAME} Docker volumes. The install directory was kept for recovery."
+    fi
   fi
   if confirm "Delete install directory ${INSTALL_DIR}?" n; then
     local check

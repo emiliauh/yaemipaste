@@ -106,6 +106,11 @@ The token:
 - Expires after 24 hours by default. The `ttl_seconds` value in the claim-init
   request can change this period.
 
+The administrator is stored in the persistent SQLite Docker volume. A new
+install directory is not the same as a new database. To create a truly fresh
+installation on the same host, uninstall the stack and confirm Docker volume
+removal before running the install action again.
+
 To create a new token, reset the current one:
 
 ```bash

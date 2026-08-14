@@ -130,6 +130,10 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
   })
 
   test('admin claim, JWT auth, settings, and admin listing work', async () => {
+    const initialClaimStatus = await request('/auth/admin/claim/status')
+    assert.equal(initialClaimStatus.response.status, 200)
+    assert.equal(initialClaimStatus.json.admin_exists, false)
+
     const init = await request('/auth/admin/claim/init', { method: 'POST', headers: { Authorization: 'Bearer installer-test-bearer', 'Content-Type': 'application/json' }, body: '{}' })
     assert.equal(init.response.status, 200)
     const claim = await request('/auth/admin/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim_token: init.json.token, username: 'admin', password: 'secret123' }) })
@@ -224,6 +228,8 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.match(resetAfterAdmin.text, /administrator already exists/)
     const claimStatus = await request('/auth/admin/claim/status')
     assert.equal(claimStatus.response.status, 200)
+    assert.equal(claimStatus.json.admin_exists, true)
+    assert.equal(claimStatus.json.claim_available, false)
   })
 
   test('covers token lifecycle, account operations, and one-shot semantics', async () => {

@@ -67,6 +67,7 @@ metadata under `SERVER__UPLOAD_PATH`.
 | `DEPLOYMENT_MODE` | `same` or `split` topology marker | `same` |
 | `SPLIT_ROLE` | `ui` or `api` on split hosts | empty |
 | `COMPOSE_PROFILES` | Services started by Compose | `ui,api` |
+| `COMPOSE_PROJECT_NAME` | Docker Compose project name that scopes containers, networks, and volumes | `yaemipaste` |
 | `DEPLOYMENT_IMAGE_MODE` | `pull` prebuilt images, or `build` from local source | `pull` |
 | `YAEMIPASTE_IMAGE_TAG` | UI/API image tag; the installer defaults to the `main` branch tag, while production should use a SHA tag | `main` |
 | `YAEMIPASTE_UI_IMAGE` | UI image repository or mirror | `ghcr.io/emiliauh/yaemipaste-ui` |
@@ -95,6 +96,7 @@ metadata under `SERVER__UPLOAD_PATH`.
 | `AUTH_TOKEN_CREATE_PATH` | Token creation path | `/tokens` |
 | `AUTH_TOKEN_REVOKE_PATH` | Token revoke path template | `/tokens/%s` |
 | `AUTH_ADMIN_CLAIM_INIT_PATH` | One-time admin claim token initialization path | `/claim/init` |
+| `AUTH_ADMIN_CLAIM_STATUS_PATH` | Read-only administrator claim status path used by the installer | `/claim/status` |
 | `AUTH_REGISTER_URL` | Public register endpoint used when token-based registration is chosen | `http://localhost:8080/auth/register` |
 | `AUTH_ADMIN_BEARER` | Admin bearer used by installer lifecycle commands; production requires `openssl rand -hex 32` format (64 lowercase hex characters) | empty |
 

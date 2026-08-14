@@ -63,12 +63,33 @@ claim_output="$(init_admin_claim 0 2>&1)"
 [[ "$claim_output" == *"installer-smoke-claim-token"* ]]
 
 http_json() {
-  HTTP_STATUS="409"
-  HTTP_BODY='{"detail":"An administrator already exists"}'
+  if [[ "$1" == "POST" ]]; then
+    HTTP_STATUS="409"
+    HTTP_BODY='{"detail":"An administrator already exists"}'
+  else
+    [[ "$1" == "GET" ]]
+    HTTP_STATUS="200"
+    HTTP_BODY='{"admin_exists":true,"pending_claim":false,"claim_available":false}'
+  fi
 }
 
 existing_admin_output="$(init_admin_claim 0 2>&1)"
 [[ "$existing_admin_output" == *"AUTH_ADMIN_BEARER is for installer requests, not admin-panel login"* ]]
+
+http_json() {
+  if [[ "$1" == "POST" ]]; then
+    HTTP_STATUS="409"
+    HTTP_BODY='{"detail":"An administrator already exists"}'
+  else
+    HTTP_STATUS="200"
+    HTTP_BODY='{"admin_exists":false,"pending_claim":false,"claim_available":false}'
+  fi
+}
+
+if mismatched_admin_output="$(init_admin_claim 0 2>&1)"; then
+  false
+fi
+[[ "$mismatched_admin_output" == *"did not confirm it"* ]]
 
 INSTALL_DIR="$temp_dir/install"
 mkdir -p "$INSTALL_DIR"
@@ -145,6 +166,12 @@ docker() {
       [[ "$2" == "-f" ]]
       fake_removed_containers="${*:3}"
       ;;
+    volume)
+      [[ "$2" == "ls" ]]
+      ;;
+    network)
+      [[ "$2" == "ls" ]]
+      ;;
     *)
       return 1
       ;;
@@ -157,6 +184,7 @@ stack_uninstall
 INSTALL_DIR="$temp_dir/partial-install"
 mkdir -p "$INSTALL_DIR"
 printf 'partial installation\n' > "$INSTALL_DIR/README.partial"
+YES=1
 confirm_count=0
 stack_uninstall
 [[ ! -e "$INSTALL_DIR" ]]
@@ -179,5 +207,13 @@ YES=1
 stack_uninstall
 [[ ! -e "$INSTALL_DIR" ]]
 YES=0
+
+INSTALL_DIR="$temp_dir/missing-install"
+fake_container_output="orphaned-container"
+fake_removed_containers=""
+YES=1
+stack_uninstall
+[[ "$fake_removed_containers" == "orphaned-container" ]]
+fake_container_output=""
 
 printf 'installer smoke tests passed\n'
