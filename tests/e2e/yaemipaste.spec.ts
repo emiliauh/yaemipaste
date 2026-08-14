@@ -4949,6 +4949,7 @@ test('admin users render as balanced cards on mobile', async ({ page }) => {
   const row = table.locator('tbody tr').filter({ hasText: 'user-1' }).first()
   await expect.poll(() => table.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBeTruthy()
   await expect(row.getByText('user-1', { exact: true })).toBeVisible()
+  await expect.poll(() => page.locator('.admin-content-panel').evaluate((element) => getComputedStyle(element).transform)).toBe('none')
   await expect(row.locator('[data-label="Role"]')).toBeVisible()
   await expect(row.locator('[data-label="Storage"]')).toBeVisible()
 
