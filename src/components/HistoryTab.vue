@@ -102,6 +102,18 @@ let historyRequestSequence = 0
 let copiedFileTimer: ReturnType<typeof setTimeout> | null = null
 let searchIndicatorTimer: ReturnType<typeof setTimeout> | null = null
 const previewCache = new Map<string, CachedPreview>()
+// A successful delete can race the periodic/WebSocket refresh with a briefly
+// stale server snapshot. Keep the row hidden until a snapshot confirms that
+// the server has removed it, so the UI never resurrects deleted history.
+const optimisticDeletedFiles = new Set<string>()
+
+function reconcileHistoryFiles(nextFiles: PasteFile[]): PasteFile[] {
+  const serverNames = new Set(nextFiles.map((file) => file.file_name))
+  for (const fileName of optimisticDeletedFiles) {
+    if (!serverNames.has(fileName)) optimisticDeletedFiles.delete(fileName)
+  }
+  return nextFiles.filter((file) => !optimisticDeletedFiles.has(file.file_name))
+}
 
 async function readPreviewText(blob: Blob): Promise<string> {
   const previewText = await blob.slice(0, TEXT_PREVIEW_BYTES).text()
@@ -167,8 +179,8 @@ function applyHistorySnapshot(rawFiles: unknown[]) {
     const normalized = mapRawHistoryFile(item as Record<string, unknown>)
     if (normalized) parsed.push(normalized)
   }
-  files.value = parsed
-  const knownNames = new Set(parsed.map((file) => file.file_name))
+  files.value = reconcileHistoryFiles(parsed)
+  const knownNames = new Set(files.value.map((file) => file.file_name))
   selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
   fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
 }
@@ -203,8 +215,8 @@ async function load() {
   try {
     const nextFiles = await listFiles()
     if (sequence !== historyRequestSequence) return
-    files.value = nextFiles
-    const knownNames = new Set(nextFiles.map((file) => file.file_name))
+    files.value = reconcileHistoryFiles(nextFiles)
+    const knownNames = new Set(files.value.map((file) => file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
     fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
     await ensureVisibleMeta()
@@ -220,13 +232,17 @@ async function refreshSilently() {
   try {
     const nextFiles = await listFiles()
     if (sequence !== historyRequestSequence) return
-    files.value = nextFiles
-    const knownNames = new Set(nextFiles.map((file) => file.file_name))
+    files.value = reconcileHistoryFiles(nextFiles)
+    const knownNames = new Set(files.value.map((file) => file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
     fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
     await ensureVisibleMeta()
   } catch (e) {
     console.error('History auto-refresh failed', e)
+  } finally {
+    // A focus/refresh request can supersede the initial load. The active
+    // request still owns the loading indicator and must release it.
+    if (sequence === historyRequestSequence) loading.value = false
   }
 }
 
@@ -333,6 +349,7 @@ async function del(f: PasteFile) {
   deleting.value.add(f.file_name)
   try {
     await deleteFile(f.file_name)
+    optimisticDeletedFiles.add(f.file_name)
     files.value = files.value.filter((x) => x.file_name !== f.file_name)
     selectedFiles.value.delete(f.file_name)
     showToast(`Deleted ${f.file_name}`)
@@ -940,6 +957,7 @@ async function deleteNamesConcurrently(names: string[]): Promise<{ deleted: numb
   }
   await Promise.all(Array.from({ length: Math.min(DELETE_CONCURRENCY, names.length) }, () => worker()))
   if (deletedNames.size) {
+    for (const name of deletedNames) optimisticDeletedFiles.add(name)
     files.value = files.value.filter((file) => !deletedNames.has(file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => !deletedNames.has(name)))
   }

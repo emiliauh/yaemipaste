@@ -770,6 +770,15 @@ function requestUserPurge(username: string) {
   })
 }
 
+function requestUserPurgeFromMenu(username: string) {
+  if (!username) return
+  // Let the confirmation render before the teleported menu leaves. Doing the
+  // two state changes in one template expression can lose the dialog during
+  // the leave transition on slower/tablet browsers.
+  requestUserPurge(username)
+  void nextTick(() => closeUserRowMenu())
+}
+
 function requestUserDelete(username: string) {
   if (rejectSelfAction(username)) return
   requestConfirmation({
@@ -1182,7 +1191,12 @@ onBeforeUnmount(() => {
             <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { suspended: !activeUserMenuUser!.suspended_at }, activeUserMenuUser!.suspended_at ? 'User unsuspended' : 'User suspended')">{{ activeUserMenuUser.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
             <button class="menu-action" type="button" @click="updateUserFromMenu(activeUserMenuUser!, { is_admin: !activeUserMenuUser!.is_admin }, 'Role updated')">{{ activeUserMenuUser.is_admin ? 'Demote' : 'Promote' }}</button>
             <button class="menu-action" type="button" @click="rotateToken(activeUserMenuUser!.username); closeUserRowMenu(true)">Rotate token</button>
-            <button class="menu-action danger" type="button" @click="requestUserPurge(activeUserMenuUser!.username); closeUserRowMenu()">Purge uploads</button>
+            <button
+              class="menu-action danger"
+              type="button"
+              :data-user-name="activeUserMenuUser?.username"
+              @click="requestUserPurgeFromMenu(($event.currentTarget as HTMLButtonElement).dataset.userName ?? '')"
+            >Purge uploads</button>
           </div>
         </Transition>
       </Teleport>
