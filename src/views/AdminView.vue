@@ -977,7 +977,7 @@ onBeforeUnmount(() => {
         </div>
 
     <div class="admin-content-stage">
-    <Transition name="admin-content">
+    <Transition name="admin-content" mode="out-in">
     <div :key="tab" class="admin-content-panel">
     <div v-if="error" class="error-box">{{ error }}</div>
     <div v-if="loading" class="info-box">Loading admin data…</div>
@@ -1195,7 +1195,7 @@ onBeforeUnmount(() => {
             <CustomSelect v-model="filterOwner" label="Owner" :options="ownerFilterOptions" />
             <CustomSelect v-model="filterExpired" label="Expiry" :options="expiryFilterOptions" />
             <label class="upload-search">
-              <input v-model="filterText" placeholder="" :aria-label="`Search ${uploads.length} uploads`" />
+              <input v-model="filterText" placeholder="" aria-label="Search uploads" />
               <span v-if="!filterText" class="upload-search-placeholder" aria-hidden="true">Search <strong>{{ uploads.length }}</strong> uploads</span>
               <svg v-if="searchingUploads" class="search-spinner" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" stroke-opacity=".28"/><path d="M20 12a8 8 0 0 0-8-8"/></svg>
               <button v-else-if="filterText" class="search-clear" type="button" aria-label="Clear search" title="Clear search" @click="filterText = ''">×</button>

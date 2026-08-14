@@ -3773,7 +3773,8 @@ test('admin Preferences control opens and fades closed on desktop and mobile', a
   const layer = page.getByTestId('settings-layer')
   await expect(layer).toBeVisible()
   await expect(layer.locator('.settings-panel')).toBeVisible()
-  await expect(preferences).toHaveCount(0)
+  await expect(preferences).toBeVisible()
+  await expect(preferences).toHaveAttribute('aria-expanded', 'true')
   await expect.poll(() => layer.evaluate((element) => getComputedStyle(element).transitionProperty)).toContain('opacity')
 
   const leaveTransition = page.waitForFunction(() =>
@@ -3782,7 +3783,7 @@ test('admin Preferences control opens and fades closed on desktop and mobile', a
   await layer.locator('.overlay').click({ position: { x: 8, y: 8 } })
   await leaveTransition
   await expect(layer).toBeHidden()
-  if (!isMobile) await expect(preferences).toHaveAttribute('aria-expanded', 'false')
+  await expect(preferences).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('mobile Preferences toggles the detached settings panel closed', async ({ page }) => {

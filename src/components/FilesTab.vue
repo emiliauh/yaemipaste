@@ -784,7 +784,7 @@ function onPasteAreaLongPressCancel() {
   .share-result {
     gap: var(--space-1);
     padding: var(--space-1) var(--space-3);
-    scroll-margin-bottom: 100px;
+    scroll-margin-bottom: calc(var(--mobile-bar-space) + var(--space-2));
   }
 }
 .files-tab .btn-ghost,
