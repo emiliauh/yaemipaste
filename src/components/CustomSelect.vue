@@ -25,6 +25,7 @@ const activeIndex = ref(0)
 const menuStyle = ref<Record<string, string>>({})
 const typeahead = ref('')
 let typeaheadTimer: number | undefined
+let openedAt = 0
 
 const selected = computed(() => props.options.find((option) => option.value === props.modelValue) ?? props.options[0])
 const enabledIndexes = computed(() => props.options.map((option, index) => option.disabled ? -1 : index).filter((index) => index >= 0))
@@ -64,6 +65,7 @@ async function openMenu() {
   if (props.disabled || !props.options.length) return
   syncActive()
   open.value = true
+  openedAt = performance.now()
   await nextTick()
   positionMenu()
 }
@@ -115,7 +117,12 @@ function onDocumentPointerDown(event: PointerEvent) {
 }
 
 function onViewportChange() { if (open.value) positionMenu() }
-function onScroll() { if (open.value) close() }
+function onUserScroll(event: Event) {
+  if (!open.value) return
+  const target = event.target as Node | null
+  if (target && menuRef.value?.contains(target)) return
+  if (performance.now() - openedAt >= 300) close()
+}
 function onVisibilityChange() { if (document.visibilityState === 'hidden') close() }
 
 watch(() => props.modelValue, syncActive)
@@ -123,13 +130,15 @@ onMounted(() => {
   document.addEventListener('pointerdown', onDocumentPointerDown, true)
   document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('resize', onViewportChange)
-  window.addEventListener('scroll', onScroll, true)
+  window.addEventListener('wheel', onUserScroll, { passive: true, capture: true })
+  window.addEventListener('touchmove', onUserScroll, { passive: true, capture: true })
 })
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('resize', onViewportChange)
-  window.removeEventListener('scroll', onScroll, true)
+  window.removeEventListener('wheel', onUserScroll, { capture: true })
+  window.removeEventListener('touchmove', onUserScroll, { capture: true })
   window.clearTimeout(typeaheadTimer)
 })
 </script>

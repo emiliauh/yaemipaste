@@ -12,6 +12,7 @@ const visibleOptions = computed(() => (revealNever.value ? expiryOptions : expir
 const selected = computed(() => expiryOptions.find((option) => option.value === model.value)
   ?? expiryOptions.find((option) => option.value === defaultExpiryValue)
   ?? expiryOptions[0])
+let openedAt = 0
 
 function choose(value: ExpiryValue) {
   if (value === 'never' && !revealNever.value) return
@@ -35,9 +36,11 @@ function onTriggerClick(event: MouseEvent) {
   if (event.shiftKey) {
     revealNever.value = true
     open.value = true
+    openedAt = performance.now()
     return
   }
   open.value = !open.value
+  if (open.value) openedAt = performance.now()
 }
 
 function onPointerDown(event: PointerEvent) {
@@ -48,8 +51,12 @@ function onPointerDown(event: PointerEvent) {
   }
 }
 
-function onScroll() {
-  if (open.value) open.value = false
+function onUserScroll(event: Event) {
+  if (!open.value) return
+  const target = event.target as Node | null
+  if (target && menuRef.value?.contains(target)) return
+  if (performance.now() - openedAt < 300) return
+  open.value = false
 }
 
 function onVisibilityChange() {
@@ -62,13 +69,15 @@ function onVisibilityChange() {
 onMounted(() => {
   document.addEventListener('pointerdown', onPointerDown, true)
   document.addEventListener('visibilitychange', onVisibilityChange)
-  window.addEventListener('scroll', onScroll, true)
+  window.addEventListener('wheel', onUserScroll, { passive: true, capture: true })
+  window.addEventListener('touchmove', onUserScroll, { passive: true, capture: true })
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', onPointerDown, true)
   document.removeEventListener('visibilitychange', onVisibilityChange)
-  window.removeEventListener('scroll', onScroll, true)
+  window.removeEventListener('wheel', onUserScroll, { capture: true })
+  window.removeEventListener('touchmove', onUserScroll, { capture: true })
 })
 </script>
 

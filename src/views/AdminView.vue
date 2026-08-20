@@ -87,6 +87,7 @@ const registrationTokens = ref<AdminRegistrationToken[]>([])
 const registrationTokensLoading = ref(false)
 const registrationExpiryOpen = ref(false)
 const registrationExpiryPicker = ref<HTMLElement | null>(null)
+let lastAdminMenuOpen = 0
 const registrationTokenExpiryOptions = [
   { value: '3600', label: '1 hour' },
   { value: '86400', label: '24 hours' },
@@ -859,11 +860,29 @@ function closeUploadMenusOnOutsidePointer(event: PointerEvent) {
   if (userRowMenuOpen.value && !userRowMenuTrigger.value?.contains(target) && !userRowMenuPanel.value?.contains(target)) closeUserRowMenu()
 }
 
-function closeAdminMenusOnScroll() {
+function closeAdminMenusOnUserScroll(event: Event) {
+  if (performance.now() - lastAdminMenuOpen < 300) return
+  const target = event.target as Element | null
+  if (target && target.closest('.admin-actions-menu-panel, .upload-row-menu-panel, .registration-expiry-menu, .user-row-menu-panel')) return
   uploadsActionsOpen.value = false
   uploadRowMenuOpen.value = null
   registrationExpiryOpen.value = false
   closeUserRowMenu()
+}
+
+function toggleUploadsActions() {
+  uploadsActionsOpen.value = !uploadsActionsOpen.value
+  if (uploadsActionsOpen.value) lastAdminMenuOpen = performance.now()
+}
+
+function toggleUploadRowMenu(path: string) {
+  uploadRowMenuOpen.value = uploadRowMenuOpen.value === path ? null : path
+  if (uploadRowMenuOpen.value === path) lastAdminMenuOpen = performance.now()
+}
+
+function toggleRegistrationExpiry() {
+  registrationExpiryOpen.value = !registrationExpiryOpen.value
+  if (registrationExpiryOpen.value) lastAdminMenuOpen = performance.now()
 }
 
 function positionUserRowMenu() {
@@ -902,6 +921,7 @@ async function toggleUserRowMenu(username: string, event: MouseEvent) {
   }
   userRowMenuTrigger.value = event.currentTarget as HTMLButtonElement
   userRowMenuOpen.value = username
+  lastAdminMenuOpen = performance.now()
   await nextTick()
   positionUserRowMenu()
   userRowMenuPanel.value?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
@@ -949,7 +969,8 @@ onMounted(() => {
   window.addEventListener('scroll', hideUploadHover, true)
   window.addEventListener('resize', repositionUserRowMenu)
   window.addEventListener('resize', updateAdminTabsScrollState)
-  window.addEventListener('scroll', closeAdminMenusOnScroll, true)
+  window.addEventListener('wheel', closeAdminMenusOnUserScroll, { passive: true, capture: true })
+  window.addEventListener('touchmove', closeAdminMenusOnUserScroll, { passive: true, capture: true })
 })
 
 onBeforeUnmount(() => {
@@ -960,7 +981,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', hideUploadHover, true)
   window.removeEventListener('resize', repositionUserRowMenu)
   window.removeEventListener('resize', updateAdminTabsScrollState)
-  window.removeEventListener('scroll', closeAdminMenusOnScroll, true)
+  window.removeEventListener('wheel', closeAdminMenusOnUserScroll, { capture: true })
+  window.removeEventListener('touchmove', closeAdminMenusOnUserScroll, { capture: true })
   if (uploadsRefreshTimer) {
     clearInterval(uploadsRefreshTimer)
     uploadsRefreshTimer = null
@@ -1124,7 +1146,7 @@ onBeforeUnmount(() => {
                     aria-haspopup="listbox"
                     :aria-expanded="registrationExpiryOpen"
                     aria-controls="registration-expiry-menu"
-                    @click="registrationExpiryOpen = !registrationExpiryOpen"
+                    @click="toggleRegistrationExpiry"
                     @keydown.escape.prevent="registrationExpiryOpen = false"
                   >
                     <span><small>Expires</small><strong>{{ selectedRegistrationExpiry.label }}</strong></span>
@@ -1307,7 +1329,7 @@ onBeforeUnmount(() => {
               :disabled="!uploads.length || loading"
               aria-haspopup="menu"
               :aria-expanded="uploadsActionsOpen ? 'true' : 'false'"
-              @click="uploadsActionsOpen = !uploadsActionsOpen"
+              @click="toggleUploadsActions"
             >
               Actions
             </button>
@@ -1381,7 +1403,7 @@ onBeforeUnmount(() => {
                   <span>{{ copiedUploadPath === upload.path ? 'Copied' : 'Copy' }}</span>
                 </button>
                 <div class="upload-row-menu">
-                  <button class="btn-ghost upload-more" type="button" aria-label="More" :aria-expanded="uploadRowMenuOpen === upload.path ? 'true' : 'false'" @click="uploadRowMenuOpen = uploadRowMenuOpen === upload.path ? null : upload.path">⋯</button>
+                  <button class="btn-ghost upload-more" type="button" aria-label="More" :aria-expanded="uploadRowMenuOpen === upload.path ? 'true' : 'false'" @click="toggleUploadRowMenu(upload.path)">⋯</button>
                   <Transition name="dropdown-fade">
                     <div v-if="uploadRowMenuOpen === upload.path" class="upload-row-menu-panel" role="menu">
                       <button class="menu-action" type="button" role="menuitem" @click="openUploadPreview(upload)">Preview</button>

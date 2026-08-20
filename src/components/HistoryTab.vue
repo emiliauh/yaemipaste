@@ -57,6 +57,7 @@ const deleting = ref<Set<string>>(new Set())
 const selectedFiles = ref<Set<string>>(new Set())
 const actionsOpen = ref(false)
 const rowMoreOpen = ref<string | null>(null)
+let lastMenuOpen = 0
 const copiedFileName = ref<string | null>(null)
 const bulkDeleting = ref(false)
 const bulkDownloading = ref(false)
@@ -1204,9 +1205,22 @@ function onDocumentPointerDown(event: PointerEvent) {
   }
 }
 
-function closeMenusOnScroll() {
+function closeMenusOnUserScroll(event: Event) {
+  if (performance.now() - lastMenuOpen < 300) return
+  const target = event.target as Element | null
+  if (target && target.closest('.actions-menu, .row-item-menu')) return
   actionsOpen.value = false
   closeRowMoreMenu()
+}
+
+function toggleBulkActions() {
+  actionsOpen.value = !actionsOpen.value
+  if (actionsOpen.value) lastMenuOpen = performance.now()
+}
+
+function toggleRowMore(name: string) {
+  rowMoreOpen.value = rowMoreOpen.value === name ? null : name
+  if (rowMoreOpen.value === name) lastMenuOpen = performance.now()
 }
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -1341,7 +1355,8 @@ onMounted(async () => {
   compactFileNamesMediaQuery.addEventListener('change', onCompactNamesMediaChange)
   window.addEventListener('blur', hideHover)
   window.addEventListener('scroll', hideHover, true)
-  window.addEventListener('scroll', closeMenusOnScroll, true)
+  window.addEventListener('wheel', closeMenusOnUserScroll, { passive: true, capture: true })
+  window.addEventListener('touchmove', closeMenusOnUserScroll, { passive: true, capture: true })
   window.addEventListener('focus', onWindowFocus)
   window.addEventListener(HISTORY_REFRESH_EVENT, onHistoryRefreshEvent)
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -1359,7 +1374,8 @@ onBeforeUnmount(() => {
   compactFileNamesMediaQuery = null
   window.removeEventListener('blur', hideHover)
   window.removeEventListener('scroll', hideHover, true)
-  window.removeEventListener('scroll', closeMenusOnScroll, true)
+  window.removeEventListener('wheel', closeMenusOnUserScroll, { capture: true })
+  window.removeEventListener('touchmove', closeMenusOnUserScroll, { capture: true })
   window.removeEventListener('focus', onWindowFocus)
   window.removeEventListener(HISTORY_REFRESH_EVENT, onHistoryRefreshEvent)
   document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -1481,7 +1497,7 @@ onBeforeUnmount(() => {
             :disabled="!hasSelection || bulkDeleting || bulkDownloading"
             aria-haspopup="menu"
             :aria-expanded="actionsOpen ? 'true' : 'false'"
-            @click="actionsOpen = !actionsOpen"
+            @click="toggleBulkActions"
           >
             Actions
           </button>
@@ -1660,7 +1676,7 @@ onBeforeUnmount(() => {
                       aria-label="More"
                       aria-haspopup="menu"
                       :aria-expanded="rowMoreOpen === f.file_name ? 'true' : 'false'"
-                      @click.stop="rowMoreOpen = rowMoreOpen === f.file_name ? null : f.file_name"
+                      @click.stop="toggleRowMore(f.file_name)"
                     >
                       ⋯
                     </button>
