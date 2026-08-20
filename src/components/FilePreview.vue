@@ -397,7 +397,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
   <div v-if="encryptedPreviewLocked" class="modal-backdrop" @click.self="emit('close')">
     <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="encrypted-preview-title">
-      <div class="password-modal-header"><strong id="encrypted-preview-title">Preview encrypted file</strong><button class="modal-close btn-ghost" :disabled="decryptionBusy" aria-label="Close key prompt" @click="emit('close')">✕</button></div>
+      <div class="password-modal-header"><strong id="encrypted-preview-title">Preview encrypted file</strong><button class="modal-close btn-ghost icon-close" :disabled="decryptionBusy" aria-label="Close key prompt" @click="emit('close')">✕</button></div>
       <div class="password-modal-copy">Enter the decryption {{ passwordSalt ? 'password' : 'key' }} to preview this file in-app.</div>
       <div class="password-form"><label>Decryption {{ passwordSalt ? 'password' : 'key' }}<input v-model="decryptionKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" :placeholder="passwordSalt ? 'Enter decryption password' : 'Paste decryption key'" :disabled="decryptionBusy" @keydown.enter.prevent="decryptPreview" /></label><label v-if="!passwordSalt">Password-encrypted file link<input v-model="legacyPasswordLink" type="url" autocomplete="off" placeholder="Paste the complete +pw: preview link" :disabled="decryptionBusy" /></label></div>
       <div v-if="decryptionError" class="password-modal-error">{{ decryptionError }}</div>
@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
     >
       <div class="modal-header">
         <span class="modal-title">{{ name }}</span>
-        <button class="btn-ghost btn-icon-close" aria-label="Close preview" @click="emit('close')">✕</button>
+        <button class="btn-ghost btn-icon-close icon-close" aria-label="Close preview" @click="emit('close')">✕</button>
       </div>
       <div class="modal-body">
         <div v-if="props.loading" class="preview-loading" aria-live="polite">
@@ -797,7 +797,6 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-md);
   background: var(--bg1);
   box-shadow: var(--shadow-md);
-  animation: copy-menu-in var(--duration-fast) var(--ease-out) both;
 }
 .open-menu { left: 0; right: auto; }
 .copy-actions .copy-menu { left: auto; right: 0; }
@@ -831,8 +830,6 @@ onBeforeUnmount(() => {
   font-size: var(--fs-xs);
 }
 .btn-icon-close {
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
   transition: transform var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);
@@ -868,16 +865,10 @@ onBeforeUnmount(() => {
   from { opacity: 0; transform: translateY(12px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-@keyframes copy-menu-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop,
   .modal,
-  .preview-skeleton span,
-  .copy-menu {
+  .preview-skeleton span {
     animation: none;
   }
 }

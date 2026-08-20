@@ -19,7 +19,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
       <div class="action-confirm-icon" :class="{ danger }" aria-hidden="true">!</div>
       <div class="action-confirm-header">
         <strong id="action-confirm-title">{{ title }}</strong>
-        <button class="btn-ghost action-confirm-close" :disabled="busy" aria-label="Close confirmation" @click="emit('close')">✕</button>
+        <button class="btn-ghost action-confirm-close icon-close" :disabled="busy" aria-label="Close confirmation" @click="emit('close')">✕</button>
       </div>
       <p class="action-confirm-message">{{ message }}</p>
       <div v-if="detail" class="action-confirm-detail">{{ detail }}</div>
@@ -92,17 +92,6 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius);
 }
 .action-confirm-close:hover:not(:disabled) {
   background: var(--bg2);

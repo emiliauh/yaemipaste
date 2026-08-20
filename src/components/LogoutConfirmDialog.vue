@@ -13,7 +13,7 @@ const emit = defineEmits<{ close: [], confirm: [] }>()
       <div class="confirm-icon" aria-hidden="true">!</div>
       <div class="confirm-header">
         <strong id="account-logout-title">Log out of {{ appName }}?</strong>
-        <button class="btn-ghost confirm-close" type="button" aria-label="Close confirmation" @click="emit('close')">✕</button>
+        <button class="btn-ghost confirm-close icon-close" type="button" aria-label="Close confirmation" @click="emit('close')">✕</button>
       </div>
       <p class="confirm-message">You'll need to sign in again to upload files and manage your account.</p>
       <div class="confirm-actions">
@@ -74,18 +74,6 @@ const emit = defineEmits<{ close: [], confirm: [] }>()
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0;
-  font-size: var(--fs-sm);
-  border: 0;
-  background: transparent;
-  color: var(--text3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius);
 }
 .confirm-close:hover {
   background: var(--bg2);

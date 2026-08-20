@@ -248,9 +248,11 @@ onUnmounted(() => {
   padding: var(--space-2);
   box-shadow: var(--shadow-md);
 }
-.expiry-options-fade-enter-active,
-.expiry-options-fade-leave-active {
+.expiry-options-fade-enter-active {
   transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out);
+}
+.expiry-options-fade-leave-active {
+  transition: none;
 }
 .expiry-options-fade-enter-from,
 .expiry-options-fade-leave-to {
@@ -259,8 +261,7 @@ onUnmounted(() => {
 }
 @media (prefers-reduced-motion: reduce) {
   .expiry-panel,
-  .expiry-options-fade-enter-active,
-  .expiry-options-fade-leave-active {
+  .expiry-options-fade-enter-active {
     transition: none;
   }
 }

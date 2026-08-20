@@ -1607,7 +1607,7 @@ onBeforeUnmount(() => {
             <p class="eyebrow">One-time credential</p>
             <h2 id="token-dialog-title">{{ tokenDialog.kind === 'registration' ? 'Registration token ready' : 'Upload token ready' }}</h2>
           </div>
-          <button class="btn-ghost" type="button" aria-label="Close token dialog" @click="tokenDialog = null">✕</button>
+          <button class="btn-ghost icon-close" type="button" aria-label="Close token dialog" @click="tokenDialog = null">✕</button>
         </div>
         <p class="subtle">{{ tokenDialog.kind === 'registration' ? 'This single-use token can create one account.' : `Token for ${tokenDialog.username}.` }} Save it now; it will not be shown again.</p>
         <p v-if="tokenDialog.expiresAt" class="subtle token-expiry">Expires {{ formatTimestamp(tokenDialog.expiresAt) }}</p>

@@ -167,13 +167,16 @@
   }
 }
 
-/* Shared motion for menus and the small inline panels that replace them. */
+/* Shared motion for menus and the small inline panels that replace them.
+   Opening animates in; closing is instantaneous so dismissals never lag. */
 .dropdown-fade-enter-active,
-.dropdown-fade-leave-active,
-.panel-fade-enter-active,
-.panel-fade-leave-active {
+.panel-fade-enter-active {
   transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
   will-change: opacity, transform;
+}
+.dropdown-fade-leave-active,
+.panel-fade-leave-active {
+  transition: none;
 }
 .dropdown-fade-enter-from,
 .dropdown-fade-leave-to,
@@ -192,7 +195,9 @@
   transform: scale(.72);
 }
 .copy-feedback-icon {
-  color: var(--on-accent);
+  /* Inherit the button's text color so the check reads correctly on both
+     dark ghost buttons and solid-accent (dark-on-amber) buttons. */
+  color: inherit;
 }
 .search-spinner {
   transform-origin: center;
@@ -422,6 +427,33 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   color: var(--text2);
 }
 .btn-ghost:hover:not(:disabled) { border-color: var(--border2); color: var(--text); background: var(--bg2); }
+
+/* Dialog close buttons are square squircles with continuous curvature. */
+.icon-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: var(--bg1);
+  color: var(--text3);
+  font-size: 15px;
+  line-height: 1;
+}
+.icon-close:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg2);
+  color: var(--text);
+}
+.icon-close:active:not(:disabled) {
+  transform: scale(0.96);
+}
 
 /* ── Card ──────────────────────────────────────────────────────────────── */
 .card {

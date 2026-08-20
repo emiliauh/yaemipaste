@@ -1756,7 +1756,7 @@ onBeforeUnmount(() => {
       <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
         <div class="password-modal-header">
           <strong id="password-change-title">Change decryption password</strong>
-          <button class="modal-close btn-ghost" :disabled="changingPassword" aria-label="Close password dialog" @click="closePasswordModal">✕</button>
+          <button class="modal-close btn-ghost icon-close" :disabled="changingPassword" aria-label="Close password dialog" @click="closePasswordModal">✕</button>
         </div>
         <div class="password-modal-copy">
           Updating this re-encrypts the file and refreshes your owner link.
@@ -1800,7 +1800,7 @@ onBeforeUnmount(() => {
       <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="password-preview-title">
         <div class="password-modal-header">
           <strong id="password-preview-title">{{ passwordPromptAction === 'download' ? 'Download password-encrypted file' : 'Preview password-encrypted file' }}</strong>
-          <button class="modal-close btn-ghost" :disabled="passwordPreviewBusy" aria-label="Close password prompt" @click="closePasswordPreviewModal">✕</button>
+          <button class="modal-close btn-ghost icon-close" :disabled="passwordPreviewBusy" aria-label="Close password prompt" @click="closePasswordPreviewModal">✕</button>
         </div>
         <div class="password-modal-copy">
           {{ passwordPromptAction === 'download'
@@ -1837,7 +1837,7 @@ onBeforeUnmount(() => {
       <div class="password-modal" role="dialog" aria-modal="true" aria-labelledby="key-preview-title">
         <div class="password-modal-header">
           <strong id="key-preview-title">{{ keyPromptAction === 'download' ? 'Download encrypted file' : 'Preview encrypted file' }}</strong>
-          <button class="modal-close btn-ghost" :disabled="keyPreviewBusy" aria-label="Close key prompt" @click="closeKeyPreviewModal">✕</button>
+          <button class="modal-close btn-ghost icon-close" :disabled="keyPreviewBusy" aria-label="Close key prompt" @click="closeKeyPreviewModal">✕</button>
         </div>
         <div class="password-modal-copy">
           {{ keyPromptAction === 'download'
@@ -2542,12 +2542,6 @@ onBeforeUnmount(() => {
 .password-modal-header strong {
   color: var(--text);
   font-size: var(--fs-h2);
-}
-
-.modal-close {
-  min-width: 30px;
-  min-height: 30px;
-  padding: var(--space-1) var(--space-2);
 }
 
 .password-modal-copy {
