@@ -156,6 +156,13 @@
   --success-border: #b7e4c0;
   --error-border: #f5c1bc;
   --subtle-grad-end: #f1f4f8;
+  /* Light backgrounds make the shared shadow opacities look far too heavy, so
+     dial the elevation way down in light mode. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--shadow) 12%, transparent);
+  --shadow-md: 0 1px 2px color-mix(in srgb, var(--shadow) 8%, transparent),
+               0 6px 16px -6px color-mix(in srgb, var(--shadow) 14%, transparent);
+  --shadow-lg: 0 2px 4px color-mix(in srgb, var(--shadow) 10%, transparent),
+               0 12px 28px -10px color-mix(in srgb, var(--shadow) 18%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

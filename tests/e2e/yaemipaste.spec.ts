@@ -4628,6 +4628,10 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
     const [ownerBox, searchBox] = await Promise.all([ownerFilter.boundingBox(), searchInput.boundingBox()])
     return ownerBox && searchBox ? Math.abs(ownerBox.height - searchBox.height) : -1
   }).toBeLessThan(1)
+  // The upload search box should stretch to fill the toolbar, not stay tiny.
+  const toolbarBox = await page.locator('.upload-toolbar').boundingBox()
+  const searchBox = await searchInput.boundingBox()
+  if (toolbarBox && searchBox) expect(searchBox.width).toBeGreaterThan(toolbarBox.width * 0.4)
   const expiringRow = page.locator('.uploads-table tbody tr').filter({ hasText: 'expiring-paste.txt' }).first()
   await expiringRow.getByRole('button', { name: 'More' }).click()
   await expiringRow.getByRole('menuitem', { name: 'Delete' }).click()
@@ -4643,6 +4647,9 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await page.getByLabel('App name').fill('Verified Paste')
   await page.getByLabel('Public title').fill('Verified public title')
   await page.getByLabel('Maximum file size in gigabytes').fill('2')
+  // Dragging the slider must not cause the label ("no application-level limit"
+  // description) to reflow/jump; the output should stay right-aligned and stable.
+  await expect(page.locator('.setting-slider output')).toHaveText('2 GB')
   await page.getByRole('button', { name: 'Public uploads' }).click()
   await page.getByRole("checkbox", { name: /Allow new registrations/ }).uncheck()
   await page.getByRole("checkbox", { name: /Enable passkeys/ }).uncheck()

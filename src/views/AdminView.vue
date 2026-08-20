@@ -2186,7 +2186,18 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   gap: var(--space-4);
   align-items: flex-start;
 }
-.setting-slider output { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.setting-slider-heading > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.setting-slider output {
+  flex: 0 0 auto;
+  min-width: 5ch;
+  color: var(--accent);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
 .setting-slider input[type="range"] { width: 100%; margin-top: var(--space-4); accent-color: var(--accent); }
 .range-labels { display: flex; justify-content: space-between; color: var(--text3); font-size: var(--fs-xs); }
 .upload-access-control {
@@ -2477,17 +2488,20 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-3);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .upload-search {
   position: relative;
   display: flex;
   align-self: center;
-  flex: 0 0 48px;
+  flex: 1 1 auto;
+  min-width: 200px;
   height: 48px;
   min-height: 48px;
 }
 .upload-search input {
-  width: min(450px, 48vw);
+  width: 100%;
   height: 100%;
   min-height: 48px;
   padding-right: 38px;
