@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Req, Res } from '@nestjs/common'
 import type { Request, Response } from 'express'
 import { AuthService } from './auth.service.js'
 import { ConfigService } from './config.service.js'
@@ -22,6 +22,18 @@ export class AuthController {
   }
 
   @Get('me') me(@Req() request: Request) { return this.auth.userData(this.auth.currentUser(request)) }
+
+  @Put('me/avatar') @HttpCode(200) updateAvatar(@Req() request: Request, @Body() body: { color?: unknown; image?: unknown }) {
+    const user = this.auth.currentUser(request)
+    const color = typeof body.color === 'string' && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(body.color.trim()) ? body.color.trim().toLowerCase() : null
+    let image: string | null = null
+    if (body.image !== null && body.image !== undefined && typeof body.image === 'string' && body.image.trim()) {
+      const value = body.image.trim()
+      if (!/^data:image\/(?:png|jpeg|jpg|gif|webp|x-icon|svg\+xml);base64,/.test(value) || value.length > 1_000_000) throw apiError(400, 'Avatar image must be a compact base64 image data URL')
+      image = value
+    }
+    return this.auth.updateAvatar(user, color, image)
+  }
 
   @Get('sharex') sharex(@Req() request: Request, @Res() response: Response) {
     if (!this.config.value.sharexEnabled) throw apiError(400, 'ShareX support is disabled')

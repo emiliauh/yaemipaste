@@ -453,6 +453,25 @@ export async function authLogoutAllDevices() {
   throw new Error('Global logout endpoint is not available on this server')
 }
 
+export interface AvatarPayload {
+  color: string
+  image: string | null
+}
+
+export async function authUpdateAvatar(payload: AvatarPayload) {
+  requireAuthEnabled()
+  const r = await fetch(`${AUTH_API}/me/avatar`, {
+    method: 'PUT',
+    headers: {
+      ...jwtBearerHeader(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ color: payload.color, image: payload.image }),
+  })
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not save profile picture'))
+  return readJson(r, 'Could not save profile picture')
+}
+
 export interface PasskeySummary {
   id: number
   credential_id: string

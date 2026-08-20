@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { authMe, authUpdateAvatar, hasAccountAuth } from './api'
 
 export interface AvatarPrefs {
   /** Background color used while no picture is set (and behind it). */
@@ -41,11 +42,50 @@ function readStoredAvatar(): AvatarPrefs | null {
 
 const avatarPrefs = ref<AvatarPrefs>(readStoredAvatar() ?? DEFAULT_AVATAR)
 
+function persistLocal(prefs: AvatarPrefs) {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(AVATAR_KEY, JSON.stringify(prefs))
+  }
+}
+
+/** Apply avatar prefs to the reactive store and the local cache. */
+export function applyAvatar(prefs: AvatarPrefs) {
+  avatarPrefs.value = { ...prefs }
+  persistLocal(avatarPrefs.value)
+}
+
+/**
+ * Load the server-side avatar for the signed-in account and apply it. This is
+ * the source of truth, so the picture follows the account across devices.
+ */
+export async function loadAvatarFromServer() {
+  if (typeof window === 'undefined') return
+  if (!hasAccountAuth()) return
+  try {
+    const me = await authMe() as { avatar_color?: unknown; avatar_image?: unknown }
+    // Only override the local cache when the server actually has avatar
+    // data. A fresh account (or a mock without avatar fields) must not
+    // clobber a picture the user already chose in this browser.
+    if (typeof me.avatar_color === 'string' && me.avatar_color && typeof me.avatar_image === 'string' && me.avatar_image) {
+      applyAvatar({ color: me.avatar_color, image: me.avatar_image })
+    } else if (typeof me.avatar_color === 'string' && me.avatar_color) {
+      // Only a server-side color is set; keep any locally cached image.
+      applyAvatar({ color: me.avatar_color, image: avatarPrefs.value.image })
+    }
+  } catch {
+    // Session/network failure: keep whatever is cached locally.
+  }
+}
+
 export function useAvatar() {
-  function save(next: AvatarPrefs) {
-    avatarPrefs.value = { ...next }
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(AVATAR_KEY, JSON.stringify(avatarPrefs.value))
+  async function save(next: AvatarPrefs) {
+    applyAvatar(next)
+    if (hasAccountAuth()) {
+      try {
+        await authUpdateAvatar({ color: next.color, image: next.image })
+      } catch {
+        // Non-fatal: the local copy is already updated; a later load re-syncs.
+      }
     }
   }
   return { avatarPrefs, save }

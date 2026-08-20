@@ -6,6 +6,7 @@ import router from './router'
 import { hydrateSessionIdentity, verifyStoredSession } from './lib/api'
 import { initTheme } from './lib/theme'
 import { applyCachedBranding } from './lib/branding'
+import { loadAvatarFromServer } from './lib/avatar'
 import { usePublicSettings } from './lib/publicSettings'
 import './style.css'
 
@@ -29,6 +30,9 @@ async function boot() {
   // under an invalid token could silently succeed as anonymous instead.
   void verifyStoredSession()
   void hydrateSessionIdentity()
+  // Profile picture is stored server-side per-account; fetch it so the picture
+  // follows the user across devices instead of only living in this browser.
+  void loadAvatarFromServer()
   createApp(App).use(createPinia()).use(router).mount('#app')
 }
 void boot()

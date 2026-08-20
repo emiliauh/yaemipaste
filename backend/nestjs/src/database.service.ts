@@ -22,7 +22,7 @@ export class DatabaseService implements OnModuleDestroy {
 
   private initialize(passkeysEnabledByDefault: boolean) {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, token TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0, suspended_at INTEGER, suspended_reason TEXT, passkey_user_uuid TEXT, passkey_reg_state TEXT, passkey_auth_state TEXT, session_revoked_at INTEGER, session_version INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, token TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0, suspended_at INTEGER, suspended_reason TEXT, passkey_user_uuid TEXT, passkey_reg_state TEXT, passkey_auth_state TEXT, session_revoked_at INTEGER, session_version INTEGER NOT NULL DEFAULT 0, avatar_color TEXT, avatar_image TEXT);
       CREATE TABLE IF NOT EXISTS passkeys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, credential_id TEXT UNIQUE NOT NULL, public_key BLOB NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0, transports TEXT, created_at INTEGER NOT NULL, last_used_at INTEGER, passkey_data TEXT, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
       CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);
       CREATE TABLE IF NOT EXISTS registration_tokens (token TEXT PRIMARY KEY, label TEXT, created_at INTEGER NOT NULL, expires_at INTEGER, revoked_at INTEGER);
@@ -37,7 +37,7 @@ export class DatabaseService implements OnModuleDestroy {
     `)
     const columns = this.query<{ name: string }>('PRAGMA table_info(users)')
     const existing = new Set(columns.map(row => row.name))
-    for (const [name, definition] of [['is_admin', 'INTEGER NOT NULL DEFAULT 0'], ['suspended_at', 'INTEGER'], ['suspended_reason', 'TEXT'], ['passkey_user_uuid', 'TEXT'], ['passkey_reg_state', 'TEXT'], ['passkey_auth_state', 'TEXT'], ['session_revoked_at', 'INTEGER'], ['session_version', 'INTEGER NOT NULL DEFAULT 0']] as const) {
+    for (const [name, definition] of [['is_admin', 'INTEGER NOT NULL DEFAULT 0'], ['suspended_at', 'INTEGER'], ['suspended_reason', 'TEXT'], ['passkey_user_uuid', 'TEXT'], ['passkey_reg_state', 'TEXT'], ['passkey_auth_state', 'TEXT'], ['session_revoked_at', 'INTEGER'], ['session_version', 'INTEGER NOT NULL DEFAULT 0'], ['avatar_color', 'TEXT'], ['avatar_image', 'TEXT']] as const) {
       if (!existing.has(name)) this.db.exec(`ALTER TABLE users ADD COLUMN ${name} ${definition}`)
     }
     const passkeyColumns = new Set(this.query<{ name: string }>('PRAGMA table_info(passkeys)').map(row => row.name))

@@ -230,10 +230,56 @@ export class ApiController {
     const unsafeInline = ['text/html', 'application/xhtml+xml', 'image/svg+xml', 'application/javascript', 'text/javascript'].includes(contentType)
     const downloadName = basename(meta?.display_name ?? requested).replace(/[\u0000-\u001f\u007f"]/g, '') || 'file'
     response.set({ 'Content-Type': contentType, 'Content-Disposition': `${forceDownload || unsafeInline ? 'attachment' : 'inline'}; filename="${downloadName}"`, 'X-Content-Type-Options': 'nosniff' })
+    return this.streamFile(request, response, located, forceDownload)
+  }
+
+  /**
+   * Stream a stored file, honouring HTTP Range requests so media can seek and
+   * play in browsers that require partial-content support (iOS Safari, Firefox).
+   */
+  private streamFile(request: Request, response: Response, located: ReturnType<StorageService['locate']>, forceDownload: boolean) {
+    const size = this.storage.fileStat(located).size
+    const rangeHeader = String(request.headers.range ?? '')
+    const match = rangeHeader.match(/^bytes=(\d*)-(\d*)$/)
+    const isSingle = !!match
+    if (!forceDownload && isSingle) {
+      const startText = match[1]
+      const endText = match[2]
+      let start = 0
+      let end = size - 1
+      if (startText) {
+        start = Number(startText)
+        if (!Number.isFinite(start)) start = 0
+      } else if (endText) {
+        const suffix = Number(endText)
+        if (Number.isFinite(suffix) && suffix > 0) start = Math.max(0, size - suffix)
+      }
+      if (endText && startText) {
+        end = Number(endText)
+        if (!Number.isFinite(end)) end = size - 1
+      }
+      if (start >= size || end < start) {
+        response.set({ 'Content-Range': 'bytes */' + size })
+        return response.status(416).end()
+      }
+      end = Math.min(end, size - 1)
+      const length = end - start + 1
+      response.set({
+        'Accept-Ranges': 'bytes',
+        'Content-Range': 'bytes ' + start + '-' + end + '/' + size,
+        'Content-Length': String(length),
+      })
+      const stream = createReadStream(located.path, { start, end })
+      if (located.kind === 'oneshot' && end >= size - 1) stream.once('end', () => this.storage.renameForOneshot(located))
+      stream.once('error', () => response.destroy())
+      response.status(206); stream.pipe(response); return response
+    }
+
+    response.set({ 'Accept-Ranges': 'bytes', 'Content-Length': String(size) })
     const stream = createReadStream(located.path)
     if (located.kind === 'oneshot') stream.once('end', () => this.storage.renameForOneshot(located))
     stream.once('error', () => response.destroy())
-    return stream.pipe(response)
+    stream.pipe(response); return response
   }
 
   @Post('/')

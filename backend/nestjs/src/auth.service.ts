@@ -22,6 +22,8 @@ export type AuthUser = {
   created_at: number
   session_revoked_at: number | null
   session_version: number
+  avatar_color: string | null
+  avatar_image: string | null
 }
 
 function normalized(value: unknown): string { return String(value ?? '').trim().toLowerCase() }
@@ -174,16 +176,17 @@ export class AuthService {
       suspended_reason: row.suspended_reason ?? null, created_at: Number(row.created_at),
       session_revoked_at: row.session_revoked_at == null ? null : Number(row.session_revoked_at),
       session_version: Number(row.session_version ?? 0),
+      avatar_color: row.avatar_color ?? null, avatar_image: row.avatar_image ?? null,
     }
   }
 
   userByName(username: string): AuthUser | undefined {
-    const row = this.db.get('SELECT id, username, token, created_at, is_admin, suspended_at, suspended_reason, session_revoked_at, session_version FROM users WHERE username=? LIMIT 1', [normalized(username)])
+    const row = this.db.get('SELECT id, username, token, created_at, is_admin, suspended_at, suspended_reason, session_revoked_at, session_version, avatar_color, avatar_image FROM users WHERE username=? LIMIT 1', [normalized(username)])
     return row ? this.rowToUser(row) : undefined
   }
 
   userByToken(token: string): AuthUser | undefined {
-    const row = this.db.get('SELECT id, username, token, created_at, is_admin, suspended_at, suspended_reason, session_revoked_at, session_version FROM users WHERE token=? LIMIT 1', [token])
+    const row = this.db.get('SELECT id, username, token, created_at, is_admin, suspended_at, suspended_reason, session_revoked_at, session_version, avatar_color, avatar_image FROM users WHERE token=? LIMIT 1', [token])
     return row ? this.rowToUser(row) : undefined
   }
 
@@ -430,7 +433,12 @@ export class AuthService {
     return { detail: 'User updated' }
   }
 
-  userData(user: AuthUser) { return { username: user.username, created_at: user.created_at, is_admin: user.is_admin, suspended_at: user.suspended_at, suspended_reason: user.suspended_reason } }
+  userData(user: AuthUser) { return { username: user.username, created_at: user.created_at, is_admin: user.is_admin, suspended_at: user.suspended_at, suspended_reason: user.suspended_reason, avatar_color: user.avatar_color, avatar_image: user.avatar_image } }
+
+  updateAvatar(user: AuthUser, color: string | null, image: string | null) {
+    this.db.run('UPDATE users SET avatar_color=?, avatar_image=? WHERE id=?', [color, image, user.id])
+    return this.userData(this.userByName(user.username)!)
+  }
 
   changePassword(request: { headers: Record<string, any> }, oldPassword: string, newPassword: string) {
     if (newPassword.length < 6) throw apiError(400, 'Password must be at least 6 characters')
