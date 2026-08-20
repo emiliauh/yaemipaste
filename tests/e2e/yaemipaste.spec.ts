@@ -4413,6 +4413,20 @@ test('login page offers a passkey sign-in action', async ({ page }) => {
   await expect(page.getByTestId('passkey-login-btn')).toBeEnabled()
 })
 
+test('login page shows the globally-configured logo', async ({ page }) => {
+  const logoDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ logo_type: 'upload', branding_logo: logoDataUrl, accent_color: '#4ade80' }),
+    })
+  })
+  await page.goto('/#/login')
+  await expect(page.locator('.login-brand-mark img')).toHaveAttribute('src', logoDataUrl)
+  await expect(page.locator('.login-brand-mark svg')).toHaveCount(0)
+})
+
 test('login page explains when registration is disabled', async ({ page }) => {
   await page.route('**/auth/admin/public-settings', async (route) => {
     await route.fulfill({

@@ -12,9 +12,12 @@ import { credentialToJson, isPasskeySupported, passkeyErrorMessage, toRequestOpt
 import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
 import { useTurnstile } from '../lib/turnstile'
+import { effectiveLogo, presetInnerSvg, useLogoOverride } from '../lib/branding'
 
 const router = useRouter()
 const { publicSettings, appName, refreshPublicSettings } = usePublicSettings()
+const { logoOverride } = useLogoOverride()
+const brandLogo = computed(() => effectiveLogo(publicSettings.value, logoOverride.value))
 // The backend is the sole source of truth at runtime (see
 // /auth/admin/public-settings): TURNSTILE_SECRET_KEY and
 // VITE_TURNSTILE_SITE_KEY can both change via `.env` + `docker compose up
@@ -132,11 +135,8 @@ async function loginWithPasskey() {
       <section class="login-intro" aria-label="Welcome">
         <div class="login-brand">
           <span class="login-brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M5 7.5h14M7 4.5h10l1 3H6l1-3Z"/>
-              <path d="M6.5 7.5 8 20h8l1.5-12.5"/>
-              <path d="M10 11v5M14 11v5"/>
-            </svg>
+            <img v-if="brandLogo.type === 'upload' && brandLogo.dataUrl" :src="brandLogo.dataUrl" alt="" />
+            <svg v-else viewBox="0 0 24 24" focusable="false" v-html="presetInnerSvg(brandLogo.preset ?? 'trash')"></svg>
           </span>
           <span>{{ appName }}</span>
         </div>
@@ -266,6 +266,12 @@ async function loginWithPasskey() {
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 .login-brand-mark svg { width: 19px; height: 19px; }
+.login-brand-mark img {
+  width: 23px;
+  height: 23px;
+  display: block;
+  object-fit: contain;
+}
 .login-intro h1 {
   color: var(--text);
   font-size: clamp(26px, 3vw, 34px);
