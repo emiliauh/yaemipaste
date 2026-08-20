@@ -5795,6 +5795,32 @@ test('branding dialogs fit within the mobile viewport without horizontal overflo
   await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
 })
 
+test('branding dialog close buttons use the squircle icon-close style', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminRoutes(page, { app_name: 'yaemipaste', public_title: 'yaemipaste', upload_access_mode: 'private' })
+  await openAdminSettings(page)
+
+  await page.getByTestId('logo-open').click()
+  const logoDialog = page.getByRole('dialog', { name: 'Choose site logo' })
+  const logoClose = logoDialog.getByRole('button', { name: 'Close logo picker' })
+  await expect(logoClose).toHaveClass(/icon-close/)
+  const logoBox = await logoClose.boundingBox()
+  expect(logoBox).not.toBeNull()
+  if (logoBox) expect(Math.abs(logoBox.width - 32)).toBeLessThanOrEqual(1)
+  await logoClose.click()
+  await expect(logoDialog).toBeHidden()
+
+  await page.getByTestId('accent-open').click()
+  const accentDialog = page.getByRole('dialog', { name: 'Choose accent color' })
+  const accentClose = accentDialog.getByRole('button', { name: 'Close color picker' })
+  await expect(accentClose).toHaveClass(/icon-close/)
+  const accentBox = await accentClose.boundingBox()
+  expect(accentBox).not.toBeNull()
+  if (accentBox) expect(Math.abs(accentBox.width - 32)).toBeLessThanOrEqual(1)
+  await accentClose.click()
+  await expect(accentDialog).toBeHidden()
+})
+
 test('custom site title is cached and restored on reload without flashing the default', async ({ page }) => {
   // First visit: server returns the real public title.
   await mockAdminRoutes(page, { app_name: 'My Paste', public_title: 'My Paste', upload_access_mode: 'private' })

@@ -99,7 +99,7 @@ watch(() => props.open, (open) => {
     >
       <header class="logo-dialog-header">
         <strong>Site logo</strong>
-        <button class="btn-ghost logo-dialog-close" type="button" aria-label="Close logo picker" @click="cancel">✕</button>
+        <button class="btn-ghost icon-close" type="button" aria-label="Close logo picker" @click="cancel">✕</button>
       </header>
 
       <div class="logo-mode-toggle" role="group" aria-label="Logo source">
@@ -183,9 +183,6 @@ watch(() => props.open, (open) => {
 .logo-dialog-header strong {
   color: var(--text);
   font-size: var(--fs-h2);
-}
-.logo-dialog-close {
-  padding: 4px;
 }
 .logo-mode-toggle {
   display: grid;

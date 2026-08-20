@@ -171,7 +171,7 @@ watch(() => props.open, (open) => {
     >
       <header class="accent-dialog-header">
         <strong>Accent color</strong>
-        <button class="btn-ghost accent-dialog-close" type="button" aria-label="Close color picker" @click="cancel">✕</button>
+        <button class="btn-ghost icon-close" type="button" aria-label="Close color picker" @click="cancel">✕</button>
       </header>
 
       <div class="accent-dialog-body">
@@ -253,9 +253,6 @@ watch(() => props.open, (open) => {
 .accent-dialog-header strong {
   color: var(--text);
   font-size: var(--fs-h2);
-}
-.accent-dialog-close {
-  padding: 4px;
 }
 .accent-dialog-body {
   display: grid;
