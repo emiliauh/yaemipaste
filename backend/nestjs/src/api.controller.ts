@@ -24,6 +24,17 @@ function html(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character))
 }
 
+/** Normalize a stored accent color into a 6-digit lowercase hex (#rrggbb) usable by
+ *  crawler theme-color tags (Discord ignores non-hex or short values). Returns '' when absent/invalid. */
+function accentThemeColor(value: unknown): string {
+  let v = String(value ?? '').trim()
+  if (!v) return ''
+  v = v.replace(/^#/, '')
+  if (/^[0-9a-f]{3}$/i.test(v)) v = v.split('').map(c => c + c).join('')
+  if (!/^[0-9a-f]{6}$/i.test(v)) return ''
+  return '#' + v.toLowerCase()
+}
+
 async function readRemoteBody(response: IncomingMessage, maximumBytes?: number): Promise<Buffer> {
   const chunks: Buffer[] = []
   let total = 0
@@ -175,7 +186,9 @@ export class ApiController {
     const audioMeta = isAudio
       ? `<meta property="og:audio" content="${html(rawUrl)}"><meta property="og:audio:secure_url" content="${html(rawUrl)}"><meta property="og:audio:type" content="${html(contentType)}">`
       : ''
-    const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${html(displayName)} · yaemipaste</title><meta name="description" content="${html(description)}"><link rel="canonical" href="${html(previewUrl)}"><meta property="og:type" content="${mediaType}"><meta property="og:title" content="${html(displayName)}"><meta property="og:description" content="${html(description)}"><meta property="og:url" content="${html(previewUrl)}">${imageMeta}${videoMeta}${audioMeta}<meta name="twitter:card" content="${isImage ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${html(displayName)}"><meta name="twitter:description" content="${html(description)}">${isImage ? `<meta name="twitter:image" content="${html(rawUrl)}">` : ''}</head><body><main><h1>${html(displayName)}</h1><p>${html(description)}</p><p><a href="${html(previewUrl)}">Open preview</a></p></main></body></html>`
+    const themeColor = accentThemeColor(this.auth.settings().accent_color)
+    const themeColorMeta = themeColor ? `<meta name="theme-color" content="${themeColor}">` : ''
+    const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${html(displayName)} · yaemipaste</title>${themeColorMeta}<meta name="description" content="${html(description)}"><link rel="canonical" href="${html(previewUrl)}"><meta property="og:type" content="${mediaType}"><meta property="og:title" content="${html(displayName)}"><meta property="og:description" content="${html(description)}"><meta property="og:url" content="${html(previewUrl)}">${imageMeta}${videoMeta}${audioMeta}<meta name="twitter:card" content="${isImage ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${html(displayName)}"><meta name="twitter:description" content="${html(description)}">${isImage ? `<meta name="twitter:image" content="${html(rawUrl)}">` : ''}</head><body><main><h1>${html(displayName)}</h1><p>${html(description)}</p><p><a href="${html(previewUrl)}">Open preview</a></p></main></body></html>`
     return response.status(200).set({
       'Cache-Control': 'no-store',
       'CDN-Cache-Control': 'no-store',

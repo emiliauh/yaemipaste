@@ -440,6 +440,16 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.equal(pub.json.logo_preset, 'zap')
     assert.equal(pub.json.branding_logo, tiny)
 
+    // The globally-configured accent color should drive the embed's theme-color tag
+    // so services like Discord color the embed bar to match the site branding.
+    const accentForm = new FormData()
+    accentForm.append('file', new Blob(['accent color image']), 'accent.png')
+    const accentUpload = await request('/', { method: 'POST', body: accentForm })
+    assert.equal(accentUpload.response.status, 200)
+    const accentEmbed = await request('/file/accent/preview', { headers: { Accept: '*/*', 'X-Preview-Embed': '1' } })
+    assert.equal(accentEmbed.response.status, 200)
+    assert.match(accentEmbed.text, /name="theme-color" content="#4ade80"/)
+
     const badAccent = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ accent_color: 'not-a-color' }) })
     assert.equal(badAccent.response.status, 400)
     const badType = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ logo_type: 'nonsense' }) })
