@@ -5745,3 +5745,21 @@ test('branding dialogs fit within the mobile viewport without horizontal overflo
   expect(logoBox!.width).toBeLessThanOrEqual(390)
   await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
 })
+
+test('custom site title is cached and restored on reload without flashing the default', async ({ page }) => {
+  // First visit: server returns the real public title.
+  await mockAdminRoutes(page, { app_name: 'My Paste', public_title: 'My Paste', upload_access_mode: 'private' })
+  await page.goto('/')
+  await expect.poll(() => page.title()).toBe('My Paste')
+  // The applied title must be persisted into the branding cache.
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('yp_branding') ?? '{}').title ?? '')).toBe('My Paste')
+
+  // Reload with the cache present: the cached title must be applied synchronously,
+  // before the (mocked slow) public-settings fetch can resolve.
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await route.continue()
+  })
+  await page.reload()
+  await expect.poll(() => page.title()).toBe('My Paste')
+})

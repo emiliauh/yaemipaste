@@ -235,29 +235,52 @@ export function applyLogo(logo: BrandingLogo | null) {
  *  restored synchronously before first paint on the next visit. */
 function persistBranding() {
   if (typeof window === 'undefined' || !('localStorage' in window)) return
+  let vars: Record<string, string> = {}
   try {
-    if (!currentAccent) {
-      window.localStorage.removeItem(BRANDING_CACHE_KEY)
-      return
+    const raw = window.localStorage.getItem(BRANDING_CACHE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') vars = { ...parsed }
     }
-    const vars: Record<string, string> = {
-      '--accent': currentAccent,
-      '--accent-h': shadeHex(currentAccent, 1.12),
-      '--accent-d': shadeHex(currentAccent, 0.86),
-      '--on-accent': onAccentText(currentAccent),
-      '--primary-action': currentAccent,
-      '--primary-action-h': shadeHex(currentAccent, 1.12),
-    }
-    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.getAttribute('href')
-    if (favicon) vars.favicon = favicon
-    window.localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(vars))
-  } catch {
-    // Storage may be unavailable (private mode, disabled cookies); branding
-    // still applies after the public-settings fetch resolves.
+  } catch { /* ignore malformed cache */ }
+  // Merge the current accent/favicon into the cached object so the title set
+  // separately is preserved (and vice versa) when either branding field changes.
+  if (currentAccent) {
+    vars['--accent'] = currentAccent
+    vars['--accent-h'] = shadeHex(currentAccent, 1.12)
+    vars['--accent-d'] = shadeHex(currentAccent, 0.86)
+    vars['--on-accent'] = onAccentText(currentAccent)
+    vars['--primary-action'] = currentAccent
+    vars['--primary-action-h'] = shadeHex(currentAccent, 1.12)
+  } else {
+    for (const key of ['--accent', '--accent-h', '--accent-d', '--on-accent', '--primary-action', '--primary-action-h']) delete vars[key]
   }
+  const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.getAttribute('href')
+  if (favicon) vars.favicon = favicon
+  if (!Object.keys(vars).length) {
+    try { window.localStorage.removeItem(BRANDING_CACHE_KEY) } catch { /* ignore */ }
+    return
+  }
+  try { window.localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(vars)) } catch { /* storage unavailable */ }
 }
 
-/** Synchronously restore a previously-cached accent/favicon before first paint.
+/** Persist the site title into the branding cache so it can be restored
+ *  synchronously on the next visit, avoiding the default-title flash. */
+export function persistBrandingTitle(title: string) {
+  if (typeof window === 'undefined' || !('localStorage' in window)) return
+  let vars: Record<string, string> = {}
+  try {
+    const raw = window.localStorage.getItem(BRANDING_CACHE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') vars = { ...parsed }
+    }
+  } catch { /* ignore malformed cache */ }
+  vars.title = title
+  try { window.localStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify(vars)) } catch { /* storage unavailable */ }
+}
+
+/** Synchronously restore a previously-cached accent/favicon/title before first paint.
  *  Runs before the app mounts so themed content never flashes the default color. */
 export function applyCachedBranding() {
   if (typeof document === 'undefined' || !('localStorage' in window)) return
@@ -280,6 +303,9 @@ export function applyCachedBranding() {
       document.head.appendChild(link)
     }
     link.href = vars.favicon
+  }
+  if (typeof vars.title === 'string' && vars.title) {
+    document.title = vars.title
   }
 }
 

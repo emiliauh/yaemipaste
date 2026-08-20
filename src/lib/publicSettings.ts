@@ -1,6 +1,6 @@
 import { computed, readonly, ref } from 'vue'
 import { adminPublicSettings, applyRuntimePublicSettings, type PublicAdminSettings } from './api'
-import { applyBranding } from './branding'
+import { applyBranding, persistBrandingTitle } from './branding'
 
 const FALLBACK_SETTINGS: PublicAdminSettings = {
   app_name: 'yaemipaste',
@@ -27,6 +27,7 @@ function applyDocumentTitle(settings: PublicAdminSettings) {
   if (typeof document === 'undefined') return
   const title = settings.public_title?.trim() || settings.app_name?.trim() || FALLBACK_SETTINGS.public_title
   document.title = title
+  persistBrandingTitle(title)
 }
 
 export function usePublicSettings() {
