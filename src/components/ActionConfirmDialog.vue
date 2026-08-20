@@ -54,6 +54,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
   background: var(--modal-bg);
 }
 .action-confirm {
+  position: relative;
   width: min(460px, calc(100vw - 24px));
   border: 1px solid var(--border2);
   border-radius: var(--radius-lg);
@@ -80,20 +81,32 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
   background: var(--danger-bg);
 }
 .action-confirm-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-2);
+  padding-right: var(--space-6);
 }
 .action-confirm-header strong {
+  display: block;
   color: var(--text);
   font-size: var(--fs-h2);
 }
 .action-confirm-close {
-  min-width: 30px;
-  min-height: 30px;
-  padding: var(--space-1) var(--space-2);
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+}
+.action-confirm-close:hover:not(:disabled) {
+  background: var(--bg2);
+  color: var(--text);
 }
 .action-confirm-message,
 .action-confirm-detail {

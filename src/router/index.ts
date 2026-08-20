@@ -42,6 +42,11 @@ const router = createRouter({
     },
     { path: '/login', component: () => import('../views/LoginView.vue'), meta: { transition: 'login-fade' } },
     { path: '/register', component: () => import('../views/RegisterView.vue'), meta: { transition: 'login-fade' } },
+    {
+      path: '/account-settings',
+      component: () => import('../views/AccountSettingsView.vue'),
+      meta: { requiresAuth: isAuthEnabled(), workspace: true },
+    },
     { path: '/admin/claim', component: () => import('../views/AdminClaimView.vue') },
     {
       path: '/admin',
@@ -113,7 +118,7 @@ router.beforeEach(async (to) => {
   const normalizedPath = to.path.replace(/\/+$/, '') || '/'
   if (normalizedPath === '/files' && to.query.tab === 'history') return '/history'
   if (!isAuthEnabled() && to.path === '/history') return '/files'
-  if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register' || to.path.startsWith('/admin'))) return '/files'
+  if (!isAuthEnabled() && (to.path === '/login' || to.path === '/register' || to.path === '/account-settings' || to.path.startsWith('/admin'))) return '/files'
   if (PUBLIC_GUEST_PATHS.has(to.path) && to.meta.requiresAuth && !isLoggedIn()) {
     const settings = await refreshPublicSettings()
     if (settings.upload_access_mode === 'public') return

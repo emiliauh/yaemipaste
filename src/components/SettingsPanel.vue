@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
-  authChangePassword,
-  authLogout,
-  authLogoutAllDevices,
   authPasskeyDelete,
   authPasskeyRegisterBegin,
   authPasskeyRegisterFinish,
@@ -24,9 +21,12 @@ import { isAuthEnabled } from '../lib/features'
 import { usePublicSettings } from '../lib/publicSettings'
 import { useTheme, type ThemeMode } from '../lib/theme'
 import RepositoryLink from './RepositoryLink.vue'
+import { useAvatar } from '../lib/avatar'
+import AvatarTile from './AvatarTile.vue'
 
-const emit = defineEmits<{ close: [], login: [], register: [], logout: [] }>()
+const emit = defineEmits<{ close: [], login: [], register: [], 'open-account': [] }>()
 const notificationStore = useNotificationStore()
+const { avatarPrefs } = useAvatar()
 
 const username = getAuthUsername()
 const authEnabled = isAuthEnabled()
@@ -51,14 +51,6 @@ const passkeys = ref<PasskeySummary[]>([])
 const passkeyBusy = ref(false)
 const passkeyLoading = ref(false)
 const passkeyError = ref('')
-const passwordModalOpen = ref(false)
-const passwordBusy = ref(false)
-const passwordError = ref('')
-const currentPassword = ref('')
-const nextPassword = ref('')
-const confirmPassword = ref('')
-const logoutAllAfterPasswordChange = ref(false)
-
 watch(() => publicSettings.value.base_api_url, () => {
   if (!apiBaseEdited.value) apiBase.value = getPasteApiBase()
 })
@@ -158,76 +150,6 @@ async function deletePasskey(id: number) {
   }
 }
 
-function logout() {
-  if (!authEnabled) return
-  authLogout()
-  emit('logout')
-}
-
-function openPasswordModal() {
-  passwordModalOpen.value = true
-  passwordError.value = ''
-  currentPassword.value = ''
-  nextPassword.value = ''
-  confirmPassword.value = ''
-  logoutAllAfterPasswordChange.value = false
-}
-
-function closePasswordModal(force = false) {
-  if (passwordBusy.value && !force) return
-  passwordModalOpen.value = false
-  passwordError.value = ''
-}
-
-async function submitPasswordChange() {
-  if (passwordBusy.value) return
-  passwordError.value = ''
-  const current = currentPassword.value.trim()
-  const next = nextPassword.value.trim()
-  const confirm = confirmPassword.value.trim()
-  if (!current || !next || !confirm) {
-    passwordError.value = 'All password fields are required.'
-    return
-  }
-  if (next.length < 8) {
-    passwordError.value = 'New password must be at least 8 characters.'
-    return
-  }
-  if (next !== confirm) {
-    passwordError.value = 'New passwords do not match.'
-    return
-  }
-  if (next === current) {
-    passwordError.value = 'New password must be different from current password.'
-    return
-  }
-  passwordBusy.value = true
-  try {
-    await authChangePassword(current, next)
-    if (logoutAllAfterPasswordChange.value) {
-      try {
-        await authLogoutAllDevices()
-        notificationStore.push('Password changed. All devices were logged out.')
-        emit('logout')
-        return
-      } catch (e: any) {
-        notificationStore.push(
-          e?.message
-            ? `Password changed, but logging out other devices failed: ${e.message}`
-            : 'Password changed, but logging out other devices failed.',
-          'error',
-        )
-      }
-    }
-    notificationStore.push('Password changed')
-    closePasswordModal(true)
-  } catch (e: any) {
-    passwordError.value = e.message ?? 'Could not change password'
-  } finally {
-    passwordBusy.value = false
-  }
-}
-
 </script>
 
 <template>
@@ -241,6 +163,23 @@ async function submitPasswordChange() {
         <button class="btn-primary" style="font-size:var(--fs-xs)" @click="save">{{ saved ? 'Saved' : 'Save' }}</button>
       </div>
     </div>
+
+    <button
+      v-if="authEnabled && loggedIn"
+      type="button"
+      class="settings-account-row"
+      data-testid="settings-open-account"
+      @click="emit('open-account')"
+    >
+      <AvatarTile :name="username" :prefs="avatarPrefs" size="sm" />
+      <span class="settings-account-meta">
+        <span class="settings-account-name">{{ username }}</span>
+        <span class="settings-account-role">Manage account</span>
+      </span>
+      <svg class="settings-account-chevron" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="m6 5.5 2.5 2.5L11 5.5" />
+      </svg>
+    </button>
 
     <div class="field">
       <label>Theme</label>
@@ -282,27 +221,12 @@ async function submitPasswordChange() {
       </button>
     </div>
 
-    <div v-if="username" style="margin-top:var(--space-1); color:var(--text2); font-size:var(--fs-xs); margin-bottom:var(--space-2)">
-      Signed in as <span style="color:var(--text2)">{{ username }}</span>
-    </div>
-
-    <div class="settings-divider"></div>
-
-    <div v-if="authEnabled && loggedIn" class="account-action-row">
-      <button class="btn-red logout-btn" type="button" @click="logout">Logout</button>
-      <button
-        v-if="hasAccount"
-        class="btn-primary change-password-btn"
-        type="button"
-        data-testid="open-change-password"
-        @click="openPasswordModal"
-      >
-        Change Password
-      </button>
-    </div>
-    <div v-else-if="authEnabled" class="account-action-row" :class="{ 'single-action': !publicSettings.registration_enabled }">
+    <div v-if="authEnabled && !loggedIn">
+      <div class="settings-divider"></div>
+      <div class="account-action-row" :class="{ 'single-action': !publicSettings.registration_enabled }">
       <button class="btn-primary login-btn" type="button" @click="emit('login')">Log in</button>
       <button v-if="publicSettings.registration_enabled" class="btn-ghost register-btn" type="button" @click="emit('register')">Create account</button>
+      </div>
     </div>
 
     <div class="settings-footer">
@@ -341,45 +265,72 @@ async function submitPasswordChange() {
     </div>
   </div>
 
-  <div
-    v-if="passwordModalOpen"
-    class="passkey-backdrop"
-    data-testid="password-backdrop"
-    @click.self="closePasswordModal()"
-  >
-    <div class="passkey-modal" data-testid="password-modal">
-      <div class="passkey-header">
-        <h3>Change Password</h3>
-        <button class="btn-ghost" type="button" :disabled="passwordBusy" @click="closePasswordModal()">Close</button>
-      </div>
-      <p class="passkey-copy">Update your account password. You can also sign out every device after changing it.</p>
-
-      <div class="field">
-        <label for="current-password">Current Password</label>
-        <input id="current-password" v-model="currentPassword" type="password" autocomplete="current-password" />
-      </div>
-      <div class="field">
-        <label for="new-password">New Password</label>
-        <input id="new-password" v-model="nextPassword" type="password" autocomplete="new-password" />
-      </div>
-      <div class="field">
-        <label for="confirm-password">Confirm New Password</label>
-        <input id="confirm-password" v-model="confirmPassword" type="password" autocomplete="new-password" />
-      </div>
-      <label class="password-checkbox">
-        <input v-model="logoutAllAfterPasswordChange" type="checkbox" :disabled="passwordBusy" />
-        Logout all devices after password change
-      </label>
-      <button class="btn-primary passkey-add-btn" type="button" :disabled="passwordBusy" @click="submitPasswordChange">
-        {{ passwordBusy ? 'Updating…' : 'Update Password' }}
-      </button>
-      <div v-if="passwordError" class="passkey-error" data-testid="password-error">{{ passwordError }}</div>
-    </div>
-  </div>
 </template>
 
 <style scoped>
 .settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
+.settings-account-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg2);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.settings-account-row:hover {
+  border-color: var(--border2);
+  background: var(--bg3);
+}
+.settings-account-avatar {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.settings-account-meta {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  line-height: 1.25;
+}
+.settings-account-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-account-role {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+.settings-account-chevron {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-left: auto;
+  fill: none;
+  stroke: var(--text3);
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); }
 .field label { color: var(--text2); font-size: var(--fs-xs); }
 .field input { width: 100%; font-size: var(--fs-sm); }

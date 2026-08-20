@@ -242,70 +242,71 @@ function onPasteAreaLongPressCancel() {
   <div class="files-tab">
     <ExpirySelector ref="expirySelector" :model-value="expiry" @update:model-value="setExpiry" />
 
-    <section class="upload-panel" aria-label="Upload controls">
-      <div class="upload-panel-head">
-        <div>
-          <h1>Share a file or paste</h1>
-          <p>
-            <template v-if="!browserEncryptionReady">Use HTTPS or localhost to enable browser encryption.</template>
-            <template v-else-if="encryptMode === 'password'">Password-protected before upload.</template>
-            <template v-else-if="encryptMode === 'encrypt'">Encrypted in this browser before upload.</template>
-            <template v-else>Public short link, ready to copy.</template>
-          </p>
-          <p v-if="fileSizeLimitLabel" class="upload-limit-note">Maximum file size: <strong>{{ fileSizeLimitLabel }}</strong></p>
-        </div>
-
-        <div class="upload-options">
-          <button
-            type="button"
-            class="encrypt-toggle encrypt-btn"
-            :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
-            data-testid="encrypt-toggle"
-            :disabled="!browserEncryptionReady"
-            :title="browserEncryptionReady ? 'Cycle encryption mode' : 'Browser encryption requires HTTPS or localhost.'"
-            @click="cycleEncrypt"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <span>{{ encryptMode === 'none' ? 'Encryption off' : encryptMode === 'encrypt' ? 'Encrypted link' : 'Password protected' }}</span>
-          </button>
-          <Transition name="pw-field">
-            <div v-if="encryptMode === 'password'" class="password-wrap">
-              <input
-                v-model="encryptPassword"
-                :type="showEncryptPassword ? 'text' : 'password'"
-                class="pw-input"
-                placeholder="Set password"
-                autocomplete="new-password"
-              />
-              <button
-                type="button"
-                class="password-toggle"
-                :aria-label="showEncryptPassword ? 'Hide password' : 'Show password'"
-                :title="showEncryptPassword ? 'Hide password' : 'Show password'"
-                @click="showEncryptPassword = !showEncryptPassword"
-              >
-                <svg v-if="showEncryptPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M3 3l18 18"/>
-                  <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
-                  <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
-                  <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
-                </svg>
-                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              </button>
-            </div>
-          </Transition>
-          <label class="name-toggle" data-testid="keep-name-toggle">
-            <input v-model="keepFileName" type="checkbox" />
-            <span>Keep original name</span>
-          </label>
-        </div>
+    <header class="page-head">
+      <div class="page-head-copy">
+        <h1>Share a file or paste</h1>
+        <p class="page-sub">
+          <template v-if="!browserEncryptionReady">Use HTTPS or localhost to enable browser encryption.</template>
+          <template v-else-if="encryptMode === 'password'">Password-protected before upload.</template>
+          <template v-else-if="encryptMode === 'encrypt'">Encrypted in this browser before upload.</template>
+          <template v-else>Public short link, ready to copy.</template>
+        </p>
+        <p v-if="fileSizeLimitLabel" class="upload-limit-note">Maximum file size: <strong>{{ fileSizeLimitLabel }}</strong></p>
       </div>
+
+      <div class="upload-options">
+        <button
+          type="button"
+          class="encrypt-toggle encrypt-btn"
+          :class="{ 'active-encrypt': encryptMode === 'encrypt', 'active-password': encryptMode === 'password' }"
+          data-testid="encrypt-toggle"
+          :disabled="!browserEncryptionReady"
+          :title="browserEncryptionReady ? 'Cycle encryption mode' : 'Browser encryption requires HTTPS or localhost.'"
+          @click="cycleEncrypt"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>{{ encryptMode === 'none' ? 'Encryption off' : encryptMode === 'encrypt' ? 'Encrypted link' : 'Password protected' }}</span>
+        </button>
+        <Transition name="pw-field">
+          <div v-if="encryptMode === 'password'" class="password-wrap">
+            <input
+              v-model="encryptPassword"
+              :type="showEncryptPassword ? 'text' : 'password'"
+              class="pw-input"
+              placeholder="Set password"
+              autocomplete="new-password"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              :aria-label="showEncryptPassword ? 'Hide password' : 'Show password'"
+              :title="showEncryptPassword ? 'Hide password' : 'Show password'"
+              @click="showEncryptPassword = !showEncryptPassword"
+            >
+              <svg v-if="showEncryptPassword" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M3 3l18 18"/>
+                <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                <path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.3 0 9.5 4.2 10.5 8-.4 1.6-1.5 3.3-3 4.8"/>
+                <path d="M6.2 6.2C4.3 7.7 2.9 9.8 2 12c1 3.8 5.2 8 10 8 1 0 2-.2 2.9-.5"/>
+              </svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M2 12s3.8-8 10-8 10 8 10 8-3.8 8-10 8-10-8-10-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </Transition>
+        <label class="name-toggle" data-testid="keep-name-toggle">
+          <input v-model="keepFileName" type="checkbox" />
+          <span>Keep original name</span>
+        </label>
+      </div>
+    </header>
+
+    <section class="upload-panel" aria-label="Upload controls">
 
       <!-- Drop zone -->
       <div
@@ -399,35 +400,55 @@ function onPasteAreaLongPressCancel() {
 .files-tab { display: flex; flex-direction: column; gap: var(--space-3); padding-bottom: 18px; }
 .upload-panel {
   position: relative;
-  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  box-shadow: none;
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   overflow: visible;
-  padding: 22px;
+  padding: var(--space-5);
 }
-.upload-panel-head {
+.page-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
+  margin-bottom: var(--space-3);
 }
-.upload-panel h1 {
+.page-head-copy {
+  min-width: 0;
+}
+.page-head h1 {
   color: var(--text);
   font-size: var(--fs-display);
-  font-weight: 700;
-  letter-spacing: -0.04em;
+  font-weight: 650;
+  letter-spacing: -0.025em;
   line-height: var(--lh-tight);
   margin: 0;
 }
-.upload-panel p {
+.page-head .page-sub {
   color: var(--text2);
   font-size: var(--fs-sm);
   line-height: var(--lh-body);
   margin: var(--space-2) 0 0;
+}
+.upload-limit-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: var(--fs-xs);
+}
+.upload-limit-note strong {
+  color: var(--text);
+  font-weight: 600;
 }
 .upload-options {
   display: flex;
@@ -465,28 +486,41 @@ function onPasteAreaLongPressCancel() {
 }
 .encrypt-btn {
   cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
 .encrypt-btn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
 .encrypt-btn:not(:disabled):hover {
-  border-color: var(--accent);
+  border-color: var(--border2);
+  background: color-mix(in srgb, var(--bg1) 55%, transparent);
   color: var(--text);
 }
 .encrypt-btn:not(:disabled):active {
   transform: none;
 }
 .encrypt-btn.active-encrypt {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--border));
   color: var(--accent);
-  background: var(--checked-bg);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg1));
+}
+.encrypt-btn.active-encrypt:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent-h);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg1));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 .encrypt-btn.active-password {
-  border-color: var(--orange-h, #f0963a);
-  color: var(--orange-h, #f0963a);
-  background: color-mix(in srgb, var(--orange-h, #f0963a) 10%, transparent);
+  border-color: color-mix(in srgb, var(--orange-h) 68%, var(--border));
+  color: var(--orange-h);
+  background: color-mix(in srgb, var(--orange-h) 12%, var(--bg1));
+}
+.encrypt-btn.active-password:not(:disabled):hover {
+  border-color: var(--orange-h);
+  color: var(--orange-h);
+  background: color-mix(in srgb, var(--orange-h) 18%, var(--bg1));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--orange-h) 16%, transparent);
 }
 .name-toggle input {
   width: 17px;
@@ -552,7 +586,8 @@ function onPasteAreaLongPressCancel() {
 .share-label {
   color: var(--text2);
   font-size: var(--fs-xs);
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 .share-row {
   display: grid;
@@ -593,9 +628,9 @@ function onPasteAreaLongPressCancel() {
   gap: var(--space-2);
 }
 .upload-zone {
-  border: 1px solid color-mix(in srgb, var(--border2) 88%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bg1) 60%, transparent);
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg1) 55%, transparent);
   color: var(--text2);
   cursor: pointer;
   display: flex;
@@ -614,7 +649,7 @@ function onPasteAreaLongPressCancel() {
 }
 .upload-zone:hover,
 .upload-zone.drag-over {
-  border-color: var(--accent);
+  border-color: var(--ring);
   background: color-mix(in srgb, var(--bg1) 78%, transparent);
 }
 .upload-zone:hover svg,
@@ -624,8 +659,8 @@ function onPasteAreaLongPressCancel() {
 .upload-zone-title {
   color: var(--text);
   font-size: var(--fs-h1);
-  font-weight: 750;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 .upload-zone p {
   color: var(--text2);
@@ -633,11 +668,11 @@ function onPasteAreaLongPressCancel() {
   margin: 0;
 }
 .paste-area {
-  border: 1px solid color-mix(in srgb, var(--border2) 76%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface2);
+  background: var(--bg2);
   color: var(--text2);
-  padding: 11px var(--space-4);
+  padding: var(--space-3) var(--space-4);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -650,10 +685,10 @@ function onPasteAreaLongPressCancel() {
 }
 .paste-area span {
   font-size: var(--fs-sm);
-  font-weight: 650;
+  font-weight: 500;
 }
 .paste-area:hover {
-  border-color: var(--text2);
+  border-color: var(--border2);
   color: var(--text);
 }
 .paste-area.pressing {
@@ -674,6 +709,7 @@ function onPasteAreaLongPressCancel() {
   padding: var(--space-4);
   line-height: var(--lh-body);
   box-sizing: border-box;
+  background: var(--bg1);
 }
 .text-actions-row {
   display: flex;
@@ -718,11 +754,11 @@ function onPasteAreaLongPressCancel() {
     padding: 16px 18px;
   }
 
-  .upload-panel h1 {
+  .page-head h1 {
     font-size: clamp(22px, 3vw, 28px);
   }
 
-  .upload-panel p {
+  .page-head .page-sub {
     margin-top: 5px;
   }
 
@@ -754,7 +790,7 @@ function onPasteAreaLongPressCancel() {
     border-radius: var(--radius-lg);
     padding: var(--space-4);
   }
-  .upload-panel-head {
+  .page-head {
     flex-direction: column;
   }
   .upload-options {
@@ -785,6 +821,19 @@ function onPasteAreaLongPressCancel() {
     gap: var(--space-1);
     padding: var(--space-1) var(--space-3);
     scroll-margin-bottom: calc(var(--mobile-bar-space) + var(--space-2));
+  }
+}
+@media (min-width: 601px) and (max-width: 960px) {
+  /* Intermediate widths squeeze the title next to the upload controls;
+     stack the header like the mobile layout instead. */
+  .page-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .upload-options {
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
   }
 }
 .files-tab .btn-ghost,

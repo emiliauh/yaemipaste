@@ -1,57 +1,75 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/*
+ * Design system
+ * -------------
+ * The palette, radii, type, and elevation below follow the shadcn/ui visual
+ * language (neutral canvas, white surfaces, hairline borders, semantic
+ * tokens, ring-based focus) while keeping this app's established
+ * light/dark toggle through [data-theme]. shadcn-style semantic aliases
+ * (--background, --card, --primary, --muted, --ring, ...) are mapped at the
+ * bottom of the token block so a future Tailwind/shadcn-vue migration is a
+ * 1:1 token swap.
+ *
+ * Elevation comes from shadows, not borders: surfaces carry a hairline
+ * border plus one of --shadow-sm/-md/-lg. Never double-border a surface.
+ */
 :root {
-  --bg:        #0b0e13;
-  --bg1:       #11161d;
-  --bg2:       #19212b;
-  --bg3:       #252f3b;
-  --surface:   #121820;
-  --surface2:  #1a232e;
-  --surface3:  #25313e;
-  --border:    #293542;
-  --border2:   #3b4b5c;
-  --text:      #f0f3f7;
-  --text2:     #a4b0be;
-  --text3:     #718092;
-  --accent:    #82a9d6;
-  --accent-h:  #b1cced;
-  --accent-d:  #5e86b4;
-  --primary-action: #466d98;
-  --primary-action-h: #4e78aa;
-  --orange:    var(--accent);
-  --orange-h:  var(--accent-h);
-  --red:       #d27676;
-  --red-h:     #f09a9a;
-  --green:     #8fc6a5;
-  --on-accent: #ffffff;
-  --shadow:    #00000066;
-  --modal-bg:  #000000b5;
+  /* Dark theme (default) - warm stone neutrals with amber accent.
+     Primary CTAs use amber with dark text (Vercel-style inverted CTA). */
+  --bg:        #0c0a09;
+  --bg1:       #141210;
+  --bg2:       #1c1917;
+  --bg3:       #292524;
+  --surface:   #131110;
+  --surface2:  #1a1715;
+  --surface3:  #272320;
+  --border:    #292524;
+  --border2:   #3d3834;
+  --text:      #f5f5f4;
+  --text2:     #a8a29e;
+  --text3:     #78716c;
+  --accent:    #fbbf24;
+  --accent-h:  #fcd34d;
+  --accent-d:  #f59e0b;
+  --primary-action: #fbbf24;
+  --primary-action-h: #fcd34d;
+  --orange:    #f59e0b;
+  --orange-h:  #fbbf24;
+  --warn:      #f59e0b;
+  --warn-h:    #fbbf24;
+  --red:       #f87171;
+  --red-h:     #fca5a5;
+  --green:     #4ade80;
+  --on-accent: #451a03;
+  --shadow:    #000000;
+  --modal-bg:  #000000b0;
   --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg2));
-  --checked-bg:#14283b;
-  --danger-bg: #2b1111;
-  --success-border: #20442f;
-  --error-border: #4a1e1e;
+  --checked-bg: #2d2410;
+  --danger-bg: #2a1212;
+  --success-border: #1d4d36;
+  --error-border: #5a2320;
   --subtle-grad-end: #101112;
 
-  /* Radius scale - documented, do not invent ad-hoc values.
-     sm = controls (buttons/inputs/pills-non-full), md = cards/panels,
-     lg = hero-scale panels (upload panel, auth cards), full = pill toggles */
-  --radius:     7px;
-  --radius-sm:  7px;
-  --radius-md:  11px;
-  --radius-lg:  15px;
+  /* Radius scale - shadcn-style: 6px controls, 10px cards, 12px overlays.
+     Pills only for tags/status. */
+  --radius:     6px;
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  12px;
   --radius-full: 999px;
 
-  /* Type scale */
+  /* Type scale - hierarchy via size, weight (500/600), and negative
+     letter-spacing on headings; body is 14px. */
   --font:       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
-  --fs-display: clamp(28px, 3.4vw, 38px);
-  --fs-h1:      clamp(20px, 2.2vw, 24px);
+  --fs-display: clamp(26px, 3vw, 34px);
+  --fs-h1:      clamp(19px, 2.1vw, 23px);
   --fs-h2:      15px;
-  --fs-body:    13px;
-  --fs-sm:      12px;
-  --fs-xs:      11px;
-  --lh-tight:   1.15;
+  --fs-body:    14px;
+  --fs-sm:      13px;
+  --fs-xs:      12px;
+  --lh-tight:   1.2;
   --lh-body:    1.55;
 
   /* Spacing scale */
@@ -64,54 +82,79 @@
   --space-7: 48px;
   --space-8: 64px;
   --mobile-bar-space: calc(122px + env(safe-area-inset-bottom, 0px));
-  /* Fixed mobile chrome (tab bar, settings sheet) shares the workspace gutter. */
   --mobile-chrome-left: 16px;
   --mobile-chrome-right: 16px;
-  /* The floating navigation follows the visible controls inside the upload
-     panel, including its border and mobile padding. */
   --mobile-nav-inset: 4px;
-  --sidebar-w: 228px;
-  --sidebar-w-tablet: 208px;
+  --sidebar-w: 232px;
+  --sidebar-w-tablet: 210px;
   --sidebar-w-collapsed: 72px;
   --sidebar-w-collapsed-tablet: 70px;
+
   /* Motion tokens */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 0.15s;
   --duration-base: 0.22s;
   --duration-slow: 0.4s;
 
-  --focus-ring: 0 0 0 2px var(--bg1), 0 0 0 4px color-mix(in srgb, var(--accent) 72%, transparent);
+  /* Elevation - layered, tight (Stripe-style). Shadows only for floating
+     or hero surfaces; everything else uses hairlines. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--shadow) 45%, transparent);
+  --shadow-md: 0 1px 2px color-mix(in srgb, var(--shadow) 35%, transparent),
+               0 10px 26px -8px color-mix(in srgb, var(--shadow) 50%, transparent);
+  --shadow-lg: 0 2px 6px color-mix(in srgb, var(--shadow) 40%, transparent),
+               0 24px 56px -12px color-mix(in srgb, var(--shadow) 65%, transparent);
+
+  --focus-ring: 0 0 0 1px var(--bg1), 0 0 0 3px color-mix(in srgb, var(--ring) 60%, transparent);
+
+  /* shadcn/ui semantic aliases (mapped 1:1 for a future migration).
+     shadcn's --accent is our accent-tinted hover surface; use
+     --accent-soft / --checked-bg for that role today. */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--bg1);
+  --card-foreground: var(--text);
+  --primary: var(--primary-action);
+  --primary-foreground: var(--on-accent);
+  --secondary: var(--bg2);
+  --secondary-foreground: var(--text);
+  --muted: var(--bg2);
+  --muted-foreground: var(--text2);
+  --ring: var(--accent);
 }
 
 :root[data-theme="light"] {
-  --bg:        #f5f7fa;
+  --bg:        #f6f4f0;
   --bg1:       #ffffff;
-  --bg2:       #edf1f6;
-  --bg3:       #dfe6ef;
+  --bg2:       #f1ede7;
+  --bg3:       #e5dfd6;
   --surface:   #ffffff;
-  --surface2:  #f1f4f8;
-  --surface3:  #e5ebf2;
-  --border:    #d4dce6;
-  --border2:   #bac7d6;
-  --text:      #18202a;
-  --text2:     #5c6978;
-  --text3:     #7d8b9b;
-  --accent:    #4e78aa;
-  --accent-h:  #385f8d;
-  --accent-d:  #2e527b;
-  --primary-action: #4e78aa;
-  --primary-action-h: #385f8d;
-  --red:       #b42318;
+  --surface2:  #f4f1ec;
+  --surface3:  #e9e3d9;
+  --border:    #e6e0d6;
+  --border2:   #d2c9bb;
+  --text:      #1c1917;
+  --text2:     #57534e;
+  --text3:     #a8a29e;
+  --accent:    #b45309;
+  --accent-h:  #92400e;
+  --accent-d:  #78350f;
+  --primary-action: #1c1917;
+  --primary-action-h: #292524;
+  --orange:    #d97706;
+  --orange-h:  #b45309;
+  --warn:      #d97706;
+  --warn-h:    #b45309;
+  --red:       #b91c1c;
   --red-h:     #d92d20;
-  --green:     #16834a;
+  --green:     #15803d;
   --on-accent: #ffffff;
-  --shadow:    #1f29371f;
-  --modal-bg:  #15191f66;
-  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--bg2));
-  --checked-bg:#e3eefb;
-  --danger-bg: #fde7e3;
-  --success-border: #8fd3aa;
-  --error-border: #efafa7;
+  --shadow:    #1c1917;
+  --modal-bg:  #1c191759;
+  --accent-soft: color-mix(in srgb, var(--accent) 8%, var(--bg2));
+  --checked-bg: #fef3c7;
+  --danger-bg: #fdecec;
+  --success-border: #b7e4c0;
+  --error-border: #f5c1bc;
   --subtle-grad-end: #f1f4f8;
 }
 
@@ -199,19 +242,11 @@ html, body {
 
 body {
   background-color: var(--bg);
-  background-image: linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-  background-size: 100vw 100dvh, 100vw 100dvh, 100vw 100dvh;
   color: var(--text);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-}
-
-:root[data-theme="light"] body {
-  background-image: linear-gradient(180deg, var(--bg1) 0%, var(--bg) 58%);
 }
 
 #app {
@@ -228,29 +263,32 @@ body {
   background: var(--surface);
 }
 
-
-
 /* ── Scrollbar ─────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--border2); }
-.workspace::-webkit-scrollbar-track { background: var(--surface); }
-.workspace { scrollbar-color: var(--bg3) var(--surface); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--bg3);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border2); background-clip: content-box; }
+.workspace::-webkit-scrollbar-track { background: transparent; }
+.workspace { scrollbar-color: var(--bg3) transparent; }
 
 /* ── Inputs ────────────────────────────────────────────────────────────── */
 input, textarea {
-  background: var(--bg2);
+  background: var(--bg1);
   border: 1px solid var(--border2);
   border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font);
-  font-size: 13px;
-  padding: 6px 10px;
+  font-size: var(--fs-body);
+  padding: 8px 12px;
   outline: none;
-  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
-input:focus, textarea:focus { border-color: var(--accent); box-shadow: var(--focus-ring); }
+input:focus, textarea:focus { border-color: var(--ring); box-shadow: var(--focus-ring); }
 input::placeholder, textarea::placeholder { color: var(--text3); }
 
 /* Shared site-native checkbox. Keep the browser's accessible input semantics,
@@ -259,14 +297,14 @@ input::placeholder, textarea::placeholder { color: var(--text3); }
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
   margin: 0;
   padding: 0;
   border: 1px solid var(--border2);
-  border-radius: 6px;
-  background: var(--surface2);
+  border-radius: 5px;
+  background: var(--bg1);
   color: var(--on-accent);
   cursor: pointer;
   position: relative;
@@ -278,10 +316,10 @@ input[type="checkbox"]::after {
   position: absolute;
   width: 9px;
   height: 5px;
-  left: 4px;
+  left: 3.5px;
   top: 4px;
-  border-left: 2.25px solid currentColor;
-  border-bottom: 2.25px solid currentColor;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
   opacity: 0;
   transform: rotate(-45deg) scale(.8);
   transition: opacity .12s ease, transform .12s ease;
@@ -301,7 +339,7 @@ input[type="checkbox"]:checked::after {
 input[type="checkbox"]:indeterminate::after {
   width: 8px;
   height: 2px;
-  left: 3px;
+  left: 4px;
   top: 7px;
   border: 0;
   border-radius: 2px;
@@ -312,7 +350,7 @@ input[type="checkbox"]:indeterminate::after {
 
 input[type="checkbox"]:hover:not(:disabled) {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg1));
 }
 
 input[type="checkbox"]:checked:hover:not(:disabled),
@@ -322,7 +360,7 @@ input[type="checkbox"]:indeterminate:hover:not(:disabled) {
 
 input[type="checkbox"]:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg1), 0 0 0 4px color-mix(in srgb, var(--accent) 72%, transparent);
+  box-shadow: 0 0 0 1px var(--bg1), 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 input[type="checkbox"]:disabled {
@@ -342,62 +380,59 @@ input[type="checkbox"]:disabled {
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 button {
   font-family: var(--font);
-  font-size: 12px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
-  padding: 5px 12px;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+  padding: 7px 14px;
+  min-height: 34px;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
   white-space: nowrap;
 }
-button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Secondary: white surface, hairline border. */
 .btn-primary {
-  background: var(--bg2);
+  background: var(--bg1);
   border: 1px solid var(--border2);
   color: var(--text);
 }
-.btn-primary:hover:not(:disabled) { background: var(--bg3); border-color: var(--text3); }
+.btn-primary:hover:not(:disabled) { background: var(--bg2); border-color: var(--text3); }
 
+/* Primary CTA: solid accent. */
 .btn-orange {
   background: var(--primary-action);
   color: var(--on-accent);
 }
 .btn-orange:hover:not(:disabled) { background: var(--primary-action-h); }
 
+/* Destructive: outline that fills red on hover. */
 .btn-red {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text2);
 }
-.btn-red:hover:not(:disabled) { border-color: var(--red); color: var(--red-h); }
+.btn-red:hover:not(:disabled) { border-color: var(--red); color: var(--red-h); background: color-mix(in srgb, var(--red) 8%, transparent); }
 
+/* Ghost: quiet secondary, hairline only. */
 .btn-ghost {
-  background: transparent;
+  background: var(--bg1);
   border: 1px solid var(--border);
   color: var(--text2);
 }
-.btn-ghost:hover:not(:disabled) { border-color: var(--border2); color: var(--text); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--border2); color: var(--text); background: var(--bg2); }
 
 /* ── Card ──────────────────────────────────────────────────────────────── */
 .card {
   background: var(--bg1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 20px;
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Quiet utility overrides shared by legacy view markup. */
-.card,
-.upload-panel,
-.expiry-panel,
-.admin-header,
-.settings-panel,
-.table-wrap,
-.file-table {
-  box-shadow: none;
-}
-
 .upload-panel,
 .expiry-panel {
   background: var(--surface);
@@ -429,48 +464,55 @@ button:active:not(:disabled),
 .info-box {
   border: 1px solid var(--border2);
   border-radius: var(--radius);
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   color: var(--text2);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: flex-start;
 }
 .info-box .icon { flex-shrink: 0; margin-top: 1px; }
 
 /* ── Tabs ──────────────────────────────────────────────────────────────── */
 .tabs {
-  display: flex;
-  border: 1px solid var(--border2);
+  display: inline-flex;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   width: fit-content;
+  background: var(--bg);
+  padding: 3px;
+  gap: 2px;
 }
 .tabs button {
-  border-radius: 0;
+  border-radius: calc(var(--radius) - 2px);
   border: none;
   background: transparent;
   color: var(--text2);
-  padding: 6px 32px;
-  font-size: 13px;
+  padding: 6px 18px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  min-height: 30px;
 }
 .tabs button.active {
-  background: var(--bg2);
+  background: var(--bg1);
   color: var(--text);
+  box-shadow: var(--shadow-sm);
 }
-.tabs button:hover:not(.active) { background: var(--bg1); color: var(--text); }
+.tabs button:hover:not(.active) { background: var(--bg2); color: var(--text); }
 
 /* ── Table ─────────────────────────────────────────────────────────────── */
 .file-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 .file-table th {
   text-align: left;
   color: var(--text2);
-  font-weight: normal;
-  padding: 6px 10px;
+  font-weight: 500;
+  font-size: var(--fs-xs);
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
   user-select: none;
@@ -478,12 +520,12 @@ button:active:not(:disabled),
 .file-table th.sortable { cursor: pointer; }
 .file-table th.sortable:hover { color: var(--text); }
 .file-table td {
-  padding: 5px 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--border);
   color: var(--text2);
 }
 .file-table tr:last-child td { border-bottom: none; }
-.file-table tr:hover td { background: var(--bg1); }
+.file-table tr:hover td { background: var(--bg2); }
 .file-table td.name { color: var(--text); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Misc ──────────────────────────────────────────────────────────────── */
@@ -497,8 +539,8 @@ button:active:not(:disabled),
   background: var(--bg2);
   border: 1px solid var(--border2);
   border-radius: var(--radius);
-  padding: 10px 16px;
-  font-size: 12px;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--fs-sm);
   z-index: 1000;
   animation: fadeIn 0.15s ease;
 }
@@ -512,8 +554,8 @@ button:active:not(:disabled),
 
 /* ── Upload zone ───────────────────────────────────────────────────────── */
 .upload-zone {
-  border: 1px solid var(--border2);
-  border-radius: var(--radius);
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius-md);
   padding: 40px 20px;
   text-align: center;
   cursor: pointer;
@@ -521,7 +563,7 @@ button:active:not(:disabled),
   color: var(--text2);
 }
 .upload-zone:hover, .upload-zone.drag-over {
-  border-color: var(--text3);
+  border-color: var(--ring);
   background: var(--bg1);
 }
 .upload-zone svg { margin-bottom: 10px; color: var(--text3); }
@@ -536,15 +578,13 @@ button:active:not(:disabled),
   width: var(--settings-panel-width, auto);
   max-height: var(--settings-panel-max-height, none);
   background: color-mix(in srgb, var(--surface, var(--bg1)) 94%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border2) 86%, transparent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 22px 54px color-mix(in srgb, var(--shadow) 36%, transparent), 0 1px 0 color-mix(in srgb, var(--text) 5%, transparent) inset;
-  padding: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
   z-index: 100;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
-
-
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
@@ -554,6 +594,8 @@ button:active:not(:disabled),
   .file-table th.col-expiry { display: none; }
 
   .settings-panel {
-    border-radius: var(--radius-lg);
+    /* Mobile bottom-sheet style: larger top radius reads as a sheet
+       sliding up, matching iOS/Android conventions. */
+    border-radius: 16px;
   }
 }

@@ -24,8 +24,9 @@ const sidebarCollapsed = ref(
 )
 const { refreshPublicSettings } = usePublicSettings()
 
-const activeTab = computed<'files' | 'history' | 'admin'>(() => {
+const activeTab = computed<'files' | 'history' | 'admin' | null>(() => {
   if (route.path.startsWith('/admin')) return 'admin'
+  if (route.path === '/account-settings') return null
   return authEnabled && route.path === '/history' ? 'history' : 'files'
 })
 const workspacePageKey = computed(() => route.path.startsWith('/admin') ? 'admin' : route.fullPath)
@@ -59,6 +60,11 @@ function openSettings() {
       'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
     )?.focus()
   })
+}
+
+function openAccount() {
+  showSettings.value = false
+  void router.push('/account-settings')
 }
 
 function closeSettings() {
@@ -136,8 +142,10 @@ onBeforeUnmount(() => {
       :show-admin="adminEnabled"
       :show-settings="authEnabled"
       :settings-open="showSettings"
+      @open-account="openAccount"
       :show-guest-access="showGuestAccess"
       :collapsed="sidebarCollapsed"
+      :account-active="route.path === '/account-settings'"
       @update:collapsed="sidebarCollapsed = $event"
       @select-files="navigate('/files')"
       @select-history="navigate('/history')"
@@ -176,7 +184,7 @@ onBeforeUnmount(() => {
           @close="closeSettings"
           @login="navigate('/login')"
           @register="navigate('/register')"
-          @logout="navigate('/login')"
+          @open-account="openAccount"
         />
       </div>
     </Transition>

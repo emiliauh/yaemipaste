@@ -6,6 +6,7 @@ import { fileUrl, formatTimestamp, getPasteApiBase, listFiles, deleteFile, forma
 import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isEncryptedBlob, rememberEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import ActionConfirmDialog from './ActionConfirmDialog.vue'
+import SortArrow from './SortArrow.vue'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
@@ -179,10 +180,23 @@ function applyHistorySnapshot(rawFiles: unknown[]) {
     const normalized = mapRawHistoryFile(item as Record<string, unknown>)
     if (normalized) parsed.push(normalized)
   }
-  files.value = reconcileHistoryFiles(parsed)
+  const reconciled = reconcileHistoryFiles(parsed)
+  if (sameHistoryList(files.value, reconciled)) return
+  files.value = reconciled
   const knownNames = new Set(files.value.map((file) => file.file_name))
   selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
   fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
+}
+
+function sameHistoryList(a: PasteFile[], b: PasteFile[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((file, index) => {
+    const other = b[index]
+    return file.file_name === other.file_name
+      && file.file_size === other.file_size
+      && file.expires_at === other.expires_at
+      && file.created_at === other.created_at
+  })
 }
 
 function resolveHistorySocketUrl(): string | null {
@@ -232,7 +246,9 @@ async function refreshSilently() {
   try {
     const nextFiles = await listFiles()
     if (sequence !== historyRequestSequence) return
-    files.value = reconcileHistoryFiles(nextFiles)
+    const reconciled = reconcileHistoryFiles(nextFiles)
+    if (sameHistoryList(files.value, reconciled)) return
+    files.value = reconciled
     const knownNames = new Set(files.value.map((file) => file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
     fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
@@ -1365,9 +1381,8 @@ onBeforeUnmount(() => {
   <div class="history-tab">
     <section class="history-hero" aria-labelledby="history-title">
       <div class="history-hero-copy">
-        <span class="eyebrow">Management surface</span>
         <h2 id="history-title">History</h2>
-        <p>Review your active uploads, manage encrypted files, and take action without leaving the vault.</p>
+        <p>Find, copy, or delete anything you've uploaded.</p>
       </div>
       <!-- Zeroed totals read as "you have no files" rather than "sign in", so
            the summary is withheld until there is an account behind it. -->
@@ -1506,7 +1521,7 @@ onBeforeUnmount(() => {
           </svg>
         </span>
         <strong>History needs an account</strong>
-        <p>Public uploads are available to everyone, but your history stays private to your account.</p>
+        <p>Anyone can see a public upload, but your history is only visible to you.</p>
         <button class="btn-primary account-action" type="button" @click="router.push('/login')">Log in to view history</button>
       </div>
 
@@ -1553,13 +1568,13 @@ onBeforeUnmount(() => {
                 />
               </th>
               <th class="sortable" @click="setSort('file_name')">
-                Name <span class="sort-arrow">{{ sortKey === 'file_name' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
+                Name <SortArrow :active="sortKey === 'file_name'" :dir="sortDir" />
               </th>
               <th class="sortable col-size" @click="setSort('file_size')">
-                Size <span class="sort-arrow">{{ sortKey === 'file_size' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
+                Size <SortArrow :active="sortKey === 'file_size'" :dir="sortDir" />
               </th>
               <th class="sortable col-expiry" @click="setSort('expires_at')">
-                Expires <span class="sort-arrow">{{ sortKey === 'expires_at' ? (sortDir === 1 ? '↑' : '↓') : '↕' }}</span>
+                Expires <SortArrow :active="sortKey === 'expires_at'" :dir="sortDir" />
               </th>
               <th></th>
             </tr>
@@ -1875,33 +1890,29 @@ onBeforeUnmount(() => {
 }
 
 .history-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 42%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
-  padding: clamp(18px, 3vw, 28px);
+  padding: clamp(18px, 3vw, 24px);
   overflow: hidden;
 }
 
 .history-hero-copy {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.eyebrow {
-  color: var(--text2);
-  font-size: var(--fs-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  gap: var(--space-1);
 }
 
 .history-hero h2 {
   color: var(--text);
   font-size: var(--fs-display);
   line-height: var(--lh-tight);
-  font-weight: 700;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  margin: 0;
 }
 
 .history-hero p {
@@ -1909,29 +1920,30 @@ onBeforeUnmount(() => {
   color: var(--text2);
   font-size: var(--fs-sm);
   line-height: var(--lh-body);
+  margin: 0;
 }
 
 .history-summary {
+  flex: 0 1 auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(96px, 1fr));
   gap: var(--space-2);
 }
 
 .summary-card {
   min-width: 0;
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg) 66%, transparent);
+  background: var(--bg2);
 }
 
 .summary-label {
   display: block;
-  margin-bottom: var(--space-2);
+  margin-bottom: 2px;
   color: var(--text3);
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .summary-card strong {
@@ -2366,12 +2378,6 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--bg2) 42%, transparent);
 }
 
-.sort-arrow {
-  color: var(--text2);
-  font-size: var(--fs-xs);
-  margin-left: 2px;
-}
-
 .file-table th.select-col,
 .file-table td.select-col {
   width: 42px;
@@ -2496,9 +2502,7 @@ onBeforeUnmount(() => {
   width: min(440px, calc(100vw - 24px));
   border: 1px solid var(--border2);
   border-radius: var(--radius-lg);
-  background:
-    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--bg3) 34%, transparent), transparent 34%),
-    var(--bg1);
+  background: var(--bg1);
   padding: var(--space-4);
   box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 90%, transparent);
 }
@@ -2702,7 +2706,13 @@ onBeforeUnmount(() => {
 
 @media (max-width: 820px) {
   .history-hero {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .history-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .page-size-wrap {

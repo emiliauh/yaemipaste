@@ -141,30 +141,10 @@ async function loginWithPasskey() {
           <span>{{ appName }}</span>
         </div>
         <h1>Sign in to {{ appName }}.</h1>
-        <p>Manage your uploads, links, and account from one place.</p>
+        <p>Upload files or paste text, share the link, and find it again in your history.</p>
       </section>
 
       <section class="login-surface">
-        <div class="login-info">
-          <span class="login-info-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <rect x="4" y="10" width="16" height="10" rx="2"/>
-              <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
-            </svg>
-          </span>
-          <div>
-            <strong>Authentication required</strong>
-            <p>Use your account to manage uploads, links, and settings.</p>
-            <p v-if="!publicSettings.registration_enabled" class="registration-notice">
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <circle cx="12" cy="12" r="9"/>
-                <path d="M12 10v5M12 7h.01"/>
-              </svg>
-              Registration is disabled.
-            </p>
-          </div>
-        </div>
-
         <div class="card login-card">
         <form @submit.prevent="submit">
           <div class="field">
@@ -234,6 +214,13 @@ async function loginWithPasskey() {
             <router-link v-if="publicSettings.registration_enabled" to="/register" class="link">Register</router-link>
           </div>
         </form>
+        <p v-if="!publicSettings.registration_enabled" class="registration-notice">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 10v5M12 7h.01"/>
+          </svg>
+          Registration is disabled.
+        </p>
       </div>
       </section>
     </main>
@@ -294,56 +281,36 @@ async function loginWithPasskey() {
   line-height: 1.6;
 }
 .login-surface { width: 100%; }
-.login-info {
-  width: 100%;
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-body);
-}
-.login-info-icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  color: var(--accent-h);
-  line-height: 1;
-}
-.login-info-icon svg { display: block; width: 18px; height: 18px; }
-.login-info strong { display: block; color: var(--text); font-weight: 580; }
-.login-info p { margin-top: 2px; color: var(--text2); }
 .login-info .registration-notice {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  padding: 3px 8px;
-  border: 1px solid color-mix(in srgb, #d4a72c 34%, var(--border));
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, #d4a72c 12%, transparent);
-  color: color-mix(in srgb, #f0c84b 74%, var(--text));
-  font-size: var(--fs-xs);
-  line-height: 1.25;
+  display: none;
 }
 .registration-notice svg {
   width: 14px;
   height: 14px;
   flex: 0 0 14px;
-  color: #f0c84b;
+  color: var(--orange-h);
 }
 .login-card {
   position: relative;
   width: 100%;
   border-radius: var(--radius-lg);
-  padding: var(--space-5);
+  padding: var(--space-6);
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   box-shadow: 0 18px 42px color-mix(in srgb, var(--shadow) 30%, transparent);
+}
+.registration-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--orange) 38%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--orange) 10%, transparent);
+  color: var(--orange-h);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
 }
 .field { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
 .field label { color: var(--text); font-size: var(--fs-sm); line-height: var(--lh-tight); }

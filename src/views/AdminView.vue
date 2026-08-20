@@ -578,6 +578,9 @@ async function refreshUploads() {
   try {
     const next = await adminUploads()
     if (sequence !== uploadsRefreshSequence) return
+    // Skip identical payloads: the 2s polling interval otherwise re-renders
+    // the table on every tick, which can swallow in-flight clicks and menus.
+    if (sameUploadList(uploads.value, next)) return
     uploads.value = next
     selectedUploads.value = new Set([...selectedUploads.value].filter((path) => next.some((upload) => upload.path === path)))
     updateCachedAdminUploads(next)
@@ -587,6 +590,23 @@ async function refreshUploads() {
     console.error('Admin upload refresh failed', e)
   }
 }
+
+function sameUploadList(a: AdminUpload[], b: AdminUpload[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((upload, index) => {
+    const other = b[index]
+    return upload.path === other.path
+      && upload.display_name === other.display_name
+      && upload.owner === other.owner
+      && upload.uploader === other.uploader
+      && upload.source === other.source
+      && upload.size_bytes === other.size_bytes
+      && upload.created_at === other.created_at
+      && upload.expires_at === other.expires_at
+      && upload.expired === other.expired
+  })
+}
+
 
 async function saveSettings() {
   await runAction(async () => {
@@ -1623,13 +1643,12 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  box-shadow: 0 18px 36px color-mix(in srgb, var(--shadow) 18%, transparent);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .header-actions, .actions {
   display: flex;
@@ -1675,7 +1694,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border2);
   border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: 0 14px 32px var(--shadow);
+  box-shadow: var(--shadow-md);
 }
 .user-row-menu-panel .menu-action {
   display: block;
@@ -1710,8 +1729,15 @@ onBeforeUnmount(() => {
   color: var(--accent);
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  margin: 0;
+}
+.admin-header h1 {
+  font-size: var(--fs-display);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  margin: var(--space-1) 0 0;
 }
 h1, h2 {
   color: var(--text);
@@ -1723,6 +1749,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .subtle {
   color: var(--text2);
   font-size: var(--fs-xs);
+  margin: var(--space-1) 0 0;
 }
 .admin-tabs-wrap {
   min-width: 0;
@@ -1879,7 +1906,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   border: 1px solid var(--border2);
   border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: 0 14px 28px #0007;
+  box-shadow: var(--shadow-md);
 }
 .registration-expiry-menu button {
   min-height: 32px;
@@ -1974,15 +2001,15 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   padding: clamp(var(--space-4), 4vw, var(--space-6));
   border: 1px solid var(--border2);
   border-radius: var(--radius-lg);
-  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface) 62%);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
 }
 .settings-eyebrow {
   margin-bottom: var(--space-2);
   color: var(--accent);
   font-size: var(--fs-xs);
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 .settings-intro h2 {
   margin-bottom: var(--space-2);
@@ -2094,7 +2121,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 .upload-access-toggle button.selected {
   border-color: var(--border2);
   background: var(--surface);
-  box-shadow: 0 1px 2px rgb(0 0 0 / .18);
+  box-shadow: var(--shadow-sm);
   color: var(--text);
 }
 .upload-access-toggle button.selected strong { color: var(--text); }
@@ -2363,7 +2390,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   border-radius: var(--radius-md);
   padding: var(--space-5);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
-  box-shadow: 0 16px 32px color-mix(in srgb, var(--shadow) 12%, transparent);
+  box-shadow: var(--shadow-sm);
 }
 .card-heading {
   display: flex;
@@ -2383,6 +2410,15 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .table-scroll {
   overflow-x: auto;
+}
+/* The uploads table re-renders on a 2s polling interval and on row action
+   menus. Scroll anchoring would adjust scrollLeft/scrollTop on those DOM
+   changes and fire scroll events, which the menu/close-on-scroll handlers
+   treat as user scrolling (closing the row menu mid-interaction). */
+.uploads-table-scroll,
+.users-table-scroll,
+.audit-table-scroll {
+  overflow-anchor: none;
 }
 .upload-table-toolbar {
   display: flex;
@@ -2676,7 +2712,16 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   margin-top: var(--space-2);
 }
 @media (max-width: 760px) {
-  .admin-header { flex-direction: column; }
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .admin-header .header-actions {
+    width: 100%;
+  }
+  .admin-header .header-actions .btn-ghost {
+    width: 100%;
+  }
   .admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tabs button { padding: var(--space-2) var(--space-4); }
   .webhook-endpoint {
@@ -2723,9 +2768,6 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
   }
   .settings-fields {
     grid-template-columns: 1fr;
-  }
-  .admin-header {
-    padding: var(--space-4);
   }
   .admin-tabs {
     flex: 1 1 auto;
@@ -2813,7 +2855,7 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .admin-table td,
 .admin-table th {
-  padding: var(--space-2) var(--space-3);
+  padding: 8px 10px;
 }
 .upload-name-cell {
   min-width: 220px;

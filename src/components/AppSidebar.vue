@@ -2,6 +2,9 @@
 import { computed, ref } from 'vue'
 import { useTheme, type ThemeMode } from '../lib/theme'
 import { usePublicSettings } from '../lib/publicSettings'
+import { getAuthUsername, isAuthAdmin, isLoggedIn } from '../lib/api'
+import { useAvatar } from '../lib/avatar'
+import AvatarTile from './AvatarTile.vue'
 
 const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
 const MOBILE_NAV_COLLAPSED_KEY = 'yp_mobile_nav_collapsed_v2'
@@ -13,6 +16,7 @@ const props = withDefaults(defineProps<{
   showSettings?: boolean
   settingsOpen?: boolean
   showGuestAccess?: boolean
+  accountActive?: boolean
   collapsed: boolean
 }>(), {
   showHistory: false,
@@ -20,6 +24,7 @@ const props = withDefaults(defineProps<{
   showSettings: false,
   settingsOpen: false,
   showGuestAccess: false,
+  accountActive: false,
 })
 
 const emit = defineEmits<{
@@ -28,13 +33,26 @@ const emit = defineEmits<{
   'select-history': []
   'select-admin': []
   'toggle-settings': []
+  'open-account': []
   login: []
   register: []
 }>()
 
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
 const { appName, publicSettings } = usePublicSettings()
+const { avatarPrefs } = useAvatar()
 const mobileNavCollapsed = ref(false)
+
+const account = computed(() => {
+  if (!isLoggedIn()) return null
+  const name = getAuthUsername()
+  if (!name) return null
+  return {
+    name,
+    initials: name.slice(0, 2).toUpperCase(),
+    admin: isAuthAdmin(),
+  }
+})
 
 if (typeof window !== 'undefined') {
   mobileNavCollapsed.value = window.localStorage.getItem(MOBILE_NAV_COLLAPSED_KEY) === '1'
@@ -95,6 +113,26 @@ function toggleCompactTheme() {
         <div>
           <div class="brand-title">{{ appName }}</div>
         </div>
+      </button>
+
+      <button
+        v-if="account"
+        type="button"
+        class="account-chip"
+        data-testid="sidebar-account"
+        :class="{ active: accountActive }"
+        :aria-label="'Open account settings for ' + account.name"
+        :aria-current="accountActive ? 'page' : undefined"
+        @click="emit('open-account')"
+      >
+        <AvatarTile :name="account.name" :prefs="avatarPrefs" size="sm" />
+        <span class="account-meta">
+          <span class="account-name">{{ account.name }}</span>
+          <span class="account-role">{{ account.admin ? 'Admin' : 'Account' }}</span>
+        </span>
+        <svg class="account-chevron" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m5.5 6.5 2.5 2.5 2.5-2.5" />
+        </svg>
       </button>
     </div>
 
@@ -354,10 +392,10 @@ function toggleCompactTheme() {
   top: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 22px 14px;
+  gap: var(--space-4);
+  padding: var(--space-4) 12px;
   overflow: hidden;
-  border-right: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-right: 1px solid var(--border);
   background: var(--surface);
   box-shadow: none;
 }
@@ -370,36 +408,35 @@ function toggleCompactTheme() {
 .brand-block {
   appearance: none;
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1);
+  padding: 6px 8px;
   color: var(--text);
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .brand-block:hover {
-  background: color-mix(in srgb, var(--surface2, var(--bg2)) 74%, transparent);
+  background: var(--bg2);
   border-color: transparent;
 }
 
 
 .brand-mark {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface2, var(--bg2)) 72%, transparent);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent) inset;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg2);
 }
 
 .brand-mark svg {
@@ -417,8 +454,9 @@ function toggleCompactTheme() {
   color: var(--text);
   font-family: var(--font);
   font-size: var(--fs-h2);
-  font-weight: 700;
+  font-weight: 650;
   line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
 }
 
 .sidebar-collapsed {
@@ -457,10 +495,69 @@ function toggleCompactTheme() {
 }
 
 .sidebar-collapsed .brand-title,
+.sidebar-collapsed .account-chip,
 .sidebar-collapsed .nav-section-label,
 .sidebar-collapsed .nav-copy,
 .sidebar-collapsed .expanded-utilities {
   display: none;
+}
+
+/* Signed-in account chip under the brand. */
+.account-chip {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg2);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.account-chip:hover {
+  border-color: var(--border2);
+  background: var(--bg3);
+}
+.account-chip.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent-soft);
+}
+.account-chip.active:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg2));
+}
+.account-meta {
+  min-width: 0;
+  display: grid;
+  line-height: 1.2;
+}
+.account-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-role {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.account-chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-left: auto;
+  fill: none;
+  stroke: var(--text3);
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .nav-stack {
@@ -479,8 +576,7 @@ function toggleCompactTheme() {
 .nav-section-label,
 .utility-label {
   color: var(--text2);
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
+  letter-spacing: 0.01em;
   font-size: var(--fs-xs);
   font-weight: 600;
   line-height: var(--lh-tight);
@@ -492,22 +588,24 @@ function toggleCompactTheme() {
 
 .nav-stack button {
   width: 100%;
-  min-height: 48px;
+  min-height: 38px;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
+  gap: 10px;
+  padding: 6px 10px;
   color: var(--text2);
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
+  font-size: var(--fs-body);
+  font-weight: 500;
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .nav-stack button:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--surface2, var(--bg2)) 74%, transparent);
+  background: var(--bg2);
   border-color: transparent;
 }
 
@@ -515,7 +613,7 @@ function toggleCompactTheme() {
 .nav-stack button.active {
   position: relative;
   color: var(--text);
-  background: color-mix(in srgb, var(--surface2, var(--bg2)) 82%, transparent);
+  background: var(--accent-soft);
   border-color: transparent;
   box-shadow: none;
 }
@@ -523,11 +621,11 @@ function toggleCompactTheme() {
 .nav-stack button.active::before {
   content: "";
   position: absolute;
-  left: -14px;
+  left: -12px;
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 18px;
+  height: 16px;
   border-radius: var(--radius-full);
   background: var(--accent);
 }
@@ -548,35 +646,25 @@ function toggleCompactTheme() {
 }
 
 .nav-icon {
-  width: 29px;
-  height: 29px;
+  width: 20px;
+  height: 20px;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface, var(--bg1));
+  color: inherit;
 }
 
 .nav-stack button.active .nav-icon {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
-  background: var(--accent-soft, var(--bg2));
-}
-
-.sidebar-collapsed .nav-stack button.active .nav-icon {
-  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft, var(--bg2)) 74%, transparent);
 }
 
 .nav-icon svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2px;
+  stroke-width: 1.8px;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -584,15 +672,15 @@ function toggleCompactTheme() {
 .nav-copy {
   min-width: 0;
   display: grid;
-  gap: var(--space-1);
   line-height: var(--lh-tight);
+  font-size: var(--fs-body);
+  font-weight: 500;
 }
 
+/* Subtitles under nav items read as template filler; the rows carry
+   one label only. */
 .nav-copy small {
-  color: var(--text2);
-  font-family: var(--font);
-  font-size: var(--fs-xs);
-  font-weight: 400;
+  display: none;
 }
 
 .sidebar-footer {
@@ -628,22 +716,22 @@ function toggleCompactTheme() {
   width: 100%;
   min-height: 34px;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  font-size: var(--fs-xs);
-  font-weight: 600;
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  font-weight: 500;
 }
 .guest-login {
   flex: 1 1 auto;
-  color: var(--bg);
-  background: var(--accent);
+  color: var(--on-accent);
+  background: var(--primary-action);
 }
-.guest-login:hover { background: var(--accent-h); }
+.guest-login:hover { background: var(--primary-action-h); }
 .guest-register {
-  color: var(--text2);
-  border: 1px solid var(--border);
-  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border2);
+  background: var(--bg1);
 }
-.guest-register:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
+.guest-register:hover { color: var(--text); border-color: var(--text3); background: var(--bg2); }
 
 .collapsed-utilities {
   display: none;
@@ -657,33 +745,35 @@ function toggleCompactTheme() {
 
 .theme-switch {
   display: flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  gap: 2px;
+  padding: 3px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface, var(--bg1));
+  border-radius: var(--radius);
+  background: var(--bg2);
 }
 
 .theme-switch button {
   flex: 1;
-  min-height: 31px;
-  padding: var(--space-2);
+  min-height: 28px;
+  padding: 4px var(--space-2);
   color: var(--text2);
   font-size: var(--fs-xs);
+  font-weight: 500;
   background: transparent;
-  border-radius: calc(var(--radius-sm) - 3px);
+  border-radius: calc(var(--radius) - 2px);
   transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .theme-switch button.active {
   color: var(--text);
-  background: color-mix(in srgb, var(--surface3, var(--bg3)) 82%, var(--accent-soft, var(--bg2)));
+  background: var(--bg1);
+  box-shadow: var(--shadow-sm);
 }
 
 .theme-switch button:hover:not(.active) {
   color: var(--text);
-  background: var(--bg1);
+  background: color-mix(in srgb, var(--bg1) 60%, transparent);
 }
 
 
@@ -720,25 +810,25 @@ function toggleCompactTheme() {
 
 .preferences-btn {
   width: 100%;
-  min-height: 40px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: 6px 10px;
   color: var(--text2);
   font-family: var(--font);
-  font-size: var(--fs-xs);
-  font-weight: 600;
+  font-size: var(--fs-body);
+  font-weight: 500;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: transparent;
   transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .preferences-btn:hover {
   color: var(--text);
-  border-color: color-mix(in srgb, var(--border2) 45%, transparent);
-  background: color-mix(in srgb, var(--surface3, var(--bg3)) 64%, transparent);
+  border-color: transparent;
+  background: var(--bg2);
 }
 
 

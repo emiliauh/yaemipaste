@@ -117,7 +117,7 @@ onMounted(() => {
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
+  background: var(--bg1);
   box-shadow: 0 20px 48px color-mix(in srgb, var(--shadow) 60%, transparent);
 }
 .claim-header {
@@ -136,8 +136,8 @@ onMounted(() => {
 .eyebrow {
   color: var(--accent);
   font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  text-transform: none;
+  letter-spacing: 0.01em;
   margin-bottom: var(--space-1);
 }
 h1 {

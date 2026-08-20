@@ -3709,7 +3709,7 @@ test('settings shows passkey controls and branding copy', async ({ page }) => {
   await page.getByRole('button', { name: 'Preferences' }).click()
   await expect(page.getByTestId('settings-layer').getByText('yaemipaste')).toBeVisible()
   await expect(page.getByTestId('open-passkey-modal')).toBeVisible()
-  await expect(page.getByTestId('open-change-password')).toBeVisible()
+  await expect(page.getByTestId('settings-open-account')).toBeVisible()
   await page.getByTestId('open-passkey-modal').click()
   await expect(page.getByTestId('passkey-modal')).toBeVisible()
   await expect(page.getByTestId('passkey-add-btn')).toBeVisible()
@@ -4017,7 +4017,7 @@ test('guest uploads persist Anonymous as the uploader', async ({ page }) => {
   await expect.poll(() => uploadedMeta?.uploader).toBe('Anonymous')
 })
 
-test('settings password modal changes password and supports logout-all option', async ({ page }) => {
+test('account page changes the password and logs out other devices', async ({ page }) => {
   await signInWithAccount(page)
   let changePayload: any = null
   let logoutAllCalled = false
@@ -4039,23 +4039,82 @@ test('settings password modal changes password and supports logout-all option', 
     })
   })
 
-  await page.goto('/#/files')
-  await page.getByRole('button', { name: 'Preferences' }).click()
-  await page.getByTestId('open-change-password').click()
-  await expect(page.getByTestId('password-modal')).toBeVisible()
+  await page.goto('/account-settings')
+  await expect(page.getByTestId('account-page')).toBeVisible()
 
-  await page.getByLabel('Current Password', { exact: true }).fill('old-secret-123')
-  await page.getByLabel('New Password', { exact: true }).fill('new-secret-123')
-  await page.getByLabel('Confirm New Password', { exact: true }).fill('new-secret-123')
-  await page.getByLabel('Logout all devices after password change').check()
-  await page.getByRole('button', { name: 'Update Password' }).click()
-
+  await page.getByTestId('account-current-password').fill('old-secret-123')
+  await page.getByTestId('account-new-password').fill('new-secret-123')
+  await page.getByTestId('account-confirm-password').fill('new-secret-123')
+  await page.getByTestId('account-change-password').click()
+  await expect(page.getByTestId('account-password-success')).toBeVisible()
   await expect.poll(() => changePayload).toEqual({
     old_password: 'old-secret-123',
     new_password: 'new-secret-123',
   })
+
+  await page.getByTestId('account-logout-all').click()
   await expect.poll(() => logoutAllCalled).toBeTruthy()
-  await expect(page).toHaveURL(/\/login$/)
+})
+
+test('account page customizes the avatar and changes the password', async ({ page }) => {
+  await signInWithAccount(page)
+  let changePayload: any = null
+  await page.route('**/auth/password/change', async (route) => {
+    changePayload = route.request().postDataJSON()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Password changed' }),
+    })
+  })
+
+  await page.goto('/#/files')
+  const sidebarChip = page.getByTestId('sidebar-account')
+  let usedSidebarChip = false
+  try {
+    await sidebarChip.waitFor({ state: 'visible', timeout: 3000 })
+    usedSidebarChip = true
+  } catch {
+    // Sidebar is hidden on mobile viewports.
+  }
+  if (usedSidebarChip) {
+    await sidebarChip.click()
+  } else {
+    await page.getByTestId('mobile-nav-preferences').click()
+    await page.getByTestId('settings-open-account').click()
+  }
+  await expect(page).toHaveURL(/\/account-settings$/)
+  const accountPage = page.getByTestId('account-page')
+  await expect(accountPage.getByText('test-user')).toBeVisible()
+
+  // Avatar: pick an orange tile, then upload a picture.
+  await accountPage.getByTestId('account-avatar-color-d97706').click()
+  await accountPage.getByTestId('account-avatar-file').setInputFiles({
+    name: 'avatar.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7fM7cAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+  const avatarImg = accountPage.locator('.profile-card img')
+  await expect(avatarImg).toBeVisible()
+  await expect(avatarImg).toHaveAttribute('src', /^data:image\/png/)
+
+  // Password change flow with the inline form.
+  await accountPage.getByTestId('account-current-password').fill('old-secret-123')
+  await accountPage.getByTestId('account-new-password').fill('new-secret-123')
+  await accountPage.getByTestId('account-confirm-password').fill('new-secret-123')
+  await accountPage.getByTestId('account-change-password').click()
+  await expect(accountPage.getByTestId('account-password-success')).toBeVisible()
+  await expect.poll(() => changePayload).toEqual({
+    old_password: 'old-secret-123',
+    new_password: 'new-secret-123',
+  })
+
+  // The picture choice survives a reload (local persistence).
+  await page.reload({ waitUntil: 'networkidle' })
+  await expect(page.locator('.profile-card img')).toHaveAttribute('src', /^data:image\/png/)
 })
 
 test('passkey modal surfaces non-JSON API errors without JSON parse crashes', async ({ page }) => {
@@ -4179,7 +4238,7 @@ for (const viewport of [
 
     await page.getByRole('button', { name: 'Preferences' }).click()
     await expect(page.getByText('Settings')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
+    await expect(page.getByTestId('settings-open-account')).toBeVisible()
 
     const settingsBox = await page.locator('.settings-panel').boundingBox()
     const expiryBox = await page.getByTestId('expiry-menu').boundingBox()
@@ -4190,7 +4249,29 @@ for (const viewport of [
       expect(expiryBox.y + expiryBox.height).toBeLessThanOrEqual(viewport.height)
     }
 
-    await page.getByRole('button', { name: 'Logout' }).click()
+    await page.getByTestId('settings-open-account').click()
+    await expect(page).toHaveURL(/\/account-settings$/)
+    await page.getByTestId('account-logout').click()
+    await expect(page.getByTestId('account-logout-confirm')).toBeVisible()
+    await expect(page.getByTestId('account-logout-confirm')).toContainText('Log out of yaemipaste?')
+    await page.getByTestId('account-logout-confirm-submit').click()
+    await expect(page).toHaveURL(/\/login$/)
+    // Logout must actually clear the session, not just navigate away.
+    const remaining = await page.evaluate(() => ({
+      jwt: localStorage.getItem('rp_jwt'),
+      token: localStorage.getItem('rp_token'),
+      username: localStorage.getItem('rp_username'),
+    }))
+    expect(remaining.jwt).toBeNull()
+    expect(remaining.token).toBeNull()
+    expect(remaining.username).toBeNull()
+    // Navigate in-SPA (a hard goto would re-run the session init script and
+    // re-log-in the mock user); the guard must bounce the logged-out visitor
+    // back to /login.
+    await page.evaluate(() => {
+      history.pushState({}, '', '/files')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
     await expect(page).toHaveURL(/\/login$/)
   })
 
@@ -4493,7 +4574,7 @@ test('admin dashboard paginates users and uploads, filters uploads, and saves sa
   await page.getByRole("checkbox", { name: /Enable passkeys/ }).uncheck()
   const saveSettings = page.getByRole('button', { name: 'Save settings' })
   await expect.poll(() => saveSettings.evaluate((button) => getComputedStyle(button).backgroundColor)).toMatch(
-    /rgb\((70, 109, 152|78, 120, 170)\)/,
+    /rgb\((28, 25, 23|41, 37, 36)\)/,
   )
   await saveSettings.click()
   await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
@@ -5118,8 +5199,8 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   await nameButton.locator('.upload-filename-ext').hover()
   await expect(hoverPreview).toHaveCount(0)
   await nameButton.locator('.upload-filename-base').hover()
-  await expect(nameButton.locator('.upload-filename-base')).toHaveCSS('color', 'rgb(78, 120, 170)')
-  await expect(nameButton.locator('.upload-filename-ext')).toHaveCSS('color', 'rgb(92, 105, 120)')
+  await expect(nameButton.locator('.upload-filename-base')).toHaveCSS('color', 'rgb(180, 83, 9)')
+  await expect(nameButton.locator('.upload-filename-ext')).toHaveCSS('color', 'rgb(87, 83, 78)')
   await expect(hoverPreview).toBeVisible()
   await expect(hoverPreview.getByRole('img', { name: 'ShareX screenshot.png' })).toBeVisible()
   await expect(hoverPreview.locator('.upload-hover-name')).toHaveText('ShareX screenshot')
@@ -5132,7 +5213,7 @@ test('admin upload library keeps ShareX provenance beside the name and exposes r
   await expect(downloadLink).toHaveAttribute('href', /\/file\/upload-1\/download$/)
   await expect(downloadLink).toHaveCSS('min-width', '120px')
   await expect(copyButton).toBeVisible()
-  await expect(copyButton).toHaveCSS('border-radius', '7px')
+  await expect(copyButton).toHaveCSS('border-radius', '6px')
   await expect(moreButton).toHaveAttribute('aria-expanded', 'false')
 
   const previewHref = '/file/upload-1/preview'

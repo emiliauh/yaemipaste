@@ -553,12 +553,10 @@ onBeforeUnmount(() => {
 }
 .modal {
   position: relative;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 94%, white 6%), var(--bg1));
+  background: var(--bg1);
   border: 1px solid color-mix(in srgb, var(--border2) 78%, transparent);
   border-radius: var(--radius-lg);
-  box-shadow:
-    0 28px 90px rgb(0 0 0 / 0.34),
-    0 0 0 1px rgb(255 255 255 / 0.03) inset;
+  box-shadow: var(--shadow-lg);
   width: min(520px, 90vw);
   max-width: 90vw;
   max-height: min(640px, 84dvh);
@@ -675,7 +673,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: var(--space-2);
   align-items: flex-start;
-  background: linear-gradient(145deg, var(--bg2), var(--bg1));
+  background: var(--bg1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: calc(var(--space-4) + var(--space-1));
@@ -707,7 +705,7 @@ onBeforeUnmount(() => {
 }
 .fallback-download:hover:not(:disabled) { transform: translateY(-1px); }
 .fallback-download:active:not(:disabled) { transform: translateY(0) scale(0.97); }
-.password-modal { width: min(440px, 100%); box-sizing: border-box; border: 1px solid var(--border2); border-radius: var(--radius-lg); background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--bg3) 34%, transparent), transparent 34%), var(--bg1); padding: var(--space-4); box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 90%, transparent); }
+.password-modal { width: min(440px, 100%); box-sizing: border-box; border: 1px solid var(--border2); border-radius: var(--radius-lg); background: var(--bg1); padding: var(--space-4); box-shadow: 0 24px 64px color-mix(in srgb, var(--shadow) 90%, transparent); }
 .password-modal-header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 .password-modal-header strong { color: var(--text); font-size: var(--fs-h2); }
 .password-modal-copy { color: var(--text2); font-size: var(--fs-sm); line-height: var(--lh-body); margin-bottom: var(--space-2); }
@@ -798,7 +796,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border2);
   border-radius: var(--radius-md);
   background: var(--bg1);
-  box-shadow: 0 14px 34px rgb(0 0 0 / 0.28);
+  box-shadow: var(--shadow-md);
   animation: copy-menu-in var(--duration-fast) var(--ease-out) both;
 }
 .open-menu { left: 0; right: auto; }

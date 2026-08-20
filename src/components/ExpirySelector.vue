@@ -90,7 +90,7 @@ onUnmounted(() => {
     <div class="expiry-panel" data-testid="expiry-panel">
       <div class="expiry-panel-top">
         <div class="expiry-headings">
-          <div class="expiry-label">KEEP FOR · MAX {{ maxExpiryDays }} DAYS</div>
+          <div class="expiry-label">Keep for · max {{ maxExpiryDays }} days</div>
           <div class="expiry-tip">To use Forever, hold <kbd>Shift</kbd> and click.</div>
         </div>
         <button
@@ -157,12 +157,12 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: var(--space-4);
   width: 100%;
-  min-height: 76px;
-  border: 1px solid color-mix(in srgb, var(--border2) 82%, transparent);
+  min-height: 58px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
-  box-shadow: none;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  box-shadow: var(--shadow-sm);
   animation: expiry-panel-in 260ms var(--ease-out) both;
 }
 @keyframes expiry-panel-in {
@@ -184,10 +184,10 @@ onUnmounted(() => {
 .expiry-label {
   color: var(--accent-h);
   font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   line-height: var(--lh-tight);
-  text-transform: uppercase;
+  text-transform: none;
 }
 .expiry-tip {
   color: var(--text2);
@@ -204,11 +204,11 @@ onUnmounted(() => {
   padding: 1px 5px 2px;
 }
 .expiry-trigger {
-  flex: 0 0 204px;
-  min-height: 44px;
+  flex: 0 0 184px;
+  min-height: 40px;
   border: 1px solid color-mix(in srgb, var(--border2) 90%, transparent);
   border-radius: var(--radius-sm);
-  background: var(--surface2);
+  background: var(--bg2);
   color: var(--text);
   display: flex;
   align-items: center;
@@ -238,15 +238,15 @@ onUnmounted(() => {
   position: absolute;
   /* Anchor to the trigger row, rather than the full panel.  The panel also
      contains the helper copy, so using 100% left an unnecessary visual gap. */
-  top: 64px;
-  right: 16px;
+  top: 60px;
+  right: 12px;
   z-index: 70;
-  width: 204px;
+  width: 184px;
   border: 1px solid color-mix(in srgb, var(--border2) 88%, transparent);
   border-radius: var(--radius-md);
   background: var(--surface);
   padding: var(--space-2);
-  box-shadow: 0 16px 32px var(--shadow);
+  box-shadow: var(--shadow-md);
 }
 .expiry-options-fade-enter-active,
 .expiry-options-fade-leave-active {

@@ -235,10 +235,8 @@ onBeforeUnmount(clearObjectUrl)
   width: min(720px, 100%);
   border: 1px solid color-mix(in srgb, var(--border2) 78%, transparent);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 94%, white 6%), var(--bg1));
-  box-shadow:
-    0 24px 80px rgb(0 0 0 / 0.28),
-    0 0 0 1px rgb(255 255 255 / 0.03) inset;
+  background: var(--bg1);
+  box-shadow: var(--shadow-lg);
   padding: var(--space-5);
   animation: panel-in var(--duration-base) var(--ease-out) both;
 }

@@ -183,7 +183,7 @@ onUnmounted(() => {
 .select-value { overflow: hidden; color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .custom-select svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; color: var(--text2); transition: transform .15s ease; }
 .custom-select.open > .custom-select-trigger svg { transform: rotate(180deg); }
-.custom-select-menu { z-index: 1000; display: grid; gap: 3px; max-height: min(320px, calc(100dvh - 16px)); overflow-y: auto; padding: 5px; border: 1px solid var(--border2); border-radius: var(--radius-md); background: var(--surface); box-shadow: 0 16px 32px #0006; }
+.custom-select-menu { z-index: 1000; display: grid; gap: 3px; max-height: min(320px, calc(100dvh - 16px)); overflow-y: auto; padding: 5px; border: 1px solid var(--border2); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-md); }
 .custom-select-menu button { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text2); text-align: left; }
 .custom-select-menu button.focused, .custom-select-menu button:hover { background: var(--surface2); color: var(--text); }
 .custom-select-menu button.active { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--accent) 12%, var(--surface2)); color: var(--text); }

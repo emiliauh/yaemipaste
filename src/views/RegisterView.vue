@@ -126,7 +126,7 @@ async function submit() {
 
           <div class="field">
             <label for="register-token">Auth Token</label>
-            <p class="field-hint">Enter a valid token to register. It will be associated with your account.</p>
+            <p class="field-hint">Paste the registration token you were given to create your account.</p>
             <input id="register-token" v-model="token" type="text" autocomplete="off" placeholder="your-token" required />
           </div>
 
@@ -174,7 +174,7 @@ async function submit() {
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg1) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
+  background: var(--bg1);
   box-shadow: 0 20px 48px color-mix(in srgb, var(--shadow) 60%, transparent);
 }
 .register-title {
