@@ -3759,6 +3759,34 @@ test('settings keeps passkey removal available while sign-in is disabled', async
   await expect.poll(() => deleted).toBeTruthy()
 })
 
+test('passkey can be renamed via the pencil icon', async ({ page }) => {
+  await signInWithAccount(page)
+  await page.route('**/auth/passkeys', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: 3, credential_id: 'yubikey-cred', created_at: 1_775_000_000, last_used_at: null, transports: ['usb'], name: null }]),
+    })
+  })
+  let renamed = false
+  await page.route('**/auth/passkeys/3', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    renamed = route.request().postDataJSON().name === 'My YubiKey'
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ detail: 'Passkey renamed' }) })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'Preferences' }).click()
+  await page.getByTestId('open-passkey-modal').click()
+  await expect(page.getByTestId('passkey-name')).toHaveText('Passkey')
+  await page.getByTestId('passkey-rename-btn').click()
+  await page.getByTestId('passkey-rename-input').fill('My YubiKey')
+  await page.getByTestId('passkey-rename-input').press('Enter')
+  await expect.poll(() => renamed).toBeTruthy()
+  await expect(page.getByTestId('passkey-name')).toHaveText('My YubiKey')
+})
+
 test('admin Preferences control opens and fades closed on desktop and mobile', async ({ page }) => {
   await signInAsAdmin(page)
   await mockAdminApi(page)

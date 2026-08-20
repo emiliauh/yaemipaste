@@ -321,6 +321,13 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     const enabledBeginPasskey = await request('/auth/passkeys/register/begin', { method: 'POST', headers: { Authorization: 'Bearer ' + aliceJwt } })
     assert.equal(enabledBeginPasskey.response.status, 200)
     assert.equal(typeof enabledBeginPasskey.json.challenge, 'string')
+    // The user handle must be a valid 16-byte WebAuthn user ID (required by
+    // iOS/Safari and hardware security keys such as YubiKey).
+    const userIdDecoded = atob(enabledBeginPasskey.json.user.id.replace(/-/g, '+').replace(/_/g, '/'))
+    assert.equal(userIdDecoded.length, 16)
+    // Renaming a passkey the user does not own must 404.
+    const renameMissing = await request('/auth/passkeys/99999', { method: 'PATCH', headers: { Authorization: 'Bearer ' + aliceJwt, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'My YubiKey' }) })
+    assert.equal(renameMissing.response.status, 404)
     const disabledSettings = await request('/auth/admin/settings', { method: 'PUT', headers: { Authorization: 'Bearer ' + adminJwt, 'Content-Type': 'application/json' }, body: JSON.stringify({ passkeys_enabled: false }) })
     assert.equal(disabledSettings.response.status, 200)
     const disabledPasskeys = await request('/auth/passkeys', { headers: { Authorization: 'Bearer ' + aliceJwt } })

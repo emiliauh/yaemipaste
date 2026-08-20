@@ -478,6 +478,7 @@ export interface PasskeySummary {
   created_at: number
   last_used_at: number | null
   transports: string[]
+  name?: string | null
 }
 
 export async function authPasskeysList(): Promise<PasskeySummary[]> {
@@ -521,6 +522,19 @@ export async function authPasskeyDelete(id: number) {
     headers: jwtBearerHeader(),
   })
   if (!r.ok) throw new Error(await responseDetail(r, 'Could not delete passkey'))
+}
+
+export async function authPasskeyRename(id: number, name: string) {
+  requireAuthEnabled()
+  const r = await fetch(`${AUTH_API}/passkeys/${id}`, {
+    method: 'PATCH',
+    headers: {
+      ...jwtBearerHeader(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  })
+  if (!r.ok) throw new Error(await responseDetail(r, 'Could not rename passkey'))
 }
 
 export async function authPasskeyLoginBegin(username: string) {

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Req, Res } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Req, Res } from '@nestjs/common'
 import type { Request, Response } from 'express'
 import { AuthService } from './auth.service.js'
 import { ConfigService } from './config.service.js'
@@ -61,6 +61,7 @@ export class AuthController {
   @Post('passkeys/register/begin') @HttpCode(200) passkeyRegisterBegin(@Req() request: Request) { return this.auth.passkeyRegisterBegin(request) }
   @Post('passkeys/register/finish') @HttpCode(200) passkeyRegisterFinish(@Req() request: Request, @Body() body: { credential?: unknown }) { return this.auth.passkeyRegisterFinish(request, body.credential) }
   @Delete('passkeys/:id') passkeyDelete(@Req() request: Request, @Param('id') id: string) { return this.auth.passkeyDelete(request, Number(id)) }
+  @Patch('passkeys/:id') passkeyRename(@Req() request: Request, @Param('id') id: string, @Body() body: { name?: unknown }) { return this.auth.passkeyRename(request, Number(id), typeof body.name === 'string' ? body.name : '') }
   @Post('passkeys/auth/begin') @HttpCode(200) passkeyAuthBegin(@Body() body: { username?: string }) { return this.auth.passkeyAuthBegin(body.username ?? '') }
   @Post('passkeys/auth/finish') @HttpCode(200) passkeyAuthFinish(@Body() body: { username?: string; credential?: unknown }) { return this.auth.passkeyAuthFinish(body.username ?? '', body.credential) }
 

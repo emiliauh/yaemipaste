@@ -4,6 +4,7 @@ import {
   authPasskeyDelete,
   authPasskeyRegisterBegin,
   authPasskeyRegisterFinish,
+  authPasskeyRename,
   authPasskeysList,
   getAuthUsername,
   getDefaultPasteApiBase,
@@ -51,6 +52,9 @@ const passkeys = ref<PasskeySummary[]>([])
 const passkeyBusy = ref(false)
 const passkeyLoading = ref(false)
 const passkeyError = ref('')
+const renameTargetId = ref<number | null>(null)
+const renameValue = ref('')
+const renameInput = ref<HTMLInputElement | null>(null)
 watch(() => publicSettings.value.base_api_url, () => {
   if (!apiBaseEdited.value) apiBase.value = getPasteApiBase()
 })
@@ -145,6 +149,40 @@ async function deletePasskey(id: number) {
     passkeys.value = passkeys.value.filter((item) => item.id !== id)
   } catch (e: any) {
     passkeyError.value = passkeyErrorMessage(e, 'Could not remove passkey')
+  } finally {
+    passkeyBusy.value = false
+  }
+}
+
+function beginRename(item: PasskeySummary) {
+  renameTargetId.value = item.id
+  renameValue.value = item.name?.trim() ?? ''
+  requestAnimationFrame(() => {
+    if (typeof renameInput.value?.focus === 'function') renameInput.value.focus()
+  })
+}
+
+function cancelRename() {
+  renameTargetId.value = null
+  renameValue.value = ''
+}
+
+async function submitRename(item: PasskeySummary) {
+  const value = renameValue.value.trim()
+  if (!value || value === (item.name?.trim() ?? '')) {
+    cancelRename()
+    return
+  }
+  passkeyBusy.value = true
+  passkeyError.value = ''
+  try {
+    await authPasskeyRename(item.id, value)
+    const target = passkeys.value.find((entry) => entry.id === item.id)
+    if (target) target.name = value
+    notificationStore.push('Passkey renamed')
+    cancelRename()
+  } catch (e: any) {
+    passkeyError.value = passkeyErrorMessage(e, 'Could not rename passkey')
   } finally {
     passkeyBusy.value = false
   }
@@ -252,12 +290,29 @@ async function deletePasskey(id: number) {
       <div v-else-if="!passkeys.length" class="passkey-state">No passkeys yet.</div>
       <div v-else class="passkey-list" data-testid="passkey-list">
         <div v-for="item in passkeys" :key="item.id" class="passkey-row" data-testid="passkey-row">
-          <div>
-            <div class="passkey-id">{{ item.credential_id.slice(0, 14) }}…</div>
+          <div class="passkey-info">
+            <template v-if="renameTargetId === item.id">
+              <input ref="renameInput" v-model="renameValue" class="passkey-rename-input" type="text" maxlength="100" placeholder="Passkey name" aria-label="Passkey name" :disabled="passkeyBusy" @keydown.enter.prevent="submitRename(item)" @keydown.esc.prevent="cancelRename" data-testid="passkey-rename-input" />
+            </template>
+            <template v-else>
+              <div class="passkey-name" data-testid="passkey-name">{{ item.name?.trim() || 'Passkey' }}</div>
+              <div class="passkey-id">{{ item.credential_id.slice(0, 14) }}…</div>
+            </template>
             <div class="passkey-meta">Created {{ formatTimestamp(item.created_at) }}</div>
             <div class="passkey-meta">{{ formatTimestamp(item.last_used_at) }}</div>
           </div>
-          <button class="btn-red" type="button" :disabled="passkeyBusy" @click="deletePasskey(item.id)">Delete</button>
+          <div class="passkey-actions">
+            <template v-if="renameTargetId === item.id">
+              <button class="btn-ghost" type="button" :disabled="passkeyBusy" @click="submitRename(item)">Save</button>
+              <button class="btn-ghost" type="button" :disabled="passkeyBusy" @click="cancelRename">Cancel</button>
+            </template>
+            <template v-else>
+              <button class="btn-ghost passkey-rename-btn" type="button" :disabled="passkeyBusy || renameTargetId !== null" aria-label="Rename passkey" title="Rename passkey" data-testid="passkey-rename-btn" @click="beginRename(item)">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+              <button class="btn-red" type="button" :disabled="passkeyBusy || renameTargetId !== null" @click="deletePasskey(item.id)">Delete</button>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -464,6 +519,17 @@ async function deletePasskey(id: number) {
   padding: var(--space-2) var(--space-3);
   background: var(--bg);
 }
+.passkey-info {
+  min-width: 0;
+}
+.passkey-name {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .passkey-id {
   color: var(--text2);
   font-size: var(--fs-sm);
@@ -471,6 +537,35 @@ async function deletePasskey(id: number) {
 .passkey-meta {
   color: var(--text2);
   font-size: var(--fs-xs);
+}
+.passkey-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+.passkey-rename-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: var(--space-1);
+}
+.passkey-rename-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+.passkey-rename-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: var(--fs-sm);
+  margin-bottom: var(--space-1);
 }
 .passkey-state {
   color: var(--text2);

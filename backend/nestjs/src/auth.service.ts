@@ -12,6 +12,20 @@ import { requestPinnedHttp } from './safe-http.js'
 const PASSKEY_CEREMONY_TTL_SECONDS = 5 * 60
 const BCRYPT_COST = 12
 
+/**
+ * Stable 16-byte user handle for WebAuthn. iOS/Safari and many hardware
+ * security keys (e.g. YubiKey) reject user handles shorter than 16 bytes, so
+ * we derive a fixed-width handle from the numeric user id instead of using a
+ * tiny Buffer.from(String(id)).
+ */
+function userHandle(id: number): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(new ArrayBuffer(16));
+  const view = new DataView(out.buffer);
+  view.setUint32(0, id >>> 0, false);
+  view.setUint32(4, 0x59_6d_70, false); // "Ymp" marker
+  return out;
+}
+
 export type AuthUser = {
   id: number
   username: string
@@ -548,13 +562,21 @@ export class AuthService {
 
   passkeyList(request: { headers: Record<string, any> }) {
     const user = this.currentUser(request)
-    return this.db.query('SELECT id,credential_id,created_at,last_used_at,transports FROM passkeys WHERE user_id=? ORDER BY created_at DESC', [user.id]).map(row => ({ ...row, transports: row.transports ? String(row.transports).split(',').filter(Boolean) : [] }))
+    return this.db.query('SELECT id,credential_id,created_at,last_used_at,transports,name FROM passkeys WHERE user_id=? ORDER BY created_at DESC', [user.id]).map(row => ({ ...row, transports: row.transports ? String(row.transports).split(',').filter(Boolean) : [] }))
+  }
+
+  passkeyRename(request: { headers: Record<string, any> }, id: number, name: string) {
+    const user = this.currentUser(request)
+    const value = String(name ?? '').trim().slice(0, 100)
+    const result: any = this.db.run('UPDATE passkeys SET name=? WHERE id=? AND user_id=?', [value || null, id, user.id])
+    if (!result.changes) throw apiError(404, 'Passkey not found')
+    return { detail: 'Passkey renamed' }
   }
 
   passkeyRegisterBegin(request: { headers: Record<string, any> }) {
     this.requirePasskeysEnabled(); const user = this.currentUser(request); const { origins, rpId } = this.passkeySettings()
     const existing = this.db.query<{ credential_id: string; transports: string | null }>('SELECT credential_id,transports FROM passkeys WHERE user_id=?', [user.id])
-    return generateRegistrationOptions({ rpName: this.config.value.passkeyRpName, rpID: rpId, userName: user.username, userID: Buffer.from(String(user.id)), userDisplayName: user.username, attestationType: 'none', excludeCredentials: existing.map(row => ({ id: row.credential_id, transports: row.transports ? row.transports.split(',') as any : undefined })) }).then(options => {
+    return generateRegistrationOptions({ rpName: this.config.value.passkeyRpName, rpID: rpId, userName: user.username, userID: userHandle(user.id), userDisplayName: user.username, attestationType: 'none', excludeCredentials: existing.map(row => ({ id: row.credential_id, transports: row.transports ? row.transports.split(',') as any : undefined })) }).then(options => {
       this.db.run('UPDATE users SET passkey_reg_state=? WHERE id=?', [JSON.stringify({ challenge: options.challenge, origins, rpId, allowAnyPort: this.config.value.passkeyAllowAnyPort, allowSubdomains: this.config.value.passkeyAllowSubdomains, issued_at: nowSeconds() }), user.id])
       return options
     })
