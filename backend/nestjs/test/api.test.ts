@@ -421,6 +421,39 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     const audit = await request('/auth/admin/audit', { headers: { Authorization: `Bearer ${adminJwt}` } })
     assert.equal(audit.response.status, 200)
   })
+  test('persists and validates branding accent/logo settings', async () => {
+    const bearer = 'Bearer ' + adminJwt
+    const jwtHeader = { Authorization: bearer, 'Content-Type': 'application/json' }
+    const tiny = 'data:image/png;base64,' + Buffer.from('logo-bytes').toString('base64')
+
+    const saved = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ accent_color: '#4ade80', logo_type: 'preset', logo_preset: 'zap', branding_logo: tiny }) })
+    assert.equal(saved.response.status, 200)
+    assert.equal(saved.json.accent_color, '#4ade80')
+    assert.equal(saved.json.logo_type, 'preset')
+    assert.equal(saved.json.logo_preset, 'zap')
+    assert.equal(saved.json.branding_logo, tiny)
+
+    const pub = await request('/auth/admin/public-settings')
+    assert.equal(pub.response.status, 200)
+    assert.equal(pub.json.accent_color, '#4ade80')
+    assert.equal(pub.json.logo_type, 'preset')
+    assert.equal(pub.json.logo_preset, 'zap')
+    assert.equal(pub.json.branding_logo, tiny)
+
+    const badAccent = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ accent_color: 'not-a-color' }) })
+    assert.equal(badAccent.response.status, 400)
+    const badType = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ logo_type: 'nonsense' }) })
+    assert.equal(badType.response.status, 400)
+    const badPreset = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ logo_preset: 'UPPER bad!' }) })
+    assert.equal(badPreset.response.status, 400)
+    const nonImage = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ branding_logo: 'data:text/plain;base64,' + Buffer.from('x').toString('base64') }) })
+    assert.equal(nonImage.response.status, 400)
+    const tooBig = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ branding_logo: 'data:image/png;base64,' + 'A'.repeat(1_500_001) }) })
+    assert.equal(tooBig.response.status, 400)
+
+    const reset = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ accent_color: '', logo_type: '', logo_preset: '', branding_logo: '' }) })
+    assert.equal(reset.response.status, 200)
+  })
 })
 
 describe('outbound address policy', { concurrency: false }, () => {

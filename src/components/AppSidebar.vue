@@ -4,6 +4,7 @@ import { useTheme, type ThemeMode } from '../lib/theme'
 import { usePublicSettings } from '../lib/publicSettings'
 import { getAuthUsername, isAuthAdmin, isLoggedIn } from '../lib/api'
 import { useAvatar } from '../lib/avatar'
+import { effectiveLogo, presetInnerSvg, useLogoOverride } from '../lib/branding'
 import AvatarTile from './AvatarTile.vue'
 
 const SIDEBAR_COLLAPSED_KEY = 'yp_sidebar_collapsed_v2'
@@ -41,7 +42,10 @@ const emit = defineEmits<{
 const { themeMode, appliedTheme, setThemeMode } = useTheme()
 const { appName, publicSettings } = usePublicSettings()
 const { avatarPrefs } = useAvatar()
+const { logoOverride } = useLogoOverride()
 const mobileNavCollapsed = ref(false)
+
+const brandLogo = computed(() => effectiveLogo(publicSettings.value, logoOverride.value))
 
 const account = computed(() => {
   if (!isLoggedIn()) return null
@@ -102,13 +106,8 @@ function toggleCompactTheme() {
         @click="toggleCollapsed"
       >
         <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false">
-            <path d="M5 7.5h14" />
-            <path d="M7 7.5l.8-2.1A2 2 0 0 1 9.7 4h4.6a2 2 0 0 1 1.9 1.4l.8 2.1" />
-            <path d="M6.5 7.5 7.4 19a2 2 0 0 0 2 1.8h5.2a2 2 0 0 0 2-1.8l.9-11.5" />
-            <path d="M10 11.2v5.4" />
-            <path d="M14 11.2v5.4" />
-          </svg>
+          <img v-if="brandLogo.type === 'upload' && brandLogo.dataUrl" :src="brandLogo.dataUrl" alt="" />
+          <svg v-else viewBox="0 0 24 24" focusable="false" v-html="presetInnerSvg(brandLogo.preset ?? 'trash')"></svg>
         </span>
         <div>
           <div class="brand-title">{{ appName }}</div>
@@ -448,6 +447,12 @@ function toggleCompactTheme() {
   stroke-width: 1.8px;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.brand-mark img {
+  width: 23px;
+  height: 23px;
+  display: block;
+  object-fit: contain;
 }
 
 .brand-title {

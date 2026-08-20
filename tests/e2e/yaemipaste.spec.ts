@@ -412,6 +412,10 @@ async function mockAdminApi(page: Page, userCount = 12, includeLongUpload = fals
         passkeys_enabled: false,
         turnstile_enabled: false,
         turnstile_site_key: '',
+        accent_color: '',
+        logo_type: '',
+        logo_preset: '',
+        branding_logo: '',
       })
       await route.fulfill({
         status: 200,
@@ -5568,4 +5572,176 @@ test('admin uploads search filters without layout shift', async ({ page }) => {
   // Chromium can report a 1/65536px rounding delta after text input even
   // when the control keeps the same CSS height.
   expect(before && after ? Math.abs(before.height - after.height) : 0).toBeLessThanOrEqual(0.01)
+})
+
+async function mockAdminRoutes(page: Page, settings: Record<string, unknown>) {
+  const publicSettings = {
+    app_name: String(settings.app_name ?? 'yaemipaste'),
+    public_title: String(settings.public_title ?? 'yaemipaste'),
+    registration_enabled: true,
+    base_api_url: '',
+    file_size_limit_bytes: 0,
+    file_size_limit_unlimited: false,
+    upload_access_mode: String(settings.upload_access_mode ?? 'private'),
+    passkeys_enabled: false,
+    accent_color: String(settings.accent_color ?? ''),
+    logo_type: String(settings.logo_type ?? ''),
+    logo_preset: String(settings.logo_preset ?? ''),
+    branding_logo: String(settings.branding_logo ?? ''),
+  }
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(publicSettings) })
+  })
+  await page.route('**/auth/admin/dashboard**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total_disk_usage_bytes: 0, upload_count: 0, user_count: 0, suspended_user_count: 0, admin_count: 0, users: [], recent_uploads: [], recent_audit: [], failed_webhook_deliveries: [], config_status: {}, warnings: [] }) })
+  })
+  await page.route('**/auth/admin/users**', async (route) => { await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) })
+  await page.route('**/auth/admin/uploads**', async (route) => { await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) })
+  await page.route('**/auth/admin/settings**', async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(route.request().postDataJSON()) })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settings) })
+  })
+  await page.route('**/auth/admin/webhooks/deliveries**', async (route) => { await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) })
+  await page.route('**/auth/admin/webhooks**', async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/deliveries')) {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+  })
+  await page.route('**/auth/admin/audit**', async (route) => { await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) })
+}
+
+async function openAdminSettings(page: Page) {
+  await page.goto('/admin')
+  await page.locator('.admin-tabs').getByRole('button', { name: 'Settings', exact: true }).click()
+}
+
+function htmlAccent(page: Page) {
+  return page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())
+}
+
+test('accent dialog previews the chosen color live and persists via settings save', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminRoutes(page, { app_name: 'yaemipaste', public_title: 'yaemipaste', upload_access_mode: 'private' })
+  await openAdminSettings(page)
+
+  await page.getByTestId('accent-open').click()
+  const dialog = page.getByRole('dialog', { name: 'Choose accent color' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('Hex color').fill('00ff88')
+  await expect.poll(() => htmlAccent(page)).toBe('#00ff88')
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--primary-action').trim())).toBe('#00ff88')
+  // Bright accent must switch to dark text for readable contrast.
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--on-accent').trim())).toBe('#1c1917')
+  const saveButton = page.getByRole('button', { name: 'Save settings' })
+  await expect.poll(() => saveButton.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe('rgb(0, 255, 136)')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByTestId('accent-open')).toContainText('#00ff88')
+
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('accent dialog cancel reverts the live preview to the saved color', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminRoutes(page, { app_name: 'yaemipaste', public_title: 'yaemipaste', accent_color: '#4ade80', upload_access_mode: 'private' })
+  await openAdminSettings(page)
+  await expect.poll(() => htmlAccent(page)).toBe('#4ade80')
+
+  await page.getByTestId('accent-open').click()
+  const dialog = page.getByRole('dialog', { name: 'Choose accent color' })
+  await dialog.getByLabel('Hex color').fill('ff0000')
+  await expect.poll(() => htmlAccent(page)).toBe('#ff0000')
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect.poll(() => htmlAccent(page)).toBe('#4ade80')
+})
+
+test('cached accent applies synchronously before the public-settings fetch resolves', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminRoutes(page, { app_name: 'yaemipaste', public_title: 'yaemipaste', upload_access_mode: 'private' })
+  // Hold the public-settings response so only the synchronous cache path can
+  // apply branding before the async fetch is allowed to finish.
+  let releasePublicSettings: () => void
+  await page.route('**/auth/admin/public-settings', async (route) => {
+    await new Promise<void>((resolve) => { releasePublicSettings = resolve })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+  await page.addInitScript(() => {
+    localStorage.setItem('yp_branding', JSON.stringify({
+      '--accent': '#4ade80',
+      '--accent-h': '#54d68b',
+      '--accent-d': '#42bd72',
+      '--on-accent': '#1c1917',
+      '--primary-action': '#4ade80',
+      '--primary-action-h': '#54d68b',
+    }))
+  })
+  await page.goto('/admin')
+  // The cached accent is live even though public-settings has not resolved yet.
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#4ade80')
+  releasePublicSettings()
+})
+
+test('selecting a preset logo updates the favicon and the settings field', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminRoutes(page, { app_name: 'yaemipaste', public_title: 'yaemipaste', upload_access_mode: 'private' })
+  await openAdminSettings(page)
+
+  await page.getByTestId('logo-open').click()
+  const dialog = page.getByRole('dialog', { name: 'Choose site logo' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Use zap icon' }).click()
+  await expect.poll(() => page.evaluate(() => document.querySelector('link[rel="icon"]')?.getAttribute('href') ?? '')).toContain('data:image/svg+xml')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByTestId('logo-open')).toContainText('zap')
+
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('uploading a logo reflects as the favicon and persists', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminRoutes(page, { app_name: 'yaemipaste', public_title: 'yaemipaste', upload_access_mode: 'private' })
+  await openAdminSettings(page)
+
+  await page.getByTestId('logo-open').click()
+  const dialog = page.getByRole('dialog', { name: 'Choose site logo' })
+  await dialog.getByRole('button', { name: 'Upload image', exact: true }).click()
+  const input = dialog.locator('input[type="file"]')
+  await input.setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') })
+  await expect.poll(() => page.evaluate(() => document.querySelector('link[rel="icon"]')?.getAttribute('href') ?? '')).toContain('data:image/png;base64,')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByTestId('logo-open')).toContainText('Uploaded image')
+
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByTestId('notification-list')).toContainText('Settings updated')
+})
+
+test('branding dialogs fit within the mobile viewport without horizontal overflow', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminRoutes(page, { app_name: 'yaemipaste', public_title: 'yaemipaste', upload_access_mode: 'private' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openAdminSettings(page)
+
+  await page.getByTestId('accent-open').click()
+  const accentDialog = page.getByRole('dialog', { name: 'Choose accent color' })
+  const accentBox = await accentDialog.boundingBox()
+  expect(accentBox).not.toBeNull()
+  expect(accentBox!.width).toBeLessThanOrEqual(390)
+  await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
+  await accentDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+
+  await page.getByTestId('logo-open').click()
+  const logoDialog = page.getByRole('dialog', { name: 'Choose site logo' })
+  const logoBox = await logoDialog.boundingBox()
+  expect(logoBox).not.toBeNull()
+  expect(logoBox!.width).toBeLessThanOrEqual(390)
+  await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
 })

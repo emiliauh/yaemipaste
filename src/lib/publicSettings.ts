@@ -1,5 +1,6 @@
 import { computed, readonly, ref } from 'vue'
 import { adminPublicSettings, applyRuntimePublicSettings, type PublicAdminSettings } from './api'
+import { applyBranding } from './branding'
 
 const FALLBACK_SETTINGS: PublicAdminSettings = {
   app_name: 'yaemipaste',
@@ -12,6 +13,10 @@ const FALLBACK_SETTINGS: PublicAdminSettings = {
   file_size_limit_unlimited: false,
   upload_access_mode: 'private',
   passkeys_enabled: false,
+  accent_color: undefined,
+  logo_type: undefined,
+  logo_preset: undefined,
+  branding_logo: undefined,
 }
 
 const publicSettings = ref<PublicAdminSettings>({ ...FALLBACK_SETTINGS })
@@ -37,6 +42,7 @@ export function usePublicSettings() {
           public_title: settings.public_title?.trim() || settings.app_name?.trim() || FALLBACK_SETTINGS.public_title,
         }
         applyRuntimePublicSettings(publicSettings.value)
+        applyBranding(publicSettings.value)
         loaded = true
         applyDocumentTitle(publicSettings.value)
         return publicSettings.value

@@ -47,6 +47,9 @@ import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
 import { loadAdminData, peekAdminData, updateCachedAdminUploads } from '../lib/adminData'
+import { applyAccent, applyLogo, DEFAULT_ACCENT, effectiveLogo, normalizeHex, presetInnerSvg, type BrandingLogo } from '../lib/branding'
+import AccentColorDialog from '../components/AccentColorDialog.vue'
+import LogoDialog from '../components/LogoDialog.vue'
 import sharexLogoUrl from '../assets/sharex-logo-white-transparent.png'
 
 const router = useRouter()
@@ -163,7 +166,27 @@ const settingsForm = ref({
   turnstile_enabled: initialAdminData?.settings.turnstile_enabled === 'true',
   turnstile_site_key: initialAdminData?.settings.turnstile_site_key ?? '',
   turnstile_secret_key: '',
+  accent_color: initialAdminData?.settings.accent_color ?? '',
+  logo_type: initialAdminData?.settings.logo_type ?? '',
+  logo_preset: initialAdminData?.settings.logo_preset ?? '',
+  branding_logo: initialAdminData?.settings.branding_logo ?? '',
 })
+const accentDialogOpen = ref(false)
+const logoDialogOpen = ref(false)
+const currentAccent = computed(() => normalizeHex(settingsForm.value.accent_color) ?? DEFAULT_ACCENT)
+const currentLogo = computed(() => effectiveLogo(settingsForm.value, null))
+
+function openAccentDialog() { accentDialogOpen.value = true }
+function onAccentSave(hex: string) { settingsForm.value.accent_color = hex; accentDialogOpen.value = false }
+function onAccentCancel() { applyAccent(normalizeHex(settingsForm.value.accent_color) ?? null); accentDialogOpen.value = false }
+function openLogoDialog() { logoDialogOpen.value = true }
+function onLogoSave(logo: BrandingLogo) {
+  settingsForm.value.logo_type = logo.type
+  settingsForm.value.logo_preset = logo.preset ?? ''
+  settingsForm.value.branding_logo = logo.type === 'upload' ? logo.dataUrl ?? '' : ''
+  logoDialogOpen.value = false
+}
+function onLogoCancel() { applyLogo(effectiveLogo(settingsForm.value, null)); logoDialogOpen.value = false }
 const turnstileSecretPlaceholder = computed(() => settings.value.turnstile_secret_configured === 'true'
   ? '*****************'
   : 'Enter a secret key')
@@ -566,6 +589,10 @@ async function refreshAll(showLoading = true) {
       turnstile_site_key: next.settings.turnstile_site_key ?? '',
       // Secrets are intentionally write-only: never repopulate one from the API.
       turnstile_secret_key: '',
+      accent_color: next.settings.accent_color ?? '',
+      logo_type: next.settings.logo_type ?? '',
+      logo_preset: next.settings.logo_preset ?? '',
+      branding_logo: next.settings.branding_logo ?? '',
     }
     if (tab.value === 'Users') await loadRegistrationTokens()
   } catch (e: any) {
@@ -1468,6 +1495,31 @@ onBeforeUnmount(() => {
           <label><span>App name</span><small>The internal name shown in navigation and account areas.</small><input v-model="settingsForm.app_name" /></label>
           <label><span>Public title</span><small>The browser title and public-facing site name.</small><input v-model="settingsForm.public_title" /></label>
           <label class="span-2"><span>Base API URL</span><small>Leave blank to use this deployment’s default API.</small><input v-model="settingsForm.base_api_url" placeholder="https://papi.example.com" /></label>
+          <div class="branding-field span-2">
+            <div class="branding-field-copy">
+              <span>Accent color</span>
+              <small>Recolors accent highlights across the site, in both light and dark themes.</small>
+            </div>
+            <button class="branding-accent-btn" type="button" data-testid="accent-open" @click="openAccentDialog">
+              <span class="accent-swatch" :style="{ background: currentAccent }"></span>
+              <code>{{ currentAccent }}</code>
+              <span class="branding-change">Change</span>
+            </button>
+          </div>
+          <div class="branding-field span-2">
+            <div class="branding-field-copy">
+              <span>Site logo</span>
+              <small>Shown in the sidebar and as the browser-tab favicon. Choose a preset icon or upload an image.</small>
+            </div>
+            <button class="branding-logo-btn" type="button" data-testid="logo-open" @click="openLogoDialog">
+              <span class="logo-swatch" aria-hidden="true">
+                <img v-if="currentLogo.type === 'upload' && currentLogo.dataUrl" :src="currentLogo.dataUrl" alt="" />
+                <svg v-else viewBox="0 0 24 24" v-html="presetInnerSvg(currentLogo.preset ?? 'trash')"></svg>
+              </span>
+              <span class="logo-swatch-label">{{ currentLogo.type === 'upload' ? 'Uploaded image' : (currentLogo.preset ?? 'Default') }}</span>
+              <span class="branding-change">Change</span>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -1504,6 +1556,19 @@ onBeforeUnmount(() => {
         <button class="btn-orange" type="button" @click="saveSettings">Save settings</button>
       </div>
     </section>
+
+    <AccentColorDialog
+      :open="accentDialogOpen"
+      :initial-hex="currentAccent"
+      @save="onAccentSave"
+      @cancel="onAccentCancel"
+    />
+    <LogoDialog
+      :open="logoDialogOpen"
+      :initial-logo="currentLogo"
+      @save="onLogoSave"
+      @cancel="onLogoCancel"
+    />
 
     <section v-if="tab === 'Webhooks'" class="stack">
       <form class="card form-grid webhook-create" @submit.prevent="runAction(() => adminCreateWebhook({ url: webhookForm.url, events: webhookForm.events.split(',').map(v => v.trim()).filter(Boolean), secret: webhookForm.secret || undefined, enabled: webhookForm.enabled }), 'Webhook created')">
@@ -2287,6 +2352,115 @@ h2 { font-size: var(--fs-h2); margin-bottom: var(--space-2); }
 }
 .inline-check.span-2 > span > strong {
   font-weight: 500;
+}
+.branding-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface2) 46%, transparent);
+}
+.branding-field-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.branding-field-copy > span {
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.branding-field-copy > small {
+  max-width: 46ch;
+  color: var(--text3);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  line-height: 1.45;
+}
+.branding-accent-btn,
+.branding-logo-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 38px;
+  padding: 6px 10px;
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--bg1);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.branding-accent-btn:hover,
+.branding-logo-btn:hover {
+  border-color: var(--text3);
+  background: var(--bg2);
+}
+.accent-swatch {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.branding-accent-btn code {
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.branding-change {
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.logo-swatch {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg2);
+}
+.logo-swatch svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.logo-swatch img {
+  max-width: 80%;
+  max-height: 80%;
+  object-fit: contain;
+}
+.logo-swatch-label {
+  color: var(--text2);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+@media (max-width: 600px) {
+  .branding-field {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .branding-accent-btn,
+  .branding-logo-btn {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 .upload-toolbar {
   display: flex;

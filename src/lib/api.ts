@@ -1207,6 +1207,10 @@ export interface AdminSettings {
   turnstile_enabled?: string
   turnstile_site_key?: string
   turnstile_secret_configured?: string
+  accent_color?: string
+  logo_type?: string
+  logo_preset?: string
+  branding_logo?: string
 }
 
 export interface PublicAdminSettings {
@@ -1220,6 +1224,10 @@ export interface PublicAdminSettings {
   passkeys_enabled: boolean
   turnstile_site_key?: string
   turnstile_required?: boolean
+  accent_color?: string
+  logo_type?: string
+  logo_preset?: string
+  branding_logo?: string
 }
 
 export interface AdminWebhook {
@@ -1420,7 +1428,7 @@ export function adminSettings() {
   return adminRequest<AdminSettings>('/settings', {}, 'Could not load settings')
 }
 
-export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; file_size_limit_bytes?: number; file_size_limit_unlimited?: boolean; upload_access_mode?: 'private' | 'public'; passkeys_enabled?: boolean; turnstile_enabled?: boolean; turnstile_site_key?: string; turnstile_secret_key?: string }) {
+export function adminUpdateSettings(payload: { app_name?: string; public_title?: string; base_api_url?: string; registration_enabled?: boolean; file_size_limit_bytes?: number; file_size_limit_unlimited?: boolean; upload_access_mode?: 'private' | 'public'; passkeys_enabled?: boolean; turnstile_enabled?: boolean; turnstile_site_key?: string; turnstile_secret_key?: string; accent_color?: string; logo_type?: string; logo_preset?: string; branding_logo?: string }) {
   return adminRequest<AdminSettings>('/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),
