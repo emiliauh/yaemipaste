@@ -439,6 +439,9 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.equal(pub.json.logo_type, 'preset')
     assert.equal(pub.json.logo_preset, 'zap')
     assert.equal(pub.json.branding_logo, tiny)
+    // The resolved branding must be exposed as headers for server-side SPA injection.
+    assert.equal(pub.response.headers.get('x-branding-title'), 'yaemipaste')
+    assert.equal(pub.response.headers.get('x-branding-accent'), '#4ade80')
 
     // The globally-configured accent color should drive the embed's theme-color tag
     // so services like Discord color the embed bar to match the site branding.

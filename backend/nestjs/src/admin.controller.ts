@@ -27,13 +27,33 @@ function webhookUrl(value: string) {
   return parsed.toString()
 }
 
+/** Normalize a stored accent color into a 6-digit lowercase hex (#rrggbb). Returns '' when absent/invalid. */
+function accentThemeColor(value: unknown): string {
+  let v = String(value ?? '').trim()
+  if (!v) return ''
+  v = v.replace(/^#/, '')
+  if (/^[0-9a-f]{3}$/i.test(v)) v = v.split('').map(c => c + c).join('')
+  if (!/^[0-9a-f]{6}$/i.test(v)) return ''
+  return '#' + v.toLowerCase()
+}
+
 @Controller('auth/admin')
 export class AdminController {
   constructor(private readonly auth: AuthService, private readonly db: DatabaseService, private readonly config: ConfigService, private readonly storage: StorageService) {}
 
-  @Get('public-settings') publicSettings() {
+  @Get('public-settings') publicSettings(@Res({ passthrough: true }) response: Response) {
     const settings = this.auth.settings()
     const turnstileSecretConfigured = !!(settings.turnstile_secret_key?.trim() || process.env.TURNSTILE_SECRET_KEY?.trim())
+    // Expose the resolved title and accent as headers so a caching reverse proxy
+    // (nginx) can inject them into the served SPA shell before first paint.
+    const publicTitle = settings.public_title?.trim() || settings.app_name?.trim() || 'yaemipaste'
+    const accent = accentThemeColor(settings.accent_color)
+    // HTML-escape so the value can be safely spliced into the served <title> tag.
+    const titleForHtml = publicTitle.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c))
+    response.set({
+      'X-Branding-Title': titleForHtml,
+      'X-Branding-Accent': accent,
+    })
     return { app_name: settings.app_name || 'yaemipaste', public_title: settings.public_title || 'yaemipaste', registration_enabled: settings.registration_enabled !== 'false', base_api_url: settings.base_api_url || '', file_size_limit_bytes: Number(settings.file_size_limit_bytes || 0), file_size_limit_unlimited: settings.file_size_limit_unlimited === 'true', upload_access_mode: settings.upload_access_mode === 'public' ? 'public' : 'private', passkeys_enabled: this.auth.passkeysEnabled(), turnstile_site_key: settings.turnstile_site_key || '', turnstile_required: settings.turnstile_enabled === 'true' && !!settings.turnstile_site_key?.trim() && turnstileSecretConfigured, accent_color: settings.accent_color || '', logo_type: settings.logo_type || '', logo_preset: settings.logo_preset || '', branding_logo: settings.branding_logo || '' }
   }
 
