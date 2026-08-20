@@ -42,6 +42,7 @@ import {
 } from '../lib/api'
 import ActionConfirmDialog from '../components/ActionConfirmDialog.vue'
 import FilePreview from '../components/FilePreview.vue'
+import LogoutConfirmDialog from '../components/LogoutConfirmDialog.vue'
 import CustomSelect, { type SelectOption } from '../components/CustomSelect.vue'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
@@ -216,7 +217,7 @@ const pageByTab = ref<Record<string, number>>({
 
 
 const currentUser = getAuthUsername()
-const { refreshPublicSettings } = usePublicSettings()
+const { refreshPublicSettings, appName } = usePublicSettings()
 const filteredUploads = computed(() => uploads.value.filter((upload) => {
   const ownerOk = !filterOwner.value || uploadOwner(upload) === filterOwner.value
   const text = filterText.value.trim().toLowerCase()
@@ -664,6 +665,16 @@ function logout() {
   router.push('/login')
 }
 
+const confirmLogout = ref(false)
+
+function requestLogout() {
+  confirmLogout.value = true
+}
+
+function cancelLogout() {
+  confirmLogout.value = false
+}
+
 async function createUser() {
   await runAction(async () => {
     const username = newUser.value.username.trim()
@@ -969,7 +980,7 @@ onBeforeUnmount(() => {
             <p class="subtle">Signed in as {{ currentUser }}</p>
           </div>
           <div class="header-actions">
-            <button class="btn-ghost" type="button" @click="logout">Logout</button>
+            <button class="btn-ghost" type="button" @click="requestLogout">Logout</button>
           </div>
         </header>
 
@@ -1580,6 +1591,13 @@ onBeforeUnmount(() => {
       danger
       @close="closeConfirmation"
       @confirm="submitConfirmation"
+    />
+
+    <LogoutConfirmDialog
+      :open="confirmLogout"
+      :app-name="appName"
+      @close="cancelLogout"
+      @confirm="logout"
     />
 
     <div v-if="tokenDialog" class="token-dialog-backdrop" @click.self="tokenDialog = null">

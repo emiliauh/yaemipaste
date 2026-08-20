@@ -4056,6 +4056,34 @@ test('account page changes the password and logs out other devices', async ({ pa
   await expect.poll(() => logoutAllCalled).toBeTruthy()
 })
 
+test('admin logout asks for confirmation before signing out', async ({ page }) => {
+  await signInAsAdmin(page)
+  await mockAdminApi(page)
+  await page.goto('/admin')
+  await expect(page.getByRole('heading', { name: 'Admin panel' })).toBeVisible()
+
+  const dialog = page.getByTestId('account-logout-confirm')
+  await page.getByRole('button', { name: 'Logout' }).click()
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('Log out of yaemipaste?')
+
+  // Cancel keeps the session and stays on the admin panel.
+  await page.getByTestId('account-logout-confirm-cancel').click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Admin panel' })).toBeVisible()
+
+  // Confirming signs out and clears the session.
+  await page.getByRole('button', { name: 'Logout' }).click()
+  await page.getByTestId('account-logout-confirm-submit').click()
+  await expect(page).toHaveURL(/\/login$/)
+  const remaining = await page.evaluate(() => ({
+    jwt: localStorage.getItem('rp_jwt'),
+    token: localStorage.getItem('rp_token'),
+  }))
+  expect(remaining.jwt).toBeNull()
+  expect(remaining.token).toBeNull()
+})
+
 test('account page customizes the avatar and changes the password', async ({ page }) => {
   await signInWithAccount(page)
   let changePayload: any = null
