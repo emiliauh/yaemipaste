@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { formatGigabytes, publicSiteOrigin, uploadFile, uploadText, type UploadProgress } from '../lib/api'
 import { supportsBrowserEncryption } from '../lib/e2ee'
 import ExpirySelector from './ExpirySelector.vue'
@@ -203,6 +203,96 @@ async function submitText() {
 let pressTimer: ReturnType<typeof setTimeout> | null = null
 let longPressReady = false
 
+/**
+ * Extract the files (and fall back to plain text) from a clipboard paste.
+ * Used by both Ctrl/Cmd+V and the long-press paste button so images and
+ * small files pasted from the clipboard upload like a drop or file pick.
+ */
+async function handleClipboardPaste(source: ClipboardEvent | null, readFromClipboardApi = false) {
+  // Prefer the synchronous clipboardData items from a real paste event (files
+  // are available there without extra permission prompts).
+  const items = source?.clipboardData?.items;
+  if (items) {
+    const files: File[] = [];
+    let text = '';
+    for (const item of Array.from(items)) {
+      const file = item.kind === 'file' ? item.getAsFile() : null;
+      if (file) files.push(file);
+      else if (item.kind === 'string' && item.type === 'text/plain') {
+        text += await new Promise<string>((resolve) => item.getAsString((value) => resolve(value)));
+      }
+    }
+    if (files.length) {
+      handleFiles(files)
+      return true;
+    }
+    if (text) {
+      textPaste.value = text;
+      showToast('Pasted from clipboard');
+      return true;
+    }
+  }
+
+  // Fall back to the async clipboard API (needed when there is no live paste
+  // event, e.g. the long-press button) so image files still upload.
+  if (readFromClipboardApi && typeof navigator.clipboard?.read === 'function') {
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const files: File[] = [];
+      let text = '';
+      for (const clipboardItem of clipboardItems) {
+        for (const type of clipboardItem.types) {
+          if (type.startsWith('image/') || type === 'text/plain') {
+            const blob = await clipboardItem.getType(type);
+            if (type.startsWith('image/')) {
+              const ext = type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
+              files.push(new File([blob], 'clipboard.' + ext, { type }));
+            } else {
+              text += await blob.text();
+            }
+          }
+        }
+      }
+      if (files.length) {
+        handleFiles(files)
+        return true;
+      }
+      if (text) {
+        textPaste.value = text;
+        showToast('Pasted from clipboard');
+        return true;
+      }
+    } catch {
+      // Permission denied or unsupported; fall through to the caller's error path.
+    }
+  }
+  return false;
+}
+
+function onGlobalPaste(e: ClipboardEvent) {
+  // Ignore pastes targeted at inputs/textareas (they handle text natively and
+  // the textarea already submits its own paste), but still capture file pastes.
+  const target = e.target as HTMLElement | null;
+  const isEditable = target && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName));
+  const hasFiles = Array.from(e.clipboardData?.items ?? []).some((item) => item.kind === 'file');
+  if (hasFiles) {
+    e.preventDefault();
+    void handleClipboardPaste(e);
+    return;
+  }
+  // Plain text paste: only capture it when not inside an editable field so
+  // normal text editing still works. The paste area above uses the long-press
+  // path and fills the textarea itself.
+  if (!isEditable && !target?.closest('.files-tab')) return;
+  if (!isEditable) {
+    e.preventDefault();
+    void handleClipboardPaste(e);
+  }
+}
+
+onMounted(() => window.addEventListener('paste', onGlobalPaste));
+onBeforeUnmount(() => window.removeEventListener('paste', onGlobalPaste));
+
 function onPasteAreaLongPressStart(e: PointerEvent) {
   if (e.pointerType === 'mouse' && e.button !== 0) return
   longPressReady = false
@@ -220,11 +310,16 @@ async function onPasteAreaLongPressEnd() {
   if (!longPressReady) return
   longPressReady = false
   try {
+    const handled = await handleClipboardPaste(null, true)
+    if (handled) return;
+    // No image/file was available; fall back to plain text for the text area.
     const text = await navigator.clipboard.readText()
     if (text) {
       textPaste.value = text
-      showToast('Pasted from clipboard')
+      showToast('Pasted from clipboard');
+      return;
     }
+    showToast('Nothing to paste', 'error')
   } catch {
     showToast('Clipboard permission blocked', 'error')
   }

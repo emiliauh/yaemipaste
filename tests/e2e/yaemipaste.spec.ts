@@ -1016,6 +1016,65 @@ test('upload accepts server short-path responses without surfacing an error', as
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(PREVIEW_RE)
 })
 
+test('pasting a file from the clipboard (Ctrl/Cmd+V) uploads it', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `${APP_ORIGIN}/pasted-clipboard.png`,
+    })
+  })
+
+  await page.goto('/#/files')
+  await expect(page.getByTestId('paste-area')).toBeVisible()
+  const errors = []
+  page.on('pageerror', (err) => errors.push('pageerror: ' + err.message))
+  page.on('console', (msg) => { if (msg.type() === 'error') errors.push('console: ' + msg.text()) })
+  // Simulate the browser's paste event carrying an image file on the clipboard.
+  await page.evaluate(() => {
+    const pastedFile = new File(['iVBORw0KGgo='], 'pasted-clipboard.png', { type: 'image/png' })
+    const dt = new DataTransfer()
+    dt.items.add(pastedFile)
+    document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+  })
+  await expect(page.getByTestId('notification-list')).toContainText('Uploaded', { timeout: 15000 })
+  await expect(page.getByTestId('share-row')).toContainText('/preview')
+  expect(errors).toEqual([])
+})
+
+test('long-press paste reads image files from the clipboard API', async ({ page }) => {
+  await signInWithToken(page)
+  await page.addInitScript(() => {
+    const readItems = [
+      new ClipboardItem({ 'image/png': new Blob(['pngdata'], { type: 'image/png' }) }),
+    ]
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        read: async () => readItems,
+        readText: async () => '',
+        writeText: async () => {},
+      },
+    })
+  })
+  await page.route('**/api/', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/plain',
+      body: `${APP_ORIGIN}/longpress-paste.png`,
+    })
+  })
+
+  await page.goto('/#/files')
+  const pasteArea = page.getByTestId('paste-area')
+  await pasteArea.dispatchEvent('pointerdown')
+  await page.waitForTimeout(700)
+  await pasteArea.dispatchEvent('pointerup')
+  await expect(page.getByTestId('notification-list')).toContainText('Uploaded', { timeout: 15000 })
+})
+
 test('latest share link shows preview URL and copy button for uploaded images', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
