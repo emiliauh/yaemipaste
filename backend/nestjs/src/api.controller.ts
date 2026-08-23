@@ -171,6 +171,9 @@ export class ApiController {
     if ((mode === 'raw' || mode === 'download') && resolved.fileName.endsWith('.rpenc')) {
       return response.redirect(302, `/file/${_request.params.token}/preview`)
     }
+    // Keep canonical raw links direct. This makes /file/<token>/raw usable by
+    // media crawlers and clients that do not follow SPA redirects (Discord).
+    if (mode === 'raw') return this.serve(_request, response, resolved.fileName, '1', '')
     if (mode === 'preview' && (flag(previewEmbed) || flag(embed) || String(_request.headers.accept ?? '').includes('text/html'))) {
       return this.previewEmbed(response, token, resolved.fileName, resolved.uploader, resolved.located)
     }

@@ -342,6 +342,12 @@ const deleteConfirmMessage = computed(() => {
   if (deleteConfirmMode.value === 'all') return `This will permanently delete ${count} file${count === 1 ? '' : 's'} from your history.`
   return `This will permanently delete ${count} selected file${count === 1 ? '' : 's'}.`
 })
+// A mixed selection still offers Pin: that action makes every selected file
+// pinned. It switches to Unpin only once the whole selection is pinned.
+const selectedFilesAreAllPinned = computed(() => {
+  const selected = selectedFilesList.value
+  return selected.length > 0 && selected.every((file) => isPinned(file.file_name))
+})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize.value)))
 const paginatedFiles = computed(() => {
@@ -436,28 +442,18 @@ async function movePin(fileName: string, delta: -1 | 1) {
   await savePins(next)
 }
 
-/** Pin every selected file, appending to the pinned list in order. */
-async function pinSelected() {
+/** Toggle all selected files between the fully pinned and unpinned states. */
+async function toggleSelectedPins() {
   const names = selectedFilesList.value.map((file) => file.file_name)
   if (!names.length) return
-  const next = [...pinnedFiles.value]
-  for (const name of names) if (!next.includes(name)) next.push(name)
+  const shouldUnpin = selectedFilesAreAllPinned.value
+  const next = shouldUnpin
+    ? pinnedFiles.value.filter((name) => !names.includes(name))
+    : [...pinnedFiles.value, ...names.filter((name) => !pinnedFiles.value.includes(name))]
   actionsOpen.value = false
   if (await savePins(next)) {
-    showToast('Pinned ' + names.length + ' file' + (names.length === 1 ? '' : 's'))
-    clearSelection()
-  }
-}
-
-/** Unpin every selected file that is currently pinned. */
-async function unpinSelected() {
-  const names = new Set(selectedFilesList.value.map((file) => file.file_name))
-  if (!names.size) return
-  const next = pinnedFiles.value.filter((name) => !names.has(name))
-  actionsOpen.value = false
-  const removed = pinnedFiles.value.length - next.length
-  if (await savePins(next)) {
-    showToast('Unpinned ' + removed + ' file' + (removed === 1 ? '' : 's'))
+    const verb = shouldUnpin ? 'Unpinned' : 'Pinned'
+    showToast(`${verb} ${names.length} file${names.length === 1 ? '' : 's'}`)
     clearSelection()
   }
 }
@@ -1612,16 +1608,9 @@ onBeforeUnmount(() => {
               <button
                 class="menu-action"
                 :disabled="bulkDeleting || bulkDownloading"
-                @click="pinSelected"
+                @click="toggleSelectedPins"
               >
-                Pin selected
-              </button>
-              <button
-                class="menu-action"
-                :disabled="bulkDeleting || bulkDownloading"
-                @click="unpinSelected"
-              >
-                Unpin selected
+                {{ selectedFilesAreAllPinned ? 'Unpin selected' : 'Pin selected' }}
               </button>
               <button
                 class="menu-action danger"

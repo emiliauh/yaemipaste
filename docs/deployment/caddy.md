@@ -14,8 +14,9 @@ paste.example.com {
 The bundled UI proxy owns SPA fallback and API, auth, raw, and download
 routing. Caddy must send every request for the UI hostname to this service.
 Do not send unknown paths to the NestJS API. `/`, `/files`, `/history`,
-`/login`, `/register`, and `/file/*` are browser routes and must receive the
-UI `index.html`.
+`/login`, `/register`, and the preview/download `/file/*` routes are browser
+routes and must receive the UI `index.html`. `/file/<token>/raw` is a direct
+file response and is handled by the bundled UI proxy.
 
 If Caddy serves the build directory directly, use an SPA fallback and put API
 matchers before it:

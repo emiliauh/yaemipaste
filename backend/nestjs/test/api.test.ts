@@ -121,6 +121,11 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     assert.equal(preview.response.status, 302)
     assert.equal(preview.response.headers.get('location'), '/hello/file.txt')
 
+    const tokenRaw = await request('/file/hello/raw')
+    assert.equal(tokenRaw.response.status, 200)
+    assert.equal(tokenRaw.text, 'hello nest')
+    assert.match(tokenRaw.response.headers.get('content-type') ?? '', /^text\/plain/)
+
     const embed = await request('/file/hello/preview', { headers: { Accept: '*/*', 'X-Preview-Embed': '1' } })
     assert.equal(embed.response.status, 200)
     assert.match(embed.response.headers.get('content-type') ?? '', /^text\/html/)

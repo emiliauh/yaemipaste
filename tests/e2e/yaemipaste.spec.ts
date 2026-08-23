@@ -749,7 +749,7 @@ test('image previews use the configured server API base', async ({ page }) => {
 })
 
 test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page }) => {
-  await page.route('**/api/meta/raw-browser.txt', async (route) => {
+  await page.route('**/api/meta/raw-browser.txt**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -2380,7 +2380,7 @@ test('pinned pastes can be manually reordered', async ({ page }) => {
   await expect(rows.nth(0)).toContainText('bravo.txt')
 })
 
-test('selecting multiple uploads pins them all from the Actions menu', async ({ page }) => {
+test('the Actions menu uses one context-aware pin control for selected uploads', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
   const files = [
@@ -2504,7 +2504,7 @@ test('bulk Actions menu with pin options fits on a mobile viewport', async ({ pa
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390)
   }
   await expect(page.getByRole('button', { name: 'Pin selected', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Unpin selected', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Unpin selected', exact: true })).toHaveCount(0)
 })
 
 test('saved API override wins over the deployment default and persists', async ({ page }) => {

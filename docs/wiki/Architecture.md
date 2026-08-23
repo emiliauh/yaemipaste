@@ -46,8 +46,8 @@ Browser pages use paths, not query-string tabs:
 - `/login`
 - `/register`
 - `/admin`
-- `/file/<token>/preview`, `/file/<token>/raw`, and
-  `/file/<token>/download`
+- `/file/<token>/preview` and `/file/<token>/download`
+- `/file/<token>/raw` (a direct file response for embeds and media clients)
 
 On the same host, the frontend proxies `/api/*` to the backend root and
 `/auth/*` to backend auth routes. Public file links use `/<id>/file` or

@@ -62,7 +62,8 @@ requests. Preview navigation stays in the UI SPA.
 - `/auth/*`: backend auth routes
 - `/api/resolve/*`: native backend public-link resolution routes
 - `/api/token-owner`: backend token-owner route
-- `/file/<token>/*`: SPA preview, raw, and download routes
+- `/file/<token>/preview` and `/file/<token>/download`: SPA routes
+- `/file/<token>/raw`: direct backend file bytes (including media embeds)
 - `/<id>/file[.ext]?raw=1|download=true`: backend file bytes
 
 ## Verification
