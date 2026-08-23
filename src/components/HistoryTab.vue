@@ -47,7 +47,7 @@ const DELETE_CONCURRENCY = 6
 const files = ref<PasteFile[]>([])
 const loading = ref(true)
 const error = ref('')
-const pinnedFiles = ref<Set<string>>(new Set())
+const pinnedFiles = ref<string[]>([])
 const search = ref('')
 const searching = ref(false)
 const sortKey = ref<'file_name' | 'file_size' | 'expires_at' | 'created_at'>('created_at')
@@ -304,7 +304,7 @@ const filtered = computed(() => {
   const q = search.value.toLowerCase()
   return [...files.value]
     .filter((f) => f.file_name.toLowerCase().includes(q))
-    .filter((f) => !pinnedFiles.value.has(f.file_name))
+    .filter((f) => !pinnedFiles.value.includes(f.file_name))
     .sort((a, b) => {
       const av = a[sortKey.value] ?? ''
       const bv = b[sortKey.value] ?? ''
@@ -319,9 +319,10 @@ const filtered = computed(() => {
 })
 const pinnedFiltered = computed(() => {
   const q = search.value.toLowerCase()
-  return [...files.value]
-    .filter((f) => pinnedFiles.value.has(f.file_name))
-    .filter((f) => f.file_name.toLowerCase().includes(q))
+  const byName = new Map(files.value.map((f) => [f.file_name, f]))
+  return pinnedFiles.value
+    .map((name) => byName.get(name))
+    .filter((f): f is PasteFile => !!f && f.file_name.toLowerCase().includes(q))
 })
 const totalBytes = computed(() => files.value.reduce((sum, file) => sum + file.file_size, 0))
 const encryptedCount = computed(() => files.value.filter(isEncryptedFile).length)
@@ -381,7 +382,7 @@ async function del(f: PasteFile) {
     optimisticDeletedFiles.add(f.file_name)
     files.value = files.value.filter((x) => x.file_name !== f.file_name)
     selectedFiles.value.delete(f.file_name)
-    if (pinnedFiles.value.has(f.file_name)) void unpinDeleted(f.file_name)
+    if (pinnedFiles.value.includes(f.file_name)) void unpinDeleted(f.file_name)
     showToast(`Deleted ${f.file_name}`)
   } catch (e: any) {
     showToast(e.message ?? 'Delete failed', 'error')
@@ -391,39 +392,67 @@ async function del(f: PasteFile) {
 }
 
 function isPinned(fileName: string): boolean {
-  return pinnedFiles.value.has(fileName)
+  return pinnedFiles.value.includes(fileName)
 }
 
 async function loadPins() {
   try {
-    pinnedFiles.value = new Set(await getPins())
+    pinnedFiles.value = await getPins()
   } catch (e: any) {
     // Pins are best-effort; the history still renders without them.
     console.error('Could not load pinned files', e)
   }
 }
 
-async function togglePin(f: PasteFile) {
-  const next = new Set(pinnedFiles.value)
-  if (next.has(f.file_name)) next.delete(f.file_name)
-  else next.add(f.file_name)
-  pinnedFiles.value = next
-  if (rowMoreOpen.value === f.file_name) closeRowMoreMenu()
+/** Persist the current (ordered) pin list; reverts on failure. */
+async function savePins(next: string[]) {
   try {
-    const saved = await updatePins(Array.from(next))
-    pinnedFiles.value = new Set(saved)
-    showToast(isPinned(f.file_name) ? 'Pinned to top' : 'Unpinned')
+    pinnedFiles.value = await updatePins(next)
+    return true
   } catch (e: any) {
-    // Revert on failure so the UI matches what is actually stored.
     await loadPins()
     showToast(e.message ?? 'Could not update pin', 'error')
+    return false
+  }
+}
+
+async function togglePin(f: PasteFile) {
+  const next = [...pinnedFiles.value]
+  const index = next.indexOf(f.file_name)
+  if (index >= 0) next.splice(index, 1)
+  else next.push(f.file_name)
+  if (rowMoreOpen.value === f.file_name) closeRowMoreMenu()
+  if (await savePins(next)) showToast(isPinned(f.file_name) ? 'Pinned to top' : 'Unpinned')
+}
+
+/** Move a pinned file up or down in the pinned order (manual reordering). */
+async function movePin(fileName: string, delta: -1 | 1) {
+  const next = [...pinnedFiles.value]
+  const index = next.indexOf(fileName)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= next.length) return
+  next.splice(index, 1)
+  next.splice(target, 0, fileName)
+  await savePins(next)
+}
+
+/** Pin every selected file, appending to the pinned list in order. */
+async function pinSelected() {
+  const names = selectedFilesList.value.map((file) => file.file_name)
+  if (!names.length) return
+  const next = [...pinnedFiles.value]
+  for (const name of names) if (!next.includes(name)) next.push(name)
+  actionsOpen.value = false
+  if (await savePins(next)) {
+    showToast('Pinned ' + names.length + ' file' + (names.length === 1 ? '' : 's'))
+    clearSelection()
   }
 }
 
 async function unpinDeleted(fileName: string) {
-  pinnedFiles.value = new Set([...pinnedFiles.value].filter((name) => name !== fileName))
+  pinnedFiles.value = pinnedFiles.value.filter((name) => name !== fileName)
   try {
-    await updatePins(Array.from(pinnedFiles.value))
+    await updatePins(pinnedFiles.value)
   } catch {
     // Best-effort cleanup; a later load re-syncs the pins.
   }
@@ -1029,10 +1058,10 @@ async function deleteNamesConcurrently(names: string[]): Promise<{ deleted: numb
     for (const name of deletedNames) optimisticDeletedFiles.add(name)
     files.value = files.value.filter((file) => !deletedNames.has(file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => !deletedNames.has(name)))
-    const removedPinned = [...pinnedFiles.value].filter((name) => deletedNames.has(name))
+    const removedPinned = pinnedFiles.value.filter((name) => deletedNames.has(name))
     if (removedPinned.length) {
-      pinnedFiles.value = new Set([...pinnedFiles.value].filter((name) => !deletedNames.has(name)))
-      void updatePins(Array.from(pinnedFiles.value)).catch(() => undefined)
+      pinnedFiles.value = pinnedFiles.value.filter((name) => !deletedNames.has(name))
+      void updatePins(pinnedFiles.value).catch(() => undefined)
     }
   }
   return { deleted: deletedNames.size, failed }
@@ -1568,6 +1597,13 @@ onBeforeUnmount(() => {
                 {{ bulkDownloading ? 'Downloading…' : 'Download selected' }}
               </button>
               <button
+                class="menu-action"
+                :disabled="bulkDeleting || bulkDownloading"
+                @click="pinSelected"
+              >
+                Pin selected
+              </button>
+              <button
                 class="menu-action danger"
                 :disabled="bulkDeleting || bulkDownloading"
                 @click="requestDeleteSelected"
@@ -1613,7 +1649,7 @@ onBeforeUnmount(() => {
         <p>{{ error }}</p>
       </div>
 
-      <div v-else-if="!filtered.length" class="state-card">
+      <div v-else-if="!filtered.length && !pinnedFiltered.length" class="state-card">
         <template v-if="search">
           <strong>No matching files</strong>
           <p>Try a different filename or clear the search field.</p>
@@ -1706,6 +1742,26 @@ onBeforeUnmount(() => {
               <td class="expiry">{{ f.expires_at ? formatTimestamp(f.expires_at) : 'Never' }}</td>
               <td class="actions">
                 <div class="action-row">
+                  <template v-if="isPinned(f.file_name)">
+                    <button
+                      class="btn-ghost pin-move-btn"
+                      :disabled="pinnedFiltered[0]?.file_name === f.file_name"
+                      aria-label="Move pinned up"
+                      title="Move up"
+                      @click.stop="movePin(f.file_name, -1)"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                    </button>
+                    <button
+                      class="btn-ghost pin-move-btn"
+                      :disabled="pinnedFiltered[pinnedFiltered.length - 1]?.file_name === f.file_name"
+                      aria-label="Move pinned down"
+                      title="Move down"
+                      @click.stop="movePin(f.file_name, 1)"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                  </template>
                   <button
                     class="btn-ghost action-btn"
                     :title="canDownloadEncrypted(f) ? 'Download decrypted file' : 'Download file'"
@@ -2476,6 +2532,19 @@ onBeforeUnmount(() => {
 }
 .pinned-row td {
   background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.pin-move-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+.pin-move-btn svg {
+  width: 12px;
+  height: 12px;
 }
 
 .file-table th.select-col,

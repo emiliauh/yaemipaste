@@ -2345,6 +2345,74 @@ test('pinning a paste moves it to the pinned section at the top', async ({ page 
   await expect(page.getByTestId('pinned-section')).toHaveCount(0)
 })
 
+test('pinned pastes can be manually reordered', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  const files = [
+    { file_name: 'alpha.txt', file_size: 10, creation_date_utc: '2026-04-17T01:00:00Z', expires_at_utc: null },
+    { file_name: 'bravo.txt', file_size: 20, creation_date_utc: '2026-04-17T01:00:00Z', expires_at_utc: null },
+  ]
+  let pinned = ['alpha.txt', 'bravo.txt']
+  await page.route('**/api/list**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(files) })
+  })
+  await page.route('**/api/pins', async (route) => {
+    if (route.request().method() === 'PUT') {
+      pinned = route.request().postDataJSON().pins
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pins: pinned }) })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pins: pinned }) })
+  })
+  await page.route('**/api/meta/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ source: null }) })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByTestId('pinned-section')).toHaveCount(1)
+  const rows = page.locator('.pinned-row')
+  await expect(rows.nth(0)).toContainText('alpha.txt')
+  // Move alpha down; bravo should rise to the top.
+  await rows.nth(0).getByRole('button', { name: 'Move pinned down' }).click()
+  await expect.poll(() => pinned).toEqual(['bravo.txt', 'alpha.txt'])
+  await expect(rows.nth(0)).toContainText('bravo.txt')
+})
+
+test('selecting multiple uploads pins them all from the Actions menu', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  const files = [
+    { file_name: 'alpha.txt', file_size: 10, creation_date_utc: '2026-04-17T01:00:00Z', expires_at_utc: null },
+    { file_name: 'bravo.txt', file_size: 20, creation_date_utc: '2026-04-17T01:00:00Z', expires_at_utc: null },
+  ]
+  let pinned = []
+  await page.route('**/api/list**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(files) })
+  })
+  await page.route('**/api/pins', async (route) => {
+    if (route.request().method() === 'PUT') {
+      pinned = route.request().postDataJSON().pins
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pins: pinned }) })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pins: pinned }) })
+  })
+  await page.route('**/api/meta/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ source: null }) })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await page.locator('tr.file-row', { hasText: 'alpha.txt' }).getByRole('checkbox').check()
+  await page.locator('tr.file-row', { hasText: 'bravo.txt' }).getByRole('checkbox').check()
+  await page.getByRole('button', { name: 'Actions' }).click()
+  await page.getByRole('button', { name: 'Pin selected' }).click()
+  await expect.poll(() => pinned).toEqual(['alpha.txt', 'bravo.txt'])
+  await expect(page.getByTestId('pinned-section')).toHaveCount(1)
+  await expect(page.locator('.pinned-row')).toHaveCount(2)
+})
+
 test('saved API override wins over the deployment default and persists', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('rp_token', 'demo-token')
