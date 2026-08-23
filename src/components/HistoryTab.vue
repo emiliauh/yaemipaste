@@ -2913,14 +2913,31 @@ onBeforeUnmount(() => {
   }
 
   .file-table {
+    display: block;
     width: 100%;
-    table-layout: auto;
   }
-  .file-table th:last-child,
-  .file-table td.actions {
-    width: 134px;
-    padding-left: var(--space-2) !important;
-    padding-right: var(--space-2) !important;
+  .file-table thead,
+  .file-table tbody {
+    display: block;
+  }
+  .file-table thead tr {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .file-table thead th {
+    display: block;
+    min-width: 0;
+  }
+  .file-table thead th:first-child {
+    grid-column: 1;
+    padding-left: 0;
+    text-align: center;
+  }
+  .file-table thead th:nth-child(2) {
+    grid-column: 2;
+  }
+  .file-table thead th:last-child {
+    display: none;
   }
   .file-table th.col-size,
   .file-table td.size,
@@ -2928,8 +2945,34 @@ onBeforeUnmount(() => {
   .file-table td.expiry {
     display: none;
   }
-  .file-table th:nth-child(2),
-  .file-table td.name {
+  .file-table tr.file-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: var(--space-2);
+    row-gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table tr.file-row:last-child {
+    border-bottom: 0;
+  }
+  .file-table tr.file-row td {
+    display: block;
+    height: auto;
+    min-width: 0;
+    padding: 0 !important;
+    border: 0;
+  }
+  .file-table tr.file-row td.select-col {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 40px;
+    align-self: start;
+  }
+  .file-table tr.file-row td.name {
+    grid-column: 2;
+    grid-row: 1;
     width: auto;
     max-width: none;
   }
@@ -2943,19 +2986,31 @@ onBeforeUnmount(() => {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .file-table tr.file-row td.actions {
+    grid-column: 2;
+    grid-row: 2;
+    width: auto;
+  }
   .action-label { display: none; }
   .action-btn {
-    min-width: 34px;
-    width: 34px;
-    padding: 3px !important;
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: var(--space-2) !important;
   }
   .action-row {
     display: grid;
-    grid-template-columns: repeat(3, 34px);
-    justify-content: end;
-    gap: var(--space-1);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
   }
-  .row-more-wrap { width: 34px; }
+  .row-more-wrap,
+  .row-more-btn { width: 100%; }
+  .file-table tr.pinned-section-row {
+    display: block;
+  }
+  .file-table tr.pinned-section-row td {
+    display: block;
+  }
   .row-item-menu {
     right: 0;
     left: auto;
