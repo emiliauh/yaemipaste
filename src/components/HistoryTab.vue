@@ -92,6 +92,7 @@ const deleteConfirmMode = ref<DeleteConfirmMode>('selected')
 const deleteAcknowledged = ref(false)
 const wsConnected = ref(false)
 const compactFileNames = ref(window.matchMedia('(max-width: 820px)').matches)
+const compactRowActions = ref(window.matchMedia('(max-width: 600px)').matches)
 const hoverEnabled = window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const notificationStore = useNotificationStore()
 const router = useRouter()
@@ -99,6 +100,7 @@ const { refreshPublicSettings } = usePublicSettings()
 let hoverToken = 0
 let previewToken = 0
 let compactFileNamesMediaQuery: MediaQueryList | null = null
+let compactRowActionsMediaQuery: MediaQueryList | null = null
 let hoverAbortController: AbortController | null = null
 let previewCacheBytes = 0
 let historyRequestSequence = 0
@@ -1441,6 +1443,10 @@ function onCompactNamesMediaChange(event: MediaQueryListEvent) {
   compactFileNames.value = event.matches
 }
 
+function onCompactRowActionsMediaChange(event: MediaQueryListEvent) {
+  compactRowActions.value = event.matches
+}
+
 onMounted(async () => {
   await refreshPublicSettings()
   if (accountRequired.value) loading.value = false
@@ -1448,6 +1454,9 @@ onMounted(async () => {
   compactFileNamesMediaQuery = window.matchMedia('(max-width: 820px)')
   compactFileNames.value = compactFileNamesMediaQuery.matches
   compactFileNamesMediaQuery.addEventListener('change', onCompactNamesMediaChange)
+  compactRowActionsMediaQuery = window.matchMedia('(max-width: 600px)')
+  compactRowActions.value = compactRowActionsMediaQuery.matches
+  compactRowActionsMediaQuery.addEventListener('change', onCompactRowActionsMediaChange)
   window.addEventListener('blur', hideHover)
   window.addEventListener('scroll', hideHover, true)
   window.addEventListener('wheel', closeMenusOnUserScroll, { passive: true, capture: true })
@@ -1467,6 +1476,8 @@ onBeforeUnmount(() => {
   hoverAbortController?.abort()
   compactFileNamesMediaQuery?.removeEventListener('change', onCompactNamesMediaChange)
   compactFileNamesMediaQuery = null
+  compactRowActionsMediaQuery?.removeEventListener('change', onCompactRowActionsMediaChange)
+  compactRowActionsMediaQuery = null
   window.removeEventListener('blur', hideHover)
   window.removeEventListener('scroll', hideHover, true)
   window.removeEventListener('wheel', closeMenusOnUserScroll, { capture: true })
@@ -1752,6 +1763,7 @@ onBeforeUnmount(() => {
               <td class="actions">
                 <div class="action-row">
                   <button
+                    v-if="!compactRowActions"
                     class="btn-ghost action-btn"
                     :title="canDownloadEncrypted(f) ? 'Download decrypted file' : 'Download file'"
                     aria-label="Download"
@@ -1786,6 +1798,13 @@ onBeforeUnmount(() => {
                     </button>
                     <Transition name="dropdown-fade">
                       <div v-if="rowMoreOpen === f.file_name" class="row-item-menu" role="menu">
+                        <button
+                          v-if="compactRowActions"
+                          class="menu-action"
+                          @click.stop="downloadFile(f); closeRowMoreMenu()"
+                        >
+                          Download
+                        </button>
                         <button
                           v-if="isPasswordEncryptedFile(f)"
                           class="menu-action"
@@ -2917,7 +2936,11 @@ onBeforeUnmount(() => {
     table-layout: auto;
   }
   .file-table th:last-child,
-  .file-table td.actions { width: 108px; }
+  .file-table td.actions {
+    width: 88px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
   .file-table th.col-size,
   .file-table td.size,
   .file-table th.col-expiry,
@@ -2941,11 +2964,11 @@ onBeforeUnmount(() => {
   }
   .action-label { display: none; }
   .action-btn {
-    min-width: 28px;
-    width: 28px;
+    min-width: 40px;
+    width: 40px;
     padding: 3px !important;
   }
-  .action-row { gap: 4px; }
+  .action-row { gap: var(--space-2); }
   .row-item-menu {
     right: 0;
     left: auto;
