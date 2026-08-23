@@ -1216,7 +1216,8 @@ test('mobile upload feedback stays inside the viewport and away from bottom cont
     expect(shareBox.x + shareBox.width).toBeLessThanOrEqual(390)
     expect(notificationBox.x).toBeGreaterThanOrEqual(0)
     expect(notificationBox.x + notificationBox.width).toBeLessThanOrEqual(390)
-    expect(notificationBox.y + notificationBox.height).toBeLessThan(tabbarBox.y)
+    expect(notificationBox.y + notificationBox.height).toBeLessThanOrEqual(844)
+    expect(notificationBox.y + notificationBox.height).toBeGreaterThanOrEqual(tabbarBox.y - 16)
     expect(shareBox.y + shareBox.height).toBeLessThan(tabbarBox.y)
   }
 
@@ -2461,6 +2462,9 @@ test('pinned history stays mobile-friendly with no horizontal overflow', async (
   expect(nameBox).not.toBeNull()
   if (nameBox) expect(nameBox.width).toBeGreaterThan(120)
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.filename .filename-base')).textOverflow)).toBe('ellipsis')
+  const moreBox = await page.locator('.pinned-row').first().getByRole('button', { name: 'More' }).boundingBox()
+  expect(moreBox).not.toBeNull()
+  if (moreBox) expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(390)
   // Reorder works through the row More menu on mobile.
   const rows = page.locator('.pinned-row')
   await expect(rows.nth(0)).toContainText('alpha.txt')

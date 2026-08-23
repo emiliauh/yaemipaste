@@ -160,9 +160,9 @@ function dismiss(id: number) {
   .notification-stack {
     left: var(--space-3);
     right: var(--space-3);
-    /* The mobile navigation uses two rows when expanded. Keep notifications
-       above that whole chrome, including its safe-area inset. */
-    bottom: calc(var(--mobile-bar-space) + var(--space-5));
+    /* Leave a small breathing room above the mobile chrome without lifting
+       notifications into the middle of the viewport. */
+    bottom: calc(var(--mobile-bar-space) - var(--space-3));
   }
   .notification-stack-row {
     grid-template-columns: auto minmax(0, 1fr) auto;

@@ -2917,7 +2917,7 @@ onBeforeUnmount(() => {
     table-layout: auto;
   }
   .file-table th:last-child,
-  .file-table td.actions { width: 118px; }
+  .file-table td.actions { width: 108px; }
   .file-table th.col-size,
   .file-table td.size,
   .file-table th.col-expiry,
@@ -2941,10 +2941,11 @@ onBeforeUnmount(() => {
   }
   .action-label { display: none; }
   .action-btn {
-    min-width: 30px;
-    width: 30px;
+    min-width: 28px;
+    width: 28px;
     padding: 3px !important;
   }
+  .action-row { gap: 4px; }
   .row-item-menu {
     right: 0;
     left: auto;
