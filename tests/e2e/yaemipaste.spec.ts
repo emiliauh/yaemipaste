@@ -2455,6 +2455,11 @@ test('pinned history stays mobile-friendly with no horizontal overflow', async (
   expect(tableBox).not.toBeNull()
   if (tableBox) expect(tableBox.x + tableBox.width).toBeLessThanOrEqual(390)
   await expect.poll(() => page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))).toBeLessThanOrEqual(390)
+  // The name column must get the freed space (not collapse to a sliver).
+  const nameBox = await page.locator('.file-table td.name').first().boundingBox()
+  expect(nameBox).not.toBeNull()
+  if (nameBox) expect(nameBox.width).toBeGreaterThan(120)
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.filename .filename-base')).textOverflow)).toBe('ellipsis')
   // Reorder works through the row More menu on mobile.
   const rows = page.locator('.pinned-row')
   await expect(rows.nth(0)).toContainText('alpha.txt')
