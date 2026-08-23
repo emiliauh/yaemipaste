@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Headers, HttpCode, Param, Post, Query, Req, Res, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Post, Put, Query, Req, Res, UploadedFiles, UseInterceptors } from '@nestjs/common'
 import { AnyFilesInterceptor } from '@nestjs/platform-express'
 import type { Request, Response } from 'express'
 import { createHash, randomUUID } from 'node:crypto'
@@ -107,6 +107,22 @@ export class ApiController {
     if (!token) throw apiError(401, 'Unauthorized')
     if (!this.config.value.exposeList) throw apiError(404, '')
     return this.storage.listFiles(this.storage.rootForToken(token))
+  }
+
+  @Get('pins')
+  pins(@Req() request: Request) {
+    const token = this.auth.uploadToken(request)
+    if (!token) throw apiError(401, 'Unauthorized')
+    return { pins: this.storage.readPins(token) }
+  }
+
+  @Put('pins')
+  updatePins(@Req() request: Request, @Body() body: { pins?: unknown }) {
+    const token = this.auth.uploadToken(request)
+    if (!token) throw apiError(401, 'Unauthorized')
+    const pins = Array.isArray(body.pins) ? body.pins.map(String).filter((value: string) => value.trim() !== '') : []
+    this.storage.writePins(token, pins)
+    return { pins: this.storage.readPins(token) }
   }
 
   @Get('resolve/:token')

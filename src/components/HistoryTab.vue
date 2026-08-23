@@ -2,7 +2,7 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { zipSync } from 'fflate'
-import { fileUrl, formatTimestamp, getPasteApiBase, listFiles, deleteFile, formatBytes, getPublicFileMeta, publicPathRawFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
+import { fileUrl, formatTimestamp, getPasteApiBase, getPins, listFiles, updatePins, deleteFile, formatBytes, getPublicFileMeta, publicPathRawFileUrl, shareUrl, uploadFile, type PasteFile, type PublicFileMeta } from '../lib/api'
 import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isEncryptedBlob, rememberEncryptedFile } from '../lib/e2ee'
 import FilePreview from './FilePreview.vue'
 import ActionConfirmDialog from './ActionConfirmDialog.vue'
@@ -47,6 +47,7 @@ const DELETE_CONCURRENCY = 6
 const files = ref<PasteFile[]>([])
 const loading = ref(true)
 const error = ref('')
+const pinnedFiles = ref<Set<string>>(new Set())
 const search = ref('')
 const searching = ref(false)
 const sortKey = ref<'file_name' | 'file_size' | 'expires_at' | 'created_at'>('created_at')
@@ -231,6 +232,7 @@ async function load() {
     const nextFiles = await listFiles()
     if (sequence !== historyRequestSequence) return
     files.value = reconcileHistoryFiles(nextFiles)
+    void loadPins()
     const knownNames = new Set(files.value.map((file) => file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => knownNames.has(name)))
     fileMetaMap.value = Object.fromEntries(Object.entries(fileMetaMap.value).filter(([name]) => knownNames.has(name)))
@@ -302,6 +304,7 @@ const filtered = computed(() => {
   const q = search.value.toLowerCase()
   return [...files.value]
     .filter((f) => f.file_name.toLowerCase().includes(q))
+    .filter((f) => !pinnedFiles.value.has(f.file_name))
     .sort((a, b) => {
       const av = a[sortKey.value] ?? ''
       const bv = b[sortKey.value] ?? ''
@@ -313,6 +316,12 @@ const filtered = computed(() => {
       }
       return String(av).localeCompare(String(bv)) * sortDir.value
     })
+})
+const pinnedFiltered = computed(() => {
+  const q = search.value.toLowerCase()
+  return [...files.value]
+    .filter((f) => pinnedFiles.value.has(f.file_name))
+    .filter((f) => f.file_name.toLowerCase().includes(q))
 })
 const totalBytes = computed(() => files.value.reduce((sum, file) => sum + file.file_size, 0))
 const encryptedCount = computed(() => files.value.filter(isEncryptedFile).length)
@@ -338,6 +347,9 @@ const paginatedFiles = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   return filtered.value.slice(start, start + pageSize.value)
 })
+// Pinned files render first (always), followed by the current page of
+// unpinned history so they stay pinned to the top and blend in visually.
+const visibleRows = computed(() => [...pinnedFiltered.value, ...paginatedFiles.value])
 
 async function copy(f: PasteFile) {
   try {
@@ -369,11 +381,51 @@ async function del(f: PasteFile) {
     optimisticDeletedFiles.add(f.file_name)
     files.value = files.value.filter((x) => x.file_name !== f.file_name)
     selectedFiles.value.delete(f.file_name)
+    if (pinnedFiles.value.has(f.file_name)) void unpinDeleted(f.file_name)
     showToast(`Deleted ${f.file_name}`)
   } catch (e: any) {
     showToast(e.message ?? 'Delete failed', 'error')
   } finally {
     deleting.value.delete(f.file_name)
+  }
+}
+
+function isPinned(fileName: string): boolean {
+  return pinnedFiles.value.has(fileName)
+}
+
+async function loadPins() {
+  try {
+    pinnedFiles.value = new Set(await getPins())
+  } catch (e: any) {
+    // Pins are best-effort; the history still renders without them.
+    console.error('Could not load pinned files', e)
+  }
+}
+
+async function togglePin(f: PasteFile) {
+  const next = new Set(pinnedFiles.value)
+  if (next.has(f.file_name)) next.delete(f.file_name)
+  else next.add(f.file_name)
+  pinnedFiles.value = next
+  if (rowMoreOpen.value === f.file_name) closeRowMoreMenu()
+  try {
+    const saved = await updatePins(Array.from(next))
+    pinnedFiles.value = new Set(saved)
+    showToast(isPinned(f.file_name) ? 'Pinned to top' : 'Unpinned')
+  } catch (e: any) {
+    // Revert on failure so the UI matches what is actually stored.
+    await loadPins()
+    showToast(e.message ?? 'Could not update pin', 'error')
+  }
+}
+
+async function unpinDeleted(fileName: string) {
+  pinnedFiles.value = new Set([...pinnedFiles.value].filter((name) => name !== fileName))
+  try {
+    await updatePins(Array.from(pinnedFiles.value))
+  } catch {
+    // Best-effort cleanup; a later load re-syncs the pins.
   }
 }
 
@@ -977,6 +1029,11 @@ async function deleteNamesConcurrently(names: string[]): Promise<{ deleted: numb
     for (const name of deletedNames) optimisticDeletedFiles.add(name)
     files.value = files.value.filter((file) => !deletedNames.has(file.file_name))
     selectedFiles.value = new Set([...selectedFiles.value].filter((name) => !deletedNames.has(name)))
+    const removedPinned = [...pinnedFiles.value].filter((name) => deletedNames.has(name))
+    if (removedPinned.length) {
+      pinnedFiles.value = new Set([...pinnedFiles.value].filter((name) => !deletedNames.has(name)))
+      void updatePins(Array.from(pinnedFiles.value)).catch(() => undefined)
+    }
   }
   return { deleted: deletedNames.size, failed }
 }
@@ -1596,14 +1653,16 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="f in paginatedFiles"
-              :key="f.file_name"
-              class="file-row"
-              @mouseenter="showHover(f, $event)"
-              @mousemove="moveHover"
-              @mouseleave="hideHover"
-            >
+            <template v-for="f in visibleRows" :key="f.file_name">
+              <tr v-if="f.file_name === pinnedFiltered[0]?.file_name && pinnedFiltered.length" class="pinned-section-row" data-testid="pinned-section">
+                <td colspan="5"><span class="pinned-section-label">Pinned</span></td>
+              </tr>
+              <tr
+                :class="isPinned(f.file_name) ? 'file-row pinned-row' : 'file-row'"
+                @mouseenter="showHover(f, $event)"
+                @mousemove="moveHover"
+                @mouseleave="hideHover"
+              >
               <td class="select-col">
                 <input
                   type="checkbox"
@@ -1694,6 +1753,12 @@ onBeforeUnmount(() => {
                           {{ passwordChangesRemaining(f.file_name) }} / {{ PASSWORD_CHANGE_LIMIT }} changes remaining
                         </div>
                         <button
+                          class="menu-action"
+                          @click.stop="togglePin(f)"
+                        >
+                          {{ isPinned(f.file_name) ? 'Unpin' : 'Pin' }}
+                        </button>
+                        <button
                           class="menu-action danger"
                           :disabled="deleting.has(f.file_name)"
                           @click.stop="del(f)"
@@ -1706,6 +1771,7 @@ onBeforeUnmount(() => {
                 </div>
               </td>
             </tr>
+            </template>
           </tbody>
         </table>
         <div class="pagination">
@@ -2392,6 +2458,24 @@ onBeforeUnmount(() => {
 
 .file-table tr:hover td {
   background: color-mix(in srgb, var(--bg2) 42%, transparent);
+}
+.pinned-section-row td {
+  height: 30px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg1));
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 var(--space-3);
+}
+.pinned-section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pinned-row td {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 
 .file-table th.select-col,

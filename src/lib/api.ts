@@ -690,6 +690,49 @@ export async function listFiles(): Promise<PasteFile[]> {
   })
 }
 
+export async function getPins(): Promise<string[]> {
+  const configuredBase = getPasteApiBase()
+  const sameOriginBase = `${publicSiteOrigin()}/api`
+  const request = (base: string) => fetch(`${base}/pins`, { cache: 'no-store', headers: tokenHeader() })
+  let r: Response
+  try {
+    r = await request(configuredBase)
+  } catch (error) {
+    if (configuredBase === sameOriginBase) throw error
+    r = await request(sameOriginBase)
+  }
+  if (!r.ok) {
+    if (r.status === 401) handleConfirmedSessionInvalid(true)
+    throw new Error(await responseDetail(r, 'Failed to load pinned files'))
+  }
+  const data = await readJson<{ pins?: unknown }>(r, 'Failed to load pinned files')
+  return Array.isArray(data.pins) ? data.pins.map(String) : []
+}
+
+export async function updatePins(pins: string[]): Promise<string[]> {
+  const configuredBase = getPasteApiBase()
+  const sameOriginBase = `${publicSiteOrigin()}/api`
+  const request = (base: string) => fetch(`${base}/pins`, {
+    method: 'PUT',
+    cache: 'no-store',
+    headers: { ...tokenHeader(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pins }),
+  })
+  let r: Response
+  try {
+    r = await request(configuredBase)
+  } catch (error) {
+    if (configuredBase === sameOriginBase) throw error
+    r = await request(sameOriginBase)
+  }
+  if (!r.ok) {
+    if (r.status === 401) handleConfirmedSessionInvalid(true)
+    throw new Error(await responseDetail(r, 'Failed to save pinned files'))
+  }
+  const data = await readJson<{ pins?: unknown }>(r, 'Failed to save pinned files')
+  return Array.isArray(data.pins) ? data.pins.map(String) : []
+}
+
 function pasteUploadUrl(): string {
   return `${getPasteApiBase()}/`
 }

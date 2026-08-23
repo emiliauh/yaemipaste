@@ -2301,6 +2301,50 @@ test('history actions and settings buttons work', async ({ page }) => {
   await expect(page.locator('.settings-panel')).toBeHidden()
 })
 
+test('pinning a paste moves it to the pinned section at the top', async ({ page }) => {
+  await signInWithToken(page)
+  await mockClipboard(page)
+  const files = [
+    { file_name: 'alpha.txt', file_size: 10, creation_date_utc: '2026-04-17T01:00:00Z', expires_at_utc: null },
+    { file_name: 'bravo.txt', file_size: 20, creation_date_utc: '2026-04-17T01:00:00Z', expires_at_utc: null },
+  ]
+  let pinned = []
+  await page.route('**/api/list**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(files) })
+  })
+  await page.route('**/api/pins', async (route) => {
+    if (route.request().method() === 'PUT') {
+      pinned = route.request().postDataJSON().pins
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pins: pinned }) })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pins: pinned }) })
+  })
+  await page.route('**/api/alpha.txt', async (route) => { await route.fulfill({ status: 200, body: '' }) })
+  await page.route('**/api/bravo.txt', async (route) => { await route.fulfill({ status: 200, body: '' }) })
+  await page.route('**/api/meta/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ source: null }) })
+  })
+
+  await page.goto('/#/files')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.locator('tr.file-row', { hasText: 'alpha.txt' })).toBeVisible()
+  // No pinned section yet.
+  await expect(page.getByTestId('pinned-section')).toHaveCount(0)
+  // Pin the first file via the More menu.
+  await page.locator('tr.file-row', { hasText: 'alpha.txt' }).getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: 'Pin', exact: true }).click()
+  await expect(page.getByTestId('pinned-section')).toHaveCount(1)
+  const firstRow = page.locator('tr.file-row').first()
+  await expect(firstRow).toContainText('alpha.txt')
+  // The pin persisted server-side.
+  await expect.poll(() => pinned).toEqual(['alpha.txt'])
+  // Unpin restores normal order.
+  await page.locator('tr.file-row', { hasText: 'alpha.txt' }).getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: 'Unpin', exact: true }).click()
+  await expect(page.getByTestId('pinned-section')).toHaveCount(0)
+})
+
 test('saved API override wins over the deployment default and persists', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('rp_token', 'demo-token')

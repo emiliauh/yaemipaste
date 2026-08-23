@@ -310,4 +310,21 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
       return readdirSync(directory, { withFileTypes: true }).filter(entry => entry.isFile() && !entry.name.startsWith('.')).map(entry => ({ path: join(directory, entry.name), root, name: entry.name }))
     })
   }
+
+  /** Load the pinned filenames for a user's upload token (persisted per-user). */
+  readPins(token: string | undefined): string[] {
+    const pinsFile = join(this.rootForToken(token), '.pins.json')
+    try {
+      const parsed = JSON.parse(readFileSync(pinsFile, 'utf8'))
+      return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : []
+    } catch {
+      return []
+    }
+  }
+
+  /** Persist a user's pinned filenames. */
+  writePins(token: string | undefined, pins: string[]) {
+    const pinsFile = join(this.rootForToken(token), '.pins.json')
+    writeFileSync(pinsFile, JSON.stringify(Array.from(new Set(pins)).filter((value): value is string => typeof value === 'string' && value.trim() !== '')), 'utf8')
+  }
 }

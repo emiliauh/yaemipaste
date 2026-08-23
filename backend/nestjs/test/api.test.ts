@@ -502,6 +502,21 @@ describe('NestJS API compatibility', { concurrency: false }, () => {
     const reset = await request('/auth/admin/settings', { method: 'PUT', headers: jwtHeader, body: JSON.stringify({ accent_color: '', logo_type: '', logo_preset: '', branding_logo: '' }) })
     assert.equal(reset.response.status, 200)
   })
+  test('pins are stored and read back per user', async () => {
+    const auth = { Authorization: pasteToken }
+    const initial = await request('/pins', { headers: auth })
+    assert.equal(initial.response.status, 200)
+    assert.deepEqual(initial.json.pins, [])
+    const saved = await request('/pins', { method: 'PUT', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ pins: ['hello.txt', 'clip.mp4'] }) })
+    assert.equal(saved.response.status, 200)
+    assert.deepEqual(saved.json.pins, ['hello.txt', 'clip.mp4'])
+    const read = await request('/pins', { headers: auth })
+    assert.deepEqual(read.json.pins, ['hello.txt', 'clip.mp4'])
+    const cleared = await request('/pins', { method: 'PUT', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ pins: [] }) })
+    assert.deepEqual(cleared.json.pins, [])
+    const unauth = await request('/pins')
+    assert.equal(unauth.response.status, 401)
+  })
 })
 
 describe('outbound address policy', { concurrency: false }, () => {
