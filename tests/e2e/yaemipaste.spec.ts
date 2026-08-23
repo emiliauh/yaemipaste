@@ -2282,12 +2282,7 @@ test('history actions and settings buttons work', async ({ page }) => {
   await expect(historyRow).toBeVisible()
   const expectedExpiry = await page.evaluate(() => new Date('2026-04-18T01:00:00Z').toLocaleString())
   await expect(historyRow.locator('.expiry')).toHaveText(expectedExpiry)
-  if ((page.viewportSize()?.width ?? 0) <= 600) {
-    await historyRow.getByRole('button', { name: 'More' }).click()
-    await page.getByRole('button', { name: 'Download', exact: true }).click()
-  } else {
-    await historyRow.getByRole('button', { name: 'Download', exact: true }).click()
-  }
+  await historyRow.getByRole('button', { name: 'Download', exact: true }).click()
   await expect.poll(() => downloadRequested).toBeTruthy()
   await historyRow.getByRole('button', { name: 'Copy' }).click()
   await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toMatch(PREVIEW_RE)
@@ -2467,11 +2462,19 @@ test('pinned history stays mobile-friendly with no horizontal overflow', async (
   expect(nameBox).not.toBeNull()
   if (nameBox) expect(nameBox.width).toBeGreaterThan(120)
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector('.filename .filename-base')).textOverflow)).toBe('ellipsis')
-  const moreBox = await page.locator('.pinned-row').first().getByRole('button', { name: 'More' }).boundingBox()
+  const actionBoxes = await Promise.all(['Download', 'Copy', 'More'].map(async (name) =>
+    page.locator('.pinned-row').first().getByRole('button', { name, exact: true }).boundingBox(),
+  ))
   const tableWrapBox = await page.locator('.table-wrap').boundingBox()
-  expect(moreBox).not.toBeNull()
+  expect(actionBoxes.every(Boolean)).toBe(true)
   expect(tableWrapBox).not.toBeNull()
-  if (moreBox && tableWrapBox) expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(tableWrapBox.x + tableWrapBox.width)
+  const [downloadBox, copyBox, moreBox] = actionBoxes
+  if (tableWrapBox && downloadBox && copyBox && moreBox) {
+    expect(downloadBox.x).toBeGreaterThanOrEqual(tableWrapBox.x + 6)
+    expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(tableWrapBox.x + tableWrapBox.width - 6)
+    expect(copyBox.x - (downloadBox.x + downloadBox.width)).toBeGreaterThanOrEqual(3)
+    expect(moreBox.x - (copyBox.x + copyBox.width)).toBeGreaterThanOrEqual(3)
+  }
   expect(await page.locator('.pinned-row .action-row').first().evaluate((row) => row.scrollWidth <= row.clientWidth)).toBe(true)
   // Reorder works through the row More menu on mobile.
   const rows = page.locator('.pinned-row')
@@ -2968,12 +2971,7 @@ test('history password-encrypted download requires password prompt', async ({ pa
 
   await page.goto('/#/files')
   await page.getByRole('button', { name: 'History' }).click()
-  if ((page.viewportSize()?.width ?? 0) <= 600) {
-    await page.getByRole('button', { name: 'More' }).click()
-    await page.getByRole('button', { name: 'Download', exact: true }).click()
-  } else {
-    await page.getByRole('button', { name: 'Download', exact: true }).click()
-  }
+  await page.getByRole('button', { name: 'Download', exact: true }).click()
   await expect(page.getByText('Download password-encrypted file')).toBeVisible()
   await expect.poll(() => rawRequested).toBeFalsy()
 })
