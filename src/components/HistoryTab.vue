@@ -449,6 +449,19 @@ async function pinSelected() {
   }
 }
 
+/** Unpin every selected file that is currently pinned. */
+async function unpinSelected() {
+  const names = new Set(selectedFilesList.value.map((file) => file.file_name))
+  if (!names.size) return
+  const next = pinnedFiles.value.filter((name) => !names.has(name))
+  actionsOpen.value = false
+  const removed = pinnedFiles.value.length - next.length
+  if (await savePins(next)) {
+    showToast('Unpinned ' + removed + ' file' + (removed === 1 ? '' : 's'))
+    clearSelection()
+  }
+}
+
 async function unpinDeleted(fileName: string) {
   pinnedFiles.value = pinnedFiles.value.filter((name) => name !== fileName)
   try {
@@ -1604,6 +1617,13 @@ onBeforeUnmount(() => {
                 Pin selected
               </button>
               <button
+                class="menu-action"
+                :disabled="bulkDeleting || bulkDownloading"
+                @click="unpinSelected"
+              >
+                Unpin selected
+              </button>
+              <button
                 class="menu-action danger"
                 :disabled="bulkDeleting || bulkDownloading"
                 @click="requestDeleteSelected"
@@ -1742,26 +1762,6 @@ onBeforeUnmount(() => {
               <td class="expiry">{{ f.expires_at ? formatTimestamp(f.expires_at) : 'Never' }}</td>
               <td class="actions">
                 <div class="action-row">
-                  <template v-if="isPinned(f.file_name)">
-                    <button
-                      class="btn-ghost pin-move-btn"
-                      :disabled="pinnedFiltered[0]?.file_name === f.file_name"
-                      aria-label="Move pinned up"
-                      title="Move up"
-                      @click.stop="movePin(f.file_name, -1)"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
-                    </button>
-                    <button
-                      class="btn-ghost pin-move-btn"
-                      :disabled="pinnedFiltered[pinnedFiltered.length - 1]?.file_name === f.file_name"
-                      aria-label="Move pinned down"
-                      title="Move down"
-                      @click.stop="movePin(f.file_name, 1)"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                  </template>
                   <button
                     class="btn-ghost action-btn"
                     :title="canDownloadEncrypted(f) ? 'Download decrypted file' : 'Download file'"
@@ -1813,6 +1813,22 @@ onBeforeUnmount(() => {
                           @click.stop="togglePin(f)"
                         >
                           {{ isPinned(f.file_name) ? 'Unpin' : 'Pin' }}
+                        </button>
+                        <button
+                          v-if="isPinned(f.file_name)"
+                          class="menu-action"
+                          :disabled="pinnedFiltered[0]?.file_name === f.file_name"
+                          @click.stop="movePin(f.file_name, -1)"
+                        >
+                          Move up
+                        </button>
+                        <button
+                          v-if="isPinned(f.file_name)"
+                          class="menu-action"
+                          :disabled="pinnedFiltered[pinnedFiltered.length - 1]?.file_name === f.file_name"
+                          @click.stop="movePin(f.file_name, 1)"
+                        >
+                          Move down
                         </button>
                         <button
                           class="menu-action danger"
@@ -2533,19 +2549,6 @@ onBeforeUnmount(() => {
 .pinned-row td {
   background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
-.pin-move-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  padding: 0;
-}
-.pin-move-btn svg {
-  width: 12px;
-  height: 12px;
-}
 
 .file-table th.select-col,
 .file-table td.select-col {
@@ -2929,6 +2932,10 @@ onBeforeUnmount(() => {
     left: auto;
     max-width: calc(100vw - 20px);
   }
+  .actions-menu {
+    max-width: calc(100vw - 24px);
+    white-space: nowrap;
+  }
   .pagination {
     justify-content: space-between;
     gap: var(--space-2);
@@ -2955,6 +2962,10 @@ onBeforeUnmount(() => {
     right: 0;
     left: auto;
     max-width: calc(100vw - 20px);
+  }
+  .actions-menu {
+    max-width: calc(100vw - 24px);
+    white-space: nowrap;
   }
 }
 
