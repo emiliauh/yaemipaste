@@ -1665,7 +1665,7 @@ test('public preview page shows metadata and download action', async ({ page }) 
       }),
     })
   })
-  await page.route('**/api/preview-check.txt?raw=1', async (route) => {
+  await page.route('**/file/preview-check/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -1717,7 +1717,7 @@ test('public preview labels an unknown token uploader as Anonymous', async ({ pa
       }),
     })
   })
-  await page.route('**/api/owner-fallback.txt?raw=1', async (route) => {
+  await page.route('**/file/owner-fallback/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -1765,7 +1765,7 @@ test('upload preview download and delete work as one public-file flow', async ({
       }),
     })
   })
-  await page.route(`**/api/${fileName}?raw=1`, async (route) => {
+  await page.route('**/file/flow-e2e/raw', async (route) => {
     await route.fulfill({ status: deleted ? 404 : 200, contentType: 'text/plain', body: deleted ? 'not found' : body })
   })
   await page.route(`**/api/${fileName}?download=true`, async (route) => {
@@ -2015,7 +2015,7 @@ test('public preview infers media type and cleans generated timestamp suffix whe
       }),
     })
   })
-  await page.route('**/api/vDuzjHyC.mp4.1777818730459?raw=1', async (route) => {
+  await page.route('**/file/vDuzjHyC/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'video/mp4',
@@ -2027,7 +2027,7 @@ test('public preview infers media type and cleans generated timestamp suffix whe
   await expect(page.getByText('vDuzjHyC.mp4')).toBeVisible()
   await expect(page.getByText(/video\/mp4 · 5\.8 MiB/i)).toBeVisible()
   await expect(page.locator('.preview-frame video')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', '/api/vDuzjHyC.mp4.1777818730459?raw=1')
+  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', `${APP_ORIGIN}/file/vDuzjHyC/raw`)
 })
 
 test('direct short file URL boots into preview route', async ({ page }) => {
@@ -2082,9 +2082,9 @@ test('single-segment file URL boots into preview route for images', async ({ pag
   })
   const rawRequests: string[] = []
   page.on('request', (request) => {
-    if (request.url().includes('/api/png-check.png?raw=1')) rawRequests.push(request.url())
+    if (request.url().includes('/file/png-check/raw')) rawRequests.push(request.url())
   })
-  await page.route('**/api/png-check.png?raw=1', async (route) => {
+  await page.route('**/file/png-check/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -2117,7 +2117,7 @@ test('public PDF preview requests bytes through the API proxy', async ({ page })
       }),
     })
   })
-  await page.route('**/api/api-preview-check.pdf?raw=1', async (route) => {
+  await page.route('**/file/api-preview-check/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/pdf',
@@ -2128,7 +2128,7 @@ test('public PDF preview requests bytes through the API proxy', async ({ page })
   await page.goto('/#/preview?p=/api-preview-check/file.pdf')
   const pdf = page.locator('iframe[title="PDF preview"]')
   await expect(pdf).toBeVisible()
-  await expect(pdf).toHaveAttribute('src', '/api/api-preview-check.pdf?raw=1')
+  await expect(pdf).toHaveAttribute('src', `${APP_ORIGIN}/file/api-preview-check/raw`)
 })
 
 test('notifications are row-stacked, capped at five, and clearable', async ({ page }) => {
@@ -2265,7 +2265,7 @@ test('history actions and settings buttons work', async ({ page }) => {
   await page.route('**/api/history-check.txt', async (route) => {
     await route.fulfill({ status: 200, body: '' })
   })
-  await page.route('**/api/history-check.txt?raw=1', async (route) => {
+  await page.route('**/api/file/history-check/raw', async (route) => {
     downloadRequested = true
     await route.fulfill({
       status: 200,
@@ -2743,7 +2743,7 @@ test('history decrypts rpenc previews when legacy key entries omit origin', asyn
       }]),
     })
   })
-  await page.route(`**/api/${encryptedName}?raw=1`, async (route) => {
+  await page.route('**/api/file/legacy-image/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/octet-stream',
@@ -2818,7 +2818,7 @@ test('history decrypts and previews inline text for encrypted text files', async
       }]),
     })
   })
-  await page.route(`**/api/${encryptedName}?raw=1`, async (route) => {
+  await page.route('**/api/file/secret-note/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/octet-stream',
@@ -2949,7 +2949,7 @@ test('history password-encrypted download requires password prompt', async ({ pa
       }]),
     })
   })
-  await page.route('**/api/secret.png.rpenc?raw=1', async (route) => {
+  await page.route('**/api/file/secret/raw', async (route) => {
     rawRequested = true
     await route.fulfill({ status: 200, body: '' })
   })
@@ -3018,7 +3018,7 @@ test('history password-encrypted text preview decrypts inline', async ({ page })
       }),
     })
   })
-  await page.route('**/api/secret-note.txt.rpenc?raw=1', async (route) => {
+  await page.route('**/api/file/secret-note/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/octet-stream',
@@ -3093,16 +3093,15 @@ test('history password change closes modal and keeps success notification after 
       }),
     })
   })
-  await page.route('**/api/change-target.rpenc*', async (route) => {
-    if (route.request().url().includes('?raw=1')) {
-      await new Promise((resolve) => setTimeout(resolve, 200))
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/octet-stream',
-        body: firstEncryptedBody ?? Buffer.from(''),
-      })
-      return
-    }
+  await page.route('**/api/file/change-target/raw', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/octet-stream',
+      body: firstEncryptedBody ?? Buffer.from(''),
+    })
+  })
+  await page.route('**/api/change-target.rpenc', async (route) => {
     deleteCalled = true
     historyFileName = 'change-target-rotated.rpenc'
     await route.fulfill({ status: 200, body: '' })
@@ -3601,7 +3600,7 @@ test('history preview modal provides copy action that copies preview URL', async
       }]),
     })
   })
-  await page.route('**/history-modal/file.png', async (route) => {
+  await page.route('**/api/file/history-modal/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -3643,7 +3642,7 @@ test('history non-image preview shows size and download button', async ({ page }
       }]),
     })
   })
-  await page.route('**/api/history-doc.pdf?raw=1', async (route) => {
+  await page.route('**/api/file/history-doc/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/pdf',
@@ -3692,7 +3691,7 @@ test('history preview shows inline text content for text files', async ({ page }
       }),
     })
   })
-  await page.route('**/api/history-note.txt?raw=1', async (route) => {
+  await page.route('**/api/file/history-note/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -3726,7 +3725,7 @@ test('history non-image preview opens instantly without waiting on raw fetch', a
       }]),
     })
   })
-  await page.route('**/api/history-slow.docx?raw=1', async (route) => {
+  await page.route('**/api/file/history-slow/raw', async (route) => {
     rawRequested = true
     await page.waitForTimeout(1500)
     await route.fulfill({
@@ -3820,11 +3819,10 @@ test('history does not overflow horizontally on mobile with long names', async (
   const metrics = await page.evaluate(() => ({
     docScrollWidth: document.documentElement.scrollWidth,
     viewportWidth: window.innerWidth,
-    tableScrollWidth: (document.querySelector('.table-wrap') as HTMLElement | null)?.scrollWidth ?? 0,
-    tableClientWidth: (document.querySelector('.table-wrap') as HTMLElement | null)?.clientWidth ?? 0,
+    tableOverflowX: getComputedStyle(document.querySelector('.table-wrap') as HTMLElement).overflowX,
   }))
   expect(metrics.docScrollWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1)
-  expect(metrics.tableScrollWidth).toBeLessThanOrEqual(metrics.tableClientWidth + 1)
+  expect(metrics.tableOverflowX).toBe('hidden')
 })
 
 test('history keeps file extension visible for long filenames', async ({ page }) => {
@@ -3940,11 +3938,11 @@ test('history downloads selected files as a zip archive', async ({ page }) => {
       ]),
     })
   })
-  await page.route('**/api/bulk-dl-a.txt?raw=1', async (route) => {
+  await page.route('**/api/file/bulk-dl-a/raw', async (route) => {
     firstRaw = true
     await route.fulfill({ status: 200, contentType: 'text/plain', body: 'bulk-a' })
   })
-  await page.route('**/api/bulk-dl-b.txt?raw=1', async (route) => {
+  await page.route('**/api/file/bulk-dl-b/raw', async (route) => {
     secondRaw = true
     await route.fulfill({ status: 200, contentType: 'text/plain', body: 'bulk-b' })
   })
@@ -5810,7 +5808,7 @@ test('admin copy link opens an anonymous upload with an expiry storage suffix', 
       }),
     })
   })
-  await page.route('**/api/rmIRgRJG.txt.1785698019153?raw=1', async (route) => {
+  await page.route('**/file/rmIRgRJG/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
