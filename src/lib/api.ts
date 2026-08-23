@@ -1067,13 +1067,15 @@ export async function getPublicFileMeta(fileName: string, includeAuth = false): 
 }
 
 export function publicSiteOrigin(origin = window.location.origin): string {
+  // A live server/API setting takes precedence over a build-time fallback so
+  // copied public links stay paired with the API the browser is using.
+  const runtimeApi = runtimeBaseApi()
+  if (runtimeApi) return publicOriginFromApiOrigin(sanitizePublicOrigin(runtimeApi) ?? origin)
   if (PUBLIC_SITE_ORIGIN) {
     const configured = sanitizePublicOrigin(PUBLIC_SITE_ORIGIN)
     if (configured) return configured
   }
-  const runtimeApi = runtimeBaseApi()
-  if (runtimeApi) return publicOriginFromApiOrigin(sanitizePublicOrigin(runtimeApi) ?? origin)
-  return publicOriginFromApiOrigin(origin)
+  return publicOriginFromApiOrigin(sanitizePublicOrigin(getPasteApiBase()) ?? origin)
 }
 
 export function publicFileUrl(fileName: string, origin = publicSiteOrigin()): string {
@@ -1097,11 +1099,11 @@ export function publicDownloadUrl(fileName: string, origin = publicSiteOrigin())
 }
 
 export function publicPathRawFileUrl(fileName: string): string {
-  return `${publicFileUrl(fileName)}?raw=1`
+  return publicRawFileUrl(fileName)
 }
 
 export function publicRawFileUrl(fileName: string): string {
-  return `${getPasteApiBase()}/${encodeURIComponent(fileName)}?raw=1`
+  return `${publicSiteOrigin()}/file/${encodeFileToken(fileName)}/raw`
 }
 
 export function publicDownloadFileUrl(fileName: string): string {
@@ -1114,7 +1116,9 @@ export function browserFileUrl(fileName: string, query = ''): string {
 }
 
 export function fileUrl(filename: string): string {
-  return browserFileUrl(filename, 'raw=1')
+  // Keep in-app requests on the active API base so custom and split-host API
+  // settings continue to work, while publicRawFileUrl() uses the share host.
+  return `${getPasteApiBase()}/file/${encodeFileToken(filename)}/raw`
 }
 
 export function adminUploadContentUrl(path: string): string {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { fileUrl, resolveFileName } from '../lib/api'
+import { publicRawFileUrl, resolveFileName } from '../lib/api'
 import { usePublicSettings } from '../lib/publicSettings'
 
 const route = useRoute()
@@ -16,7 +16,7 @@ async function redirect() {
       window.location.replace(`/file/${encodeURIComponent(fileKey)}/preview${window.location.hash}`)
       return
     }
-    window.location.replace(fileUrl(fileName))
+    window.location.replace(publicRawFileUrl(fileName))
   } catch {
     // Keep public-link failures out of the authenticated workspace fallback.
     window.location.replace(`/file/${encodeURIComponent(fileKey)}/preview`)

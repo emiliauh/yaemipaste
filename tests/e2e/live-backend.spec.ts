@@ -10,12 +10,6 @@ function tokenFromPreviewHref(href: string): string {
   return match ? decodeURIComponent(match[1]) : ''
 }
 
-function publicPathFromFileName(fileName: string): string {
-  const [id = '', ...rest] = fileName.split('.')
-  const suffix = rest.join('.')
-  return suffix ? `/${id}/file.${suffix}` : `/${id}/file`
-}
-
 test.describe('live backend integration', () => {
   test('upload -> preview -> raw download -> delete works against a real backend', async ({ page, request }) => {
     test.skip(!liveToken, 'Set PLAYWRIGHT_LIVE_PASTE_TOKEN to run live integration tests')
@@ -52,7 +46,7 @@ test.describe('live backend integration', () => {
     const uploadedName = resolvePayload.file_name ?? ''
     expect(uploadedName).toBeTruthy()
     const apiBase = liveApiBaseUrl || `${liveBaseUrl}/api`
-    const rawPublicUrl = `${liveBaseUrl}${publicPathFromFileName(uploadedName)}?raw=1`
+    const rawPublicUrl = `${liveBaseUrl}/file/${encodeURIComponent(token)}/raw`
 
     await page.goto(href ?? `${liveBaseUrl}/`)
     await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()

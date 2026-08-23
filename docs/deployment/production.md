@@ -64,7 +64,7 @@ requests. Preview navigation stays in the UI SPA.
 - `/api/token-owner`: backend token-owner route
 - `/file/<token>/preview` and `/file/<token>/download`: SPA routes
 - `/file/<token>/raw`: direct backend file bytes (including media embeds)
-- `/<id>/file[.ext]?raw=1|download=true`: backend file bytes
+- `/<id>/file[.ext]?raw=1|download=true`: legacy backend file bytes
 
 ## Verification
 

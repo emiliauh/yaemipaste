@@ -35,7 +35,7 @@ test('production: anonymous public preview resolves, renders, and downloads', as
 
   const rawLink = page.getByRole('link', { name: 'View raw' })
   const rawHref = await rawLink.getAttribute('href')
-  expect(rawHref).toContain('?raw=1')
+  expect(rawHref).toMatch(/\/file\/[^/]+\/raw$/)
   const rawResponse = await request.get(new URL(rawHref ?? '', liveBrowserBaseUrl).toString())
   expect(rawResponse.ok()).toBeTruthy()
   expect((await rawResponse.body()).length).toBeGreaterThan(0)
@@ -62,7 +62,7 @@ test('production: password encryption upload + preview + history thumbnail', asy
     if (req.method() === 'POST' && (req.url().startsWith(liveApiBaseUrl) || req.url().startsWith(liveBrowserApiBaseUrl))) {
       uploadRequestUrls.push(req.url())
     }
-    if (req.method() === 'GET' && req.url().startsWith(liveBrowserApiBaseUrl) && req.url().includes('?raw=1')) {
+    if (req.method() === 'GET' && req.url().startsWith(liveBrowserBaseUrl) && /\/file\/[^/]+\/raw$/.test(new URL(req.url()).pathname)) {
       browserRawRequestUrls.push(req.url())
     }
   })
@@ -142,7 +142,7 @@ test('production: password encryption upload + preview + history thumbnail', asy
   await expect.poll(() => image.evaluate((element) => element.naturalWidth)).toBeGreaterThan(0)
   const rawHref = await page.getByRole('link', { name: 'View raw' }).getAttribute('href')
   const rawUrl = new URL(rawHref ?? '', liveBrowserBaseUrl).toString()
-  expect(rawUrl).toMatch(new RegExp(`^${liveBrowserApiBaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^?]+\\?raw=1$`))
+  expect(rawUrl).toMatch(new RegExp(`^${liveBrowserBaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/file/[A-Za-z0-9_-]+/raw$`))
   const rawResponse = await request.get(rawUrl)
   expect(rawResponse.ok()).toBeTruthy()
   expect(rawResponse.headers()['content-type']).toContain('image/png')

@@ -9,6 +9,9 @@ export default defineConfig({
     proxy: {
       '/auth': { target: 'http://localhost:8085', changeOrigin: true },
       '/api': { target: 'http://localhost:8085', changeOrigin: true, rewrite: (path) => path.replace(/^\/api/, '') },
+      // Keep the canonical public raw route direct in local development too.
+      // Encrypted links include a "+" key suffix and remain handled by the SPA.
+      '^/file/[^/+]+/raw$': { target: 'http://localhost:8085', changeOrigin: true },
     },
   },
   build: {

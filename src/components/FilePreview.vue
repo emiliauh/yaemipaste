@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getAuthJwt, type PasteFile, fileUrl, formatBytes, publicFileUrl, shareUrl } from '../lib/api'
+import { getAuthJwt, type PasteFile, fileUrl, formatBytes, publicFileUrl, publicRawFileUrl, shareUrl } from '../lib/api'
 import { decryptBlobWithPassword, decryptEncryptedBlob, encryptedShareUrl, getStoredEncryptedFile, isEncryptedBlob, passwordEncryptedShareUrl } from '../lib/e2ee'
 import { useNotificationStore } from '../stores/notifications'
 import { usePublicSettings } from '../lib/publicSettings'
@@ -65,10 +65,10 @@ const previewPageUrl = computed(() => {
   return shareUrl(props.file.file_name)
 })
 const rawFileUrl = computed(() => {
-  // Track the live server setting so copied raw links update from /api to its configured API origin.
+  // Copy the canonical direct-media route that social clients can embed.
   void publicSettings.value.base_api_url
   if (isAdminContentUrl.value) return publicFileUrl(props.file.file_name)
-  return new URL(fileUrl(props.file.file_name), window.location.origin).toString()
+  return publicRawFileUrl(props.file.file_name)
 })
 const copyUrl = computed(() => previewPageUrl.value)
 const openRawUrl = computed(() => (decryptedUrl.value && (isText.value || isImage.value || isVideo.value)) ? decryptedUrl.value : rawFileUrl.value)

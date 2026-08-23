@@ -632,10 +632,11 @@ test('private upload mode still shows the history account state instead of redir
 })
 
 test('plain preview ignores a stale decryption fragment', async ({ page }) => {
-  await page.route('**/api/plain-fragment.txt?raw=1', async (route) => {
+  const token = Buffer.from('plain-fragment.txt').toString('base64url')
+  await page.route('**/file/plain-fragment/raw', async (route) => {
     await route.fulfill({ status: 200, contentType: 'text/plain', body: 'plain preview content' })
   })
-  await page.route('**/api/meta/plain-fragment.txt', async (route) => {
+  await page.route('**/api/meta/plain-fragment.txt**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -649,7 +650,6 @@ test('plain preview ignores a stale decryption fragment', async ({ page }) => {
     })
   })
 
-  const token = Buffer.from('plain-fragment.txt').toString('base64url')
   await page.goto(`/file/${token}/preview#stale-decryption-key`)
 
   await expect(page.getByRole('heading', { name: 'File preview' })).toBeVisible()
@@ -657,7 +657,7 @@ test('plain preview ignores a stale decryption fragment', async ({ page }) => {
   await expect(page.getByText('This file is not a supported encrypted file')).toHaveCount(0)
 })
 
-test('raw actions use the configured server API base by default', async ({ page }) => {
+test('raw actions use the canonical share route with configured API settings', async ({ page }) => {
   await page.route('**/auth/admin/public-settings', async (route) => {
     await route.fulfill({
       status: 200,
@@ -673,7 +673,7 @@ test('raw actions use the configured server API base by default', async ({ page 
       }),
     })
   })
-  await page.route('https://papi.example.test/meta/server-api.txt', async (route) => {
+  await page.route('https://papi.example.test/meta/server-api.txt**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -687,7 +687,8 @@ test('raw actions use the configured server API base by default', async ({ page 
       }),
     })
   })
-  await page.route('https://papi.example.test/server-api.txt?raw=1', async (route) => {
+  const token = Buffer.from('server-api.txt').toString('base64url')
+  await page.route('https://paste.example.test/file/server-api/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -696,11 +697,10 @@ test('raw actions use the configured server API base by default', async ({ page 
     })
   })
 
-  const token = Buffer.from('server-api.txt').toString('base64url')
   await page.goto(`/file/${token}/preview`)
 
   await expect(page.getByText('server API raw text')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://papi.example.test/server-api.txt?raw=1')
+  await expect(page.getByRole('link', { name: 'View raw' })).toHaveAttribute('href', 'https://paste.example.test/file/server-api/raw')
 })
 
 test('image previews use the configured server API base', async ({ page }) => {
@@ -719,7 +719,7 @@ test('image previews use the configured server API base', async ({ page }) => {
       }),
     })
   })
-  await page.route('https://papi.example.test/meta/server-image.png', async (route) => {
+  await page.route('https://papi.example.test/meta/server-image.png**', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -733,7 +733,8 @@ test('image previews use the configured server API base', async ({ page }) => {
       }),
     })
   })
-  await page.route('https://papi.example.test/server-image.png?raw=1', async (route) => {
+  const token = Buffer.from('server-image.png').toString('base64url')
+  await page.route('https://paste.example.test/file/server-image/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -742,10 +743,9 @@ test('image previews use the configured server API base', async ({ page }) => {
     })
   })
 
-  const token = Buffer.from('server-image.png').toString('base64url')
   await page.goto(`/file/${token}/preview`)
 
-  await expect(page.locator('.preview-frame img')).toHaveAttribute('src', 'https://papi.example.test/server-image.png?raw=1')
+  await expect(page.locator('.preview-frame img')).toHaveAttribute('src', 'https://paste.example.test/file/server-image/raw')
 })
 
 test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page }) => {
@@ -762,11 +762,11 @@ test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page 
       }),
     })
   })
-  await page.context().route('**/api/raw-browser.txt?raw=1', async (route) => {
+  const token = Buffer.from('raw-browser.txt').toString('base64url')
+  await page.context().route('**/file/raw-browser/raw', async (route) => {
     await route.fulfill({ status: 200, contentType: 'text/plain', body: 'raw browser bytes' })
   })
 
-  const token = Buffer.from('raw-browser.txt').toString('base64url')
   await page.goto(`/file/${token}/preview`)
   await expect(page.getByText('raw browser bytes')).toBeVisible()
 
@@ -775,7 +775,7 @@ test('View raw opens API-proxied bytes instead of the SPA shell', async ({ page 
   const popup = await popupPromise
   await popup.waitForLoadState()
 
-  await expect(popup).toHaveURL(/\/api\/raw-browser\.txt\?raw=1$/)
+  await expect(popup).toHaveURL(/\/file\/raw-browser\/raw$/)
   await expect(popup.locator('body')).toContainText('raw browser bytes')
   await popup.close()
 })
@@ -789,7 +789,7 @@ test('encrypted raw and download aliases stay in the decrypt preview flow', asyn
   }
 })
 
-test('History copies an absolute raw URL from the server API base', async ({ page }) => {
+test('History copies the canonical raw URL from the server API settings', async ({ page }) => {
   await signInWithToken(page)
   await mockClipboard(page)
   await page.route('**/auth/admin/public-settings', async (route) => {
@@ -834,7 +834,8 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
       }),
     })
   })
-  await page.route('https://papi.example.test/history-server-api.txt?raw=1', async (route) => {
+  const token = Buffer.from('history-server-api.txt').toString('base64url')
+  await page.route('https://papi.example.test/file/history-server-api/raw', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'text/plain',
@@ -849,7 +850,7 @@ test('History copies an absolute raw URL from the server API base', async ({ pag
   await modal.getByRole('button', { name: 'More copy options' }).click()
   await modal.getByRole('menuitem', { name: /Copy raw URL/ }).click()
 
-  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://papi.example.test/history-server-api.txt?raw=1')
+  await expect.poll(() => page.evaluate(() => (navigator.clipboard as any).__written())).toBe('https://paste.example.test/file/history-server-api/raw')
 })
 
 async function expandExpiryIfCollapsed(page: Page) {

@@ -188,9 +188,9 @@ export class ApiController {
     const origin = this.config.value.publicUrl
     const previewUrl = `${origin}/file/${encodeURIComponent(token)}/preview`
     // Social crawlers need a public URL that resolves directly to the media.
-    // The API raw route handles expiring filenames consistently behind both
-    // the bundled Nginx proxy and split-host reverse proxies.
-    const rawUrl = `${origin}/api/${encodeURIComponent(fileName)}?raw=1`
+    // The canonical token route works through both the bundled Nginx proxy
+    // and split-host reverse proxies without a query-string redirect.
+    const rawUrl = `${origin}/file/${encodeURIComponent(token)}/raw`
     const description = `${contentType} · ${stat.size.toLocaleString('en-US')} bytes${uploader ? ` · ${uploader}` : ''}`
     const isImage = contentType.startsWith('image/')
     const isVideo = contentType.startsWith('video/')
