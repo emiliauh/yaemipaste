@@ -2452,6 +2452,17 @@ test('pinned history stays mobile-friendly with no horizontal overflow', async (
   await page.getByRole('button', { name: 'History' }).click()
   await expect(page.getByTestId('pinned-section')).toHaveCount(1)
   await expect(page.locator('.pinned-row')).toHaveCount(2)
+  await expect.poll(() => page.locator('.file-table thead th').evaluateAll((cells) =>
+    cells.every((cell) => getComputedStyle(cell).borderBottomWidth === '0px'),
+  )).toBe(true)
+  const [pinnedLabelBox, headerNameBox, headerNamePadding] = await Promise.all([
+    page.locator('.pinned-section-label').boundingBox(),
+    page.locator('.file-table thead th:nth-child(2)').boundingBox(),
+    page.locator('.file-table thead th:nth-child(2)').evaluate((cell) => Number.parseFloat(getComputedStyle(cell).paddingLeft)),
+  ])
+  expect(pinnedLabelBox).not.toBeNull()
+  expect(headerNameBox).not.toBeNull()
+  if (pinnedLabelBox && headerNameBox) expect(Math.abs(pinnedLabelBox.x - (headerNameBox.x + headerNamePadding))).toBeLessThanOrEqual(1)
   // The table and every pinned row must stay within the 390px viewport.
   const tableBox = await page.locator('.file-table').boundingBox()
   expect(tableBox).not.toBeNull()

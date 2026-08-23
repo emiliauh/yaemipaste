@@ -2920,13 +2920,33 @@ onBeforeUnmount(() => {
   .file-table tbody {
     display: block;
   }
+  .file-table thead {
+    position: relative;
+  }
   .file-table thead tr {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr) 116px;
+    column-gap: var(--space-2);
+    padding: 0 var(--space-2);
+    background: color-mix(in srgb, var(--bg1) 70%, var(--bg));
+    border-bottom: 0;
+  }
+  .file-table thead::after {
+    position: absolute;
+    z-index: 1;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 1px;
+    background: var(--border);
+    content: '';
+    pointer-events: none;
   }
   .file-table thead th {
     display: block;
     min-width: 0;
+    background: transparent;
+    border-bottom: 0 !important;
   }
   .file-table thead th:first-child {
     grid-column: 1;
@@ -2937,7 +2957,9 @@ onBeforeUnmount(() => {
     grid-column: 2;
   }
   .file-table thead th:last-child {
-    display: none;
+    display: block;
+    grid-column: 3;
+    padding-right: 0;
   }
   .file-table th.col-size,
   .file-table td.size,
@@ -2947,12 +2969,14 @@ onBeforeUnmount(() => {
   }
   .file-table tr.file-row {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
-    grid-template-rows: auto auto;
+    grid-template-columns: 40px minmax(0, 1fr) 116px;
     column-gap: var(--space-2);
-    row-gap: var(--space-2);
-    padding: var(--space-3);
+    align-items: center;
+    min-height: 56px;
+    padding: var(--space-2);
     border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    transition: background var(--duration-fast) var(--ease-out);
   }
   .file-table tr.file-row:last-child {
     border-bottom: 0;
@@ -2963,12 +2987,19 @@ onBeforeUnmount(() => {
     min-width: 0;
     padding: 0 !important;
     border: 0;
+    background: transparent;
+  }
+  .file-table tr.file-row.pinned-row {
+    background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+  }
+  .file-table tr.file-row:hover {
+    background: color-mix(in srgb, var(--bg2) 42%, var(--bg));
   }
   .file-table tr.file-row td.select-col {
     grid-column: 1;
-    grid-row: 1 / span 2;
+    grid-row: 1;
     width: 40px;
-    align-self: start;
+    align-self: center;
   }
   .file-table tr.file-row td.name {
     grid-column: 2;
@@ -2987,29 +3018,45 @@ onBeforeUnmount(() => {
     text-overflow: ellipsis;
   }
   .file-table tr.file-row td.actions {
-    grid-column: 2;
-    grid-row: 2;
+    grid-column: 3;
+    grid-row: 1;
     width: auto;
   }
   .action-label { display: none; }
   .action-btn {
     width: 100%;
     min-width: 0;
-    min-height: 38px;
-    padding: var(--space-2) !important;
+    min-height: 36px;
+    padding: var(--space-1) !important;
   }
   .action-row {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
+    grid-template-columns: repeat(3, 36px);
+    justify-content: end;
+    gap: var(--space-1);
   }
   .row-more-wrap,
-  .row-more-btn { width: 100%; }
+  .row-more-btn { width: 36px; }
   .file-table tr.pinned-section-row {
-    display: block;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 116px;
+    column-gap: var(--space-2);
+    align-items: center;
+    min-height: 30px;
+    padding: 0 var(--space-2);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg1));
   }
   .file-table tr.pinned-section-row td {
     display: block;
+    grid-column: 2 / -1;
+    height: auto;
+    padding: 0 var(--space-3) !important;
+    border: 0 !important;
+    background: transparent;
+  }
+  .file-table tr.file-row td.size,
+  .file-table tr.file-row td.expiry {
+    display: none !important;
   }
   .row-item-menu {
     right: 0;
